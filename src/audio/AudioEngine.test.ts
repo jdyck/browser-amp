@@ -2,12 +2,12 @@ import { describe, expect, it, vi } from 'vitest';
 import { AudioEngine } from './AudioEngine';
 import type { BrowserAudio } from './browserAudio';
 
-function browser(overrides: Partial<BrowserAudio> = {}): BrowserAudio {
+function browser(overrides: Partial<BrowserAudio> = {}, trackSettings: MediaTrackSettings = {}): BrowserAudio {
   const track = {
-    getSettings: () => ({ channelCount: 2, deviceId: 'guitar-interface', echoCancellation: false, noiseSuppression: false, autoGainControl: false }),
+    getSettings: () => ({ channelCount: 2, deviceId: 'guitar-interface', echoCancellation: false, noiseSuppression: false, autoGainControl: false, ...trackSettings }),
     stop: vi.fn(),
   } as unknown as MediaStreamTrack;
-  const stream = { getAudioTracks: () => [track] } as unknown as MediaStream;
+  const stream = { getAudioTracks: () => [track], getTracks: () => [track] } as unknown as MediaStream;
 
   return {
     mediaDevices: {
@@ -72,6 +72,24 @@ describe('AudioEngine', () => {
         noiseSuppression: false,
       },
     });
+  });
+
+  it('keeps mono input mono and hides the input-channel capability', async () => {
+    const environment = browser({}, { channelCount: 1 });
+    const engine = new AudioEngine(environment);
+
+    await engine.connectInput();
+
+    expect(engine.snapshot).toMatchObject({ inputChannelCount: 1, inputChannel: 0 });
+  });
+
+  it('warns when the browser cannot confirm raw capture settings', async () => {
+    const environment = browser({}, { noiseSuppression: undefined });
+    const engine = new AudioEngine(environment);
+
+    await engine.connectInput();
+
+    expect(engine.snapshot.rawCaptureWarnings).toEqual(['Noise suppression could not be confirmed disabled by this browser.']);
   });
 
   it('reports a permission failure and remains muted', async () => {

@@ -15,6 +15,10 @@ function meterRegion(dbfs: number): string {
   return 'green';
 }
 
+function meterPositionPercent(dbfs: number): number {
+  return Math.max(0, ((dbfs + 60) / 60) * 100);
+}
+
 function render(next: AudioSnapshot): void {
   snapshot = next;
   const connected = snapshot.lifecycle === 'connected-muted';
@@ -37,8 +41,8 @@ function render(next: AudioSnapshot): void {
       <section class="panel" aria-labelledby="meter-title">
         <div class="panel-heading"><h2 id="meter-title">Input Level Meter</h2><span>${snapshot.meter.dbfs.toFixed(1)} dBFS</span></div>
         <div class="meter" aria-label="Input level" aria-valuemin="-60" aria-valuemax="0" aria-valuenow="${snapshot.meter.dbfs}" role="progressbar">
-          <div class="meter-fill ${meterRegion(snapshot.meter.dbfs)}" style="width: ${Math.max(0, ((snapshot.meter.dbfs + 60) / 60) * 100)}%"></div>
-          <div class="peak" style="left: ${Math.max(0, ((snapshot.meter.peakDbfs + 60) / 60) * 100)}%"></div>
+          <div class="meter-fill ${meterRegion(snapshot.meter.dbfs)}" style="width: ${100 - meterPositionPercent(snapshot.meter.dbfs)}%"></div>
+          <div class="peak" style="left: ${meterPositionPercent(snapshot.meter.peakDbfs)}%"></div>
         </div>
         <div class="meter-scale" aria-hidden="true"><span>−60</span><span>−12</span><span>−3</span><span>0 dBFS</span></div>
         <p class="hint">Pre-chain signal only. Connecting and metering do not send audio to your speakers or headphones.</p>
@@ -50,7 +54,7 @@ function render(next: AudioSnapshot): void {
       </section>
     </section>`;
 
-  document.querySelector<HTMLButtonElement>('#connect')?.addEventListener('click', () => void engine.connectInput());
+  document.querySelector<HTMLButtonElement>('#connect')?.addEventListener('click', () => void engine.connectInput({ deviceId: snapshot.selectedInputDeviceId }));
   document.querySelector<HTMLButtonElement>('#disconnect')?.addEventListener('click', () => void engine.disconnectInput());
   document.querySelector<HTMLSelectElement>('#input-device')?.addEventListener('change', (event) => {
     const deviceId = (event.currentTarget as HTMLSelectElement).value;

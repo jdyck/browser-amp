@@ -29,7 +29,7 @@ function rawCaptureWarnings(settings: MediaTrackSettings): string[] {
     ['noiseSuppression', 'Noise suppression'],
     ['autoGainControl', 'Automatic gain control'],
   ];
-  return requested.flatMap(([key, label]) => settings[key] === true ? [`${label} could not be disabled by this browser.`] : []);
+  return requested.flatMap(([key, label]) => settings[key] !== false ? [`${label} could not be confirmed disabled by this browser.`] : []);
 }
 
 /** Owns browser capture and metering. It deliberately never routes to AudioContext.destination. */
