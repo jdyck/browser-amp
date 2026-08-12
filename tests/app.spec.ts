@@ -138,7 +138,7 @@ async function installAudioBrowser(page: Page, options: {
 }
 
 test('starts disconnected with monitoring unavailable', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('./');
 
   await expect(page.getByRole('status')).toContainText('Disconnected');
   await expect(page.getByRole('button', { name: 'Enable Monitoring' })).toBeDisabled();
@@ -146,7 +146,7 @@ test('starts disconnected with monitoring unavailable', async ({ page }) => {
 });
 
 test('synchronizes, clamps, and restores controls without restoring Processed Monitoring', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('./');
 
   const cleanGain = page.getByLabel('Clean Gain value');
   const cleanGainSlider = page.getByLabel('Clean Gain slider');
@@ -216,7 +216,7 @@ test('synchronizes, clamps, and restores controls without restoring Processed Mo
 
 test('requires a separate monitoring action and remembers dismissed Hardware Direct Monitoring guidance', async ({ page }) => {
   await installAudioBrowser(page);
-  await page.goto('/');
+  await page.goto('./');
   await page.getByRole('button', { name: 'Connect Input' }).click();
 
   await expect(page.getByText('This browser does not expose output selection.')).toBeVisible();
@@ -236,7 +236,7 @@ test('requires a separate monitoring action and remembers dismissed Hardware Dir
 
 test('Reset Controls restores sound defaults without changing connection, monitoring, or dismissed guidance', async ({ page }) => {
   await installAudioBrowser(page);
-  await page.goto('/');
+  await page.goto('./');
   await page.getByLabel('Clean Gain value').fill('9');
   await page.getByLabel('Bass value').fill('-4');
   await page.getByLabel('Compression Stage Bypass').uncheck();
@@ -290,7 +290,7 @@ test('Reset Controls restores sound defaults without changing connection, monito
 
 test('shows browser-visible output routing and clears a latched post-Master CLIP', async ({ page }) => {
   await installAudioBrowser(page, { clipOnce: true, outputSelection: true });
-  await page.goto('/');
+  await page.goto('./');
   await page.getByRole('button', { name: 'Connect Input' }).click();
 
   await page.getByLabel('Output device').selectOption('headphones');
@@ -302,7 +302,7 @@ test('shows browser-visible output routing and clears a latched post-Master CLIP
 
 test('keeps the input selector mounted while the meter updates', async ({ page }) => {
   await installAudioBrowser(page);
-  await page.goto('/');
+  await page.goto('./');
   await page.getByRole('button', { name: 'Connect Input' }).click();
 
   const selector = page.getByLabel('Input device');
@@ -316,7 +316,7 @@ test('keeps the input selector mounted while the meter updates', async ({ page }
 test('offers a keyboard-accessible retry after permission denial on a narrow layout', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 900 });
   await installAudioBrowser(page, { permissionDenied: true });
-  await page.goto('/');
+  await page.goto('./');
 
   await page.getByRole('button', { name: 'Connect Input' }).click();
 
@@ -333,7 +333,7 @@ test('offers a keyboard-accessible retry after permission denial on a narrow lay
 
 test('stays muted through active-input unplug and replug until explicit reconnection', async ({ page }) => {
   await installAudioBrowser(page);
-  await page.goto('/');
+  await page.goto('./');
   await page.getByLabel('Clean Gain value').fill('7');
   await page.getByRole('button', { name: 'Connect Input' }).click();
   await page.getByRole('button', { name: 'Enable Monitoring' }).click();
@@ -361,7 +361,7 @@ test('stays muted through active-input unplug and replug until explicit reconnec
 
 test('does not restart monitoring across background and foreground suspension', async ({ page }) => {
   await installAudioBrowser(page);
-  await page.goto('/');
+  await page.goto('./');
   await page.getByRole('button', { name: 'Connect Input' }).click();
   await page.getByRole('button', { name: 'Enable Monitoring' }).click();
   await page.getByRole('button', { name: 'Checked — Enable Monitoring' }).click();
@@ -382,7 +382,7 @@ test('does not restart monitoring across background and foreground suspension', 
 
 test('requires an explicit output choice and monitoring action after output loss', async ({ page }) => {
   await installAudioBrowser(page, { outputSelection: true });
-  await page.goto('/');
+  await page.goto('./');
   await page.getByRole('button', { name: 'Connect Input' }).click();
   await page.getByLabel('Output device').selectOption('headphones');
   await page.getByRole('button', { name: 'Enable Monitoring' }).click();
@@ -405,7 +405,7 @@ test('requires an explicit output choice and monitoring action after output loss
 
 test('surfaces an actionable routing failure and remains muted', async ({ page }) => {
   await installAudioBrowser(page, { outputSelection: true, routingFailure: true });
-  await page.goto('/');
+  await page.goto('./');
   await page.getByRole('button', { name: 'Connect Input' }).click();
 
   await page.getByLabel('Output device').selectOption('headphones');
@@ -418,7 +418,7 @@ test('surfaces an actionable routing failure and remains muted', async ({ page }
 
 test('keeps exact controls keyboard-operable and in Amp Chain order on a narrow layout', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 900 });
-  await page.goto('/');
+  await page.goto('./');
 
   const bassSlider = page.getByLabel('Bass slider');
   await bassSlider.focus();

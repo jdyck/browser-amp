@@ -1,10 +1,10 @@
 import { expect, test } from '@playwright/test';
 
 test('produces a deterministic stereo tail while Amount keeps the dry attack constant', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('./');
 
   const renders = await page.evaluate(async () => {
-    const harnessPath = '/tests/offlineAudioHarness.ts';
+    const harnessPath = './tests/offlineAudioHarness.ts';
     const { connectOfflineEngine, peak, rms } = await import(harnessPath) as typeof import('./offlineAudioHarness');
     const sampleRate = 48_000;
 
@@ -67,10 +67,10 @@ test('produces a deterministic stereo tail while Amount keeps the dry attack con
 });
 
 test('chops the current Reverb tail without a click or resurrecting it after bypass', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('./');
 
   const transition = await page.evaluate(async () => {
-    const harnessPath = '/tests/offlineAudioHarness.ts';
+    const harnessPath = './tests/offlineAudioHarness.ts';
     const { connectOfflineEngine, maximumSampleStep, rms, stereoDifference } = await import(harnessPath) as typeof import('./offlineAudioHarness');
     const sampleRate = 48_000;
     const context = new OfflineAudioContext(2, sampleRate, sampleRate);
@@ -138,7 +138,7 @@ interface RenderOptions {
 
 async function renderAmp(page: import('@playwright/test').Page, options: RenderOptions): Promise<number> {
   return page.evaluate(async ({ frequency, amplitude = 0.1, controls = {} }) => {
-    const harnessPath = '/tests/offlineAudioHarness.ts';
+    const harnessPath = './tests/offlineAudioHarness.ts';
     const { connectOfflineEngine, rms } = await import(harnessPath) as typeof import('./offlineAudioHarness');
     const sampleRate = 48_000;
     const context = new OfflineAudioContext(1, sampleRate, sampleRate);
@@ -157,10 +157,10 @@ async function renderAmp(page: import('@playwright/test').Page, options: RenderO
 }
 
 test('renders a smoothed linear Clean Gain through Master Volume without saturation', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('./');
 
   const samples = await page.evaluate(async () => {
-    const modulePath = '/src/audio/gain.ts';
+    const modulePath = './src/audio/gain.ts';
     const { dbToLinearGain, smoothGainToDb } = await import(modulePath) as typeof import('../src/audio/gain');
     const sampleRate = 48_000;
     const context = new OfflineAudioContext(1, sampleRate * 0.05, sampleRate);
@@ -190,7 +190,7 @@ test('renders a smoothed linear Clean Gain through Master Volume without saturat
 });
 
 test('shapes Middle with a peaking EQ centered near 800 Hz', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('./');
 
   const flat = await renderAmp(page, { frequency: 800, controls: { masterVolumeDb: 0 } });
   const boosted = await renderAmp(page, { frequency: 800, controls: { middleDb: 12, masterVolumeDb: 0 } });
@@ -201,7 +201,7 @@ test('shapes Middle with a peaking EQ centered near 800 Hz', async ({ page }) =>
 });
 
 test('shapes Bass and Treble with shelves near 120 Hz and 3.2 kHz', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('./');
 
   const flatBass = await renderAmp(page, { frequency: 40, controls: { masterVolumeDb: 0 } });
   const boostedBass = await renderAmp(page, { frequency: 40, controls: { bassDb: 12, masterVolumeDb: 0 } });
@@ -213,7 +213,7 @@ test('shapes Bass and Treble with shelves near 120 Hz and 3.2 kHz', async ({ pag
 });
 
 test('bypasses Compression without losing Amount and maps Amount toward firm compression', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('./');
 
   const bypassed = await renderAmp(page, {
     frequency: 440,
@@ -236,7 +236,7 @@ test('bypasses Compression without losing Amount and maps Amount toward firm com
 });
 
 test('renders Clean Gain and EQ before Compression, then Reverb and Master Volume', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('./');
 
   const compressed = await renderAmp(page, {
     frequency: 800,
@@ -262,7 +262,7 @@ test('renders Clean Gain and EQ before Compression, then Reverb and Master Volum
     controls: { compressionBypassed: true, reverbAmount: 100, reverbBypassed: false, masterVolumeDb: -12 },
   });
   const compressedReverbTail = await page.evaluate(async () => {
-    const harnessPath = '/tests/offlineAudioHarness.ts';
+    const harnessPath = './tests/offlineAudioHarness.ts';
     const { connectOfflineEngine, rms } = await import(harnessPath) as typeof import('./offlineAudioHarness');
     const sampleRate = 48_000;
 
@@ -302,10 +302,10 @@ test('renders Clean Gain and EQ before Compression, then Reverb and Master Volum
 });
 
 test('crossfades Compression Stage Bypass without an output click', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('./');
 
   const transition = await page.evaluate(async () => {
-    const harnessPath = '/tests/offlineAudioHarness.ts';
+    const harnessPath = './tests/offlineAudioHarness.ts';
     const { connectOfflineEngine, maximumSampleStep, rms } = await import(harnessPath) as typeof import('./offlineAudioHarness');
     const sampleRate = 48_000;
     const context = new OfflineAudioContext(1, sampleRate, sampleRate);
