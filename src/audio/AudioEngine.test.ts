@@ -2,6 +2,25 @@ import { describe, expect, it, vi } from 'vitest';
 import { AudioEngine } from './AudioEngine';
 import type { BrowserAudio } from './browserAudio';
 
+function audioNode(properties: Record<string, unknown> = {}): AudioNode {
+  return { connect: vi.fn(), disconnect: vi.fn(), ...properties } as unknown as AudioNode;
+}
+
+function audioContext(overrides: Record<string, unknown> = {}): AudioContext {
+  return {
+    currentTime: 1,
+    destination: audioNode(),
+    state: 'running',
+    createMediaStreamSource: vi.fn(() => audioNode()),
+    createChannelSplitter: vi.fn(() => audioNode()),
+    createAnalyser: vi.fn(() => audioNode({ fftSize: 2048, getFloatTimeDomainData: vi.fn() })),
+    createGain: vi.fn(() => audioNode({ gain: { value: 1, cancelScheduledValues: vi.fn(), setValueAtTime: vi.fn(), linearRampToValueAtTime: vi.fn() } })),
+    resume: vi.fn(),
+    close: vi.fn(),
+    ...overrides,
+  } as unknown as AudioContext;
+}
+
 function browser(overrides: Partial<BrowserAudio> = {}, trackSettings: MediaTrackSettings = {}): BrowserAudio {
   const track = {
     getSettings: () => ({ channelCount: 2, deviceId: 'guitar-interface', echoCancellation: false, noiseSuppression: false, autoGainControl: false, ...trackSettings }),
@@ -14,16 +33,12 @@ function browser(overrides: Partial<BrowserAudio> = {}, trackSettings: MediaTrac
       getUserMedia: vi.fn().mockResolvedValue(stream),
       enumerateDevices: vi.fn().mockResolvedValue([
         { deviceId: 'guitar-interface', kind: 'audioinput', label: 'Guitar interface' },
+        { deviceId: 'headphones', kind: 'audiooutput', label: 'Studio headphones' },
       ]),
       addEventListener: vi.fn(),
       removeEventListener: vi.fn(),
     } as unknown as MediaDevices,
-    createAudioContext: vi.fn(() => ({
-      createMediaStreamSource: vi.fn(() => ({ connect: vi.fn(), disconnect: vi.fn() })),
-      createChannelSplitter: vi.fn(() => ({ connect: vi.fn(), disconnect: vi.fn() })),
-      createAnalyser: vi.fn(() => ({ fftSize: 2048, getFloatTimeDomainData: vi.fn() })),
-      close: vi.fn(),
-    })) as unknown as BrowserAudio['createAudioContext'],
+    createAudioContext: vi.fn(() => audioContext()),
     requestAnimationFrame: vi.fn(() => 1),
     cancelAnimationFrame: vi.fn(),
     ...overrides,
@@ -31,7 +46,7 @@ function browser(overrides: Partial<BrowserAudio> = {}, trackSettings: MediaTrac
 }
 
 describe('AudioEngine', () => {
-  it('starts disconnected and never connects its input graph to output', () => {
+  it('starts disconnected and muted without creating an audio graph', () => {
     const environment = browser();
     const engine = new AudioEngine(environment);
 
@@ -55,6 +70,101 @@ describe('AudioEngine', () => {
       inputChannelCount: 2,
       selectedInputDeviceId: 'guitar-interface',
     });
+  });
+
+  it('keeps a connected input silent until the player explicitly enables Processed Monitoring', async () => {
+    const engine = new AudioEngine(browser());
+
+    await engine.connectInput();
+    expect(engine.snapshot).toMatchObject({ lifecycle: 'connected-muted', monitoring: false });
+
+    await engine.setMonitoring(true);
+    expect(engine.snapshot).toMatchObject({ lifecycle: 'monitoring', monitoring: true });
+
+    await engine.setMonitoring(false);
+    expect(engine.snapshot).toMatchObject({ lifecycle: 'connected-muted', monitoring: false });
+  });
+
+  it('clamps Clean Gain and Master Volume without changing Master Volume when monitoring stops', async () => {
+    const engine = new AudioEngine(browser());
+    expect(engine.snapshot.controls).toEqual({ cleanGainDb: 0, masterVolumeDb: -18 });
+
+    engine.applyControls({ cleanGainDb: 30, masterVolumeDb: -12.26 });
+    await engine.connectInput();
+    await engine.setMonitoring(true);
+    await engine.setMonitoring(false);
+
+    expect(engine.snapshot.controls).toEqual({ cleanGainDb: 24, masterVolumeDb: -12.3 });
+  });
+
+  it('routes to a permitted browser-visible output when the AudioContext supports selection', async () => {
+    const setSinkId = vi.fn().mockResolvedValue(undefined);
+    const engine = new AudioEngine(browser({ createAudioContext: () => audioContext({ setSinkId }) }));
+
+    await engine.connectInput();
+    expect(engine.snapshot.outputRouting).toMatchObject({
+      mode: 'selectable',
+      devices: [{ id: 'headphones', label: 'Studio headphones' }],
+    });
+
+    await engine.selectOutput('headphones');
+    expect(setSinkId).toHaveBeenCalledWith('headphones');
+    expect(engine.snapshot.outputRouting.selectedDeviceId).toBe('headphones');
+  });
+
+  it('honestly identifies system routing when output selection is unavailable', async () => {
+    const engine = new AudioEngine(browser());
+
+    await engine.connectInput();
+
+    expect(engine.snapshot.outputRouting).toMatchObject({ mode: 'system', devices: [] });
+  });
+
+  it('mutes a routing failure without changing Master Volume', async () => {
+    const setSinkId = vi.fn().mockRejectedValue(new DOMException('Unavailable', 'NotFoundError'));
+    const engine = new AudioEngine(browser({ createAudioContext: () => audioContext({ setSinkId }) }));
+    engine.applyControls({ cleanGainDb: 6, masterVolumeDb: -12 });
+    await engine.connectInput();
+    await engine.setMonitoring(true);
+
+    await engine.selectOutput('missing-output');
+
+    expect(engine.snapshot).toMatchObject({
+      lifecycle: 'connected-muted',
+      monitoring: false,
+      controls: { cleanGainDb: 6, masterVolumeDb: -12 },
+      outputRouting: { error: 'The browser could not route audio to that output. Monitoring was muted.' },
+    });
+  });
+
+  it('latches a post-Master full-scale output until the player explicitly clears CLIP', async () => {
+    let renderFrame: FrameRequestCallback | undefined;
+    const inputAnalyser = audioNode({
+      fftSize: 4,
+      getFloatTimeDomainData: vi.fn((samples: Float32Array) => samples.fill(0.25)),
+    });
+    const outputAnalyser = audioNode({
+      fftSize: 4,
+      getFloatTimeDomainData: vi.fn((samples: Float32Array) => samples.set([0.5, -1, 0.2, 0])),
+    });
+    const context = audioContext({
+      createAnalyser: vi.fn()
+        .mockReturnValueOnce(inputAnalyser)
+        .mockReturnValueOnce(outputAnalyser),
+    });
+    const engine = new AudioEngine(browser({
+      createAudioContext: () => context,
+      requestAnimationFrame: (callback) => { renderFrame = callback; return 1; },
+    }));
+
+    await engine.connectInput();
+    renderFrame?.(1_000);
+
+    expect(engine.snapshot.outputMeter.dbfs).toBe(0);
+    expect(engine.snapshot.clipLatched).toBe(true);
+
+    engine.clearClip();
+    expect(engine.snapshot.clipLatched).toBe(false);
   });
 
   it('uses an exact device id when the player explicitly selects an input', async () => {

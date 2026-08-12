@@ -6,11 +6,20 @@ export interface PeakHold {
   readonly heldAt: number;
 }
 
-export function dbfsFromSamples(samples: Float32Array): number {
+export interface MeterReading {
+  readonly dbfs: number;
+  readonly clipped: boolean;
+}
+
+export function meterReadingFromSamples(samples: Float32Array): MeterReading {
   let peak = 0;
   for (const sample of samples) peak = Math.max(peak, Math.abs(sample));
-  if (peak === 0) return METER_FLOOR_DBFS;
-  return Math.max(METER_FLOOR_DBFS, Math.min(0, 20 * Math.log10(peak)));
+  const dbfs = peak === 0 ? METER_FLOOR_DBFS : Math.max(METER_FLOOR_DBFS, Math.min(0, 20 * Math.log10(peak)));
+  return { dbfs, clipped: peak >= 1 };
+}
+
+export function dbfsFromSamples(samples: Float32Array): number {
+  return meterReadingFromSamples(samples).dbfs;
 }
 
 export function nextPeakHold(previous: PeakHold, levelDbfs: number, now: number): PeakHold {
