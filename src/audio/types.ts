@@ -29,6 +29,8 @@ export interface AmpControlSettings {
   readonly trebleDb: number;
   readonly compressionAmount: number;
   readonly compressionBypassed: boolean;
+  readonly reverbAmount: number;
+  readonly reverbBypassed: boolean;
   readonly masterVolumeDb: number;
 }
 
@@ -39,6 +41,8 @@ export const DEFAULT_AMP_CONTROLS: AmpControlSettings = {
   trebleDb: 0,
   compressionAmount: 25,
   compressionBypassed: true,
+  reverbAmount: 20,
+  reverbBypassed: true,
   masterVolumeDb: -18,
 };
 

@@ -105,6 +105,16 @@ function renderStructure(current: AudioSnapshot): void {
         ${percentControl('compression-amount', 'Compression Amount', current.controls.compressionAmount)}
       </section>
 
+      <section class="panel" aria-labelledby="reverb-title">
+        <div class="panel-heading"><h2 id="reverb-title">Reverb</h2><span id="reverb-state">${current.controls.reverbBypassed ? 'Bypassed' : 'Active'}</span></div>
+        <p>Add a simple, plate-inspired spatial tail while keeping the dry attack immediate.</p>
+        <label class="stage-toggle" for="reverb-bypass">
+          <input id="reverb-bypass" type="checkbox" ${current.controls.reverbBypassed ? 'checked' : ''}>
+          Reverb Stage Bypass
+        </label>
+        ${percentControl('reverb-amount', 'Reverb Amount', current.controls.reverbAmount)}
+      </section>
+
       <section class="panel" aria-labelledby="master-volume-title">
         <div class="panel-heading"><h2 id="master-volume-title">Master Volume</h2><span>Attenuation only</span></div>
         <p>Sets the final Amp Chain level independently of the monitoring switch.</p>
@@ -151,6 +161,10 @@ function bindStructureEvents(): void {
   root.querySelector<HTMLInputElement>('#compression-bypass')?.addEventListener('change', (event) => {
     engine.applyControls({ ...snapshot.controls, compressionBypassed: (event.currentTarget as HTMLInputElement).checked });
   });
+  bindContinuousControl('reverb-amount', (reverbAmount) => engine.applyControls({ ...snapshot.controls, reverbAmount }));
+  root.querySelector<HTMLInputElement>('#reverb-bypass')?.addEventListener('change', (event) => {
+    engine.applyControls({ ...snapshot.controls, reverbBypassed: (event.currentTarget as HTMLInputElement).checked });
+  });
   bindContinuousControl('master-volume', (masterVolumeDb) => engine.applyControls({ ...snapshot.controls, masterVolumeDb }));
   root.querySelector<HTMLButtonElement>('#monitoring-toggle')?.addEventListener('click', () => {
     if (snapshot.monitoring) {
@@ -195,6 +209,11 @@ function renderControls(controls: AmpControlSettings): void {
   const compressionState = root.querySelector<HTMLElement>('#compression-state');
   if (compressionBypass !== null) compressionBypass.checked = controls.compressionBypassed;
   if (compressionState !== null) compressionState.textContent = controls.compressionBypassed ? 'Bypassed' : 'Active';
+  setControlValue('reverb-amount', controls.reverbAmount, 0);
+  const reverbBypass = root.querySelector<HTMLInputElement>('#reverb-bypass');
+  const reverbState = root.querySelector<HTMLElement>('#reverb-state');
+  if (reverbBypass !== null) reverbBypass.checked = controls.reverbBypassed;
+  if (reverbState !== null) reverbState.textContent = controls.reverbBypassed ? 'Bypassed' : 'Active';
   setControlValue('master-volume', controls.masterVolumeDb);
 }
 
@@ -345,6 +364,8 @@ function loadControls(): AmpControlSettings {
       trebleDb: typeof parsed.trebleDb === 'number' ? parsed.trebleDb : DEFAULT_AMP_CONTROLS.trebleDb,
       compressionAmount: typeof parsed.compressionAmount === 'number' ? parsed.compressionAmount : DEFAULT_AMP_CONTROLS.compressionAmount,
       compressionBypassed: typeof parsed.compressionBypassed === 'boolean' ? parsed.compressionBypassed : DEFAULT_AMP_CONTROLS.compressionBypassed,
+      reverbAmount: typeof parsed.reverbAmount === 'number' ? parsed.reverbAmount : DEFAULT_AMP_CONTROLS.reverbAmount,
+      reverbBypassed: typeof parsed.reverbBypassed === 'boolean' ? parsed.reverbBypassed : DEFAULT_AMP_CONTROLS.reverbBypassed,
       masterVolumeDb: typeof parsed.masterVolumeDb === 'number' ? parsed.masterVolumeDb : DEFAULT_AMP_CONTROLS.masterVolumeDb,
     };
   } catch {

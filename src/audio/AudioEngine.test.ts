@@ -9,6 +9,7 @@ function audioNode(properties: Record<string, unknown> = {}): AudioNode {
 function audioContext(overrides: Record<string, unknown> = {}): AudioContext {
   return {
     currentTime: 1,
+    sampleRate: 48_000,
     destination: audioNode(),
     state: 'running',
     createMediaStreamSource: vi.fn(() => audioNode()),
@@ -28,6 +29,17 @@ function audioContext(overrides: Record<string, unknown> = {}): AudioContext {
       release: { value: 0.25, cancelScheduledValues: vi.fn(), setValueAtTime: vi.fn(), linearRampToValueAtTime: vi.fn() },
       knee: { value: 30, cancelScheduledValues: vi.fn(), setValueAtTime: vi.fn(), linearRampToValueAtTime: vi.fn() },
     })),
+    createBuffer: vi.fn((channels: number, length: number, sampleRate: number) => {
+      const data = Array.from({ length: channels }, () => new Float32Array(length));
+      return {
+        duration: length / sampleRate,
+        length,
+        numberOfChannels: channels,
+        sampleRate,
+        getChannelData: (channel: number) => data[channel],
+      };
+    }),
+    createConvolver: vi.fn(() => audioNode({ buffer: null, normalize: true })),
     resume: vi.fn(),
     close: vi.fn(),
     ...overrides,
@@ -107,6 +119,8 @@ describe('AudioEngine', () => {
       trebleDb: 0,
       compressionAmount: 25,
       compressionBypassed: true,
+      reverbAmount: 20,
+      reverbBypassed: true,
       masterVolumeDb: -18,
     });
 
@@ -117,6 +131,8 @@ describe('AudioEngine', () => {
       trebleDb: 20,
       compressionAmount: 74.6,
       compressionBypassed: false,
+      reverbAmount: 101,
+      reverbBypassed: false,
       masterVolumeDb: -12.26,
     });
     await engine.connectInput();
@@ -130,6 +146,8 @@ describe('AudioEngine', () => {
       trebleDb: 12,
       compressionAmount: 75,
       compressionBypassed: false,
+      reverbAmount: 100,
+      reverbBypassed: false,
       masterVolumeDb: -12.3,
     });
   });

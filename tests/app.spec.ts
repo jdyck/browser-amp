@@ -24,6 +24,7 @@ async function installAudioBrowser(page: Page, options: { clipOnce?: boolean; ou
     let analyserIndex = 0;
     class MockAudioContext {
       currentTime = 1;
+      sampleRate = 48_000;
       destination = node();
       state = 'running';
       createMediaStreamSource() { return node(); }
@@ -56,6 +57,11 @@ async function installAudioBrowser(page: Page, options: { clipOnce?: boolean; ou
         const parameter = (value: number) => ({ value, cancelScheduledValues: () => undefined, setValueAtTime: () => undefined, linearRampToValueAtTime: () => undefined });
         return node({ threshold: parameter(-24), ratio: parameter(12), attack: parameter(0.003), release: parameter(0.25), knee: parameter(30) });
       }
+      createBuffer(channels: number, length: number, sampleRate: number) {
+        const data = Array.from({ length: channels }, () => new Float32Array(length));
+        return { duration: length / sampleRate, length, numberOfChannels: channels, sampleRate, getChannelData: (channel: number) => data[channel] };
+      }
+      createConvolver() { return node({ buffer: null, normalize: true }); }
       resume() { return Promise.resolve(); }
       close() { return Promise.resolve(); }
     }
@@ -91,6 +97,9 @@ test('synchronizes, clamps, and restores controls without restoring Processed Mo
   const compressionAmount = page.getByLabel('Compression Amount value');
   const compressionAmountSlider = page.getByLabel('Compression Amount slider');
   const compressionBypass = page.getByLabel('Compression Stage Bypass');
+  const reverbAmount = page.getByLabel('Reverb Amount value');
+  const reverbAmountSlider = page.getByLabel('Reverb Amount slider');
+  const reverbBypass = page.getByLabel('Reverb Stage Bypass');
   const masterVolume = page.getByLabel('Master Volume value');
 
   await expect(cleanGain).toHaveValue('0.0');
@@ -99,6 +108,8 @@ test('synchronizes, clamps, and restores controls without restoring Processed Mo
   await expect(treble).toHaveValue('0.0');
   await expect(compressionAmount).toHaveValue('25');
   await expect(compressionBypass).toBeChecked();
+  await expect(reverbAmount).toHaveValue('20');
+  await expect(reverbBypass).toBeChecked();
   await expect(masterVolume).toHaveValue('-18.0');
 
   await cleanGain.fill('30');
@@ -112,6 +123,9 @@ test('synchronizes, clamps, and restores controls without restoring Processed Mo
   await compressionAmount.fill('101');
   await compressionAmount.press('Enter');
   await compressionBypass.uncheck();
+  await reverbAmount.fill('-1');
+  await reverbAmount.press('Enter');
+  await reverbBypass.uncheck();
   await masterVolume.fill('-12.26');
   await masterVolume.press('Enter');
 
@@ -123,6 +137,8 @@ test('synchronizes, clamps, and restores controls without restoring Processed Mo
   await expect(treble).toHaveValue('-12.0');
   await expect(compressionAmount).toHaveValue('100');
   await expect(compressionAmountSlider).toHaveValue('100');
+  await expect(reverbAmount).toHaveValue('0');
+  await expect(reverbAmountSlider).toHaveValue('0');
   await expect(masterVolume).toHaveValue('-12.3');
 
   await page.reload();
@@ -132,6 +148,8 @@ test('synchronizes, clamps, and restores controls without restoring Processed Mo
   await expect(page.getByLabel('Treble value')).toHaveValue('-12.0');
   await expect(page.getByLabel('Compression Amount value')).toHaveValue('100');
   await expect(page.getByLabel('Compression Stage Bypass')).not.toBeChecked();
+  await expect(page.getByLabel('Reverb Amount value')).toHaveValue('0');
+  await expect(page.getByLabel('Reverb Stage Bypass')).not.toBeChecked();
   await expect(page.getByLabel('Master Volume value')).toHaveValue('-12.3');
   await expect(page.getByRole('button', { name: 'Enable Monitoring' })).toBeDisabled();
 });
@@ -196,6 +214,7 @@ test('keeps exact controls keyboard-operable and in Amp Chain order on a narrow 
     'Clean Gain',
     'Three-Band EQ',
     'Compression',
+    'Reverb',
     'Master Volume',
     'Output Level Meter',
     'Processed Monitoring',

@@ -1,5 +1,135 @@
 import { expect, test } from '@playwright/test';
 
+test('produces a deterministic stereo tail while Amount keeps the dry attack constant', async ({ page }) => {
+  await page.goto('/');
+
+  const renders = await page.evaluate(async () => {
+    const harnessPath = '/tests/offlineAudioHarness.ts';
+    const { connectOfflineEngine, peak, rms } = await import(harnessPath) as typeof import('./offlineAudioHarness');
+    const sampleRate = 48_000;
+
+    async function render(reverbAmount: number) {
+      const context = new OfflineAudioContext(2, sampleRate * 1.8, sampleRate);
+      const source = context.createBufferSource();
+      const input = context.createBuffer(1, 1, sampleRate);
+      input.getChannelData(0)[0] = 0.5;
+      source.buffer = input;
+      await connectOfflineEngine(context, source, {
+        compressionBypassed: true,
+        reverbAmount,
+        reverbBypassed: false,
+        masterVolumeDb: 0,
+      });
+      source.start(0.05);
+
+      const rendered = await context.startRendering();
+      const left = rendered.getChannelData(0);
+      const right = rendered.getChannelData(1);
+
+      return {
+        left,
+        right,
+        dryAttack: peak(left, sampleRate, 0.05, 0.06),
+        tail: rms(left, sampleRate, 0.08, 1.45),
+        earlyTail: rms(left, sampleRate, 0.08, 0.18),
+        lateTail: rms(left, sampleRate, 1.35, 1.45),
+        afterTail: rms(left, sampleRate, 1.65, 1.78),
+        stereo: left.some((sample, index) => sample !== right[index]),
+      };
+    }
+
+    const dry = await render(0);
+    const wet = await render(100);
+    const repeat = await render(100);
+    return {
+      dryAttack: dry.dryAttack,
+      wetAttack: wet.dryAttack,
+      dryTail: dry.tail,
+      wetTail: wet.tail,
+      earlyTail: wet.earlyTail,
+      lateTail: wet.lateTail,
+      afterTail: wet.afterTail,
+      stereo: wet.stereo,
+      deterministic: wet.left.every((sample, index) => sample === repeat.left[index])
+        && wet.right.every((sample, index) => sample === repeat.right[index]),
+    };
+  });
+
+  expect(renders.wetAttack).toBeCloseTo(renders.dryAttack, 4);
+  expect(renders.dryTail).toBeLessThan(0.000_001);
+  expect(renders.wetTail).toBeGreaterThan(0.000_1);
+  expect(renders.wetTail).toBeLessThanOrEqual(0.001_1);
+  expect(renders.earlyTail).toBeGreaterThan(renders.lateTail * 20);
+  expect(renders.lateTail).toBeGreaterThan(0);
+  expect(renders.afterTail).toBeLessThan(0.000_001);
+  expect(renders.stereo).toBe(true);
+  expect(renders.deterministic).toBe(true);
+});
+
+test('chops the current Reverb tail without a click or resurrecting it after bypass', async ({ page }) => {
+  await page.goto('/');
+
+  const transition = await page.evaluate(async () => {
+    const harnessPath = '/tests/offlineAudioHarness.ts';
+    const { connectOfflineEngine, maximumSampleStep, rms, stereoDifference } = await import(harnessPath) as typeof import('./offlineAudioHarness');
+    const sampleRate = 48_000;
+    const context = new OfflineAudioContext(2, sampleRate, sampleRate);
+    const resumeRendering = context.resume.bind(context);
+    const source = context.createBufferSource();
+    const input = context.createBuffer(1, 1, sampleRate);
+    input.getChannelData(0)[0] = 0.5;
+    source.buffer = input;
+    const oscillator = context.createOscillator();
+    const oscillatorGain = context.createGain();
+    const inputNode = context.createGain();
+    oscillator.frequency.value = 440;
+    oscillatorGain.gain.value = 0.2;
+    source.connect(inputNode);
+    oscillator.connect(oscillatorGain).connect(inputNode);
+    const engine = await connectOfflineEngine(context, inputNode, {
+      reverbAmount: 100,
+      reverbBypassed: false,
+      masterVolumeDb: 0,
+    });
+
+    const bypassed = context.suspend(0.5);
+    const reenabled = context.suspend(0.7);
+    source.start(0.05);
+    oscillator.start(0.62);
+    oscillator.stop(0.9);
+    const rendering = context.startRendering();
+    await bypassed;
+    engine.applyControls({ ...engine.snapshot.controls, reverbBypassed: true });
+    const amountAfterBypass = engine.snapshot.controls.reverbAmount;
+    await resumeRendering();
+    await reenabled;
+    engine.applyControls({ ...engine.snapshot.controls, reverbBypassed: false });
+    await resumeRendering();
+
+    const rendered = await rendering;
+    const left = rendered.getChannelData(0);
+    const right = rendered.getChannelData(1);
+
+    return {
+      amountAfterBypass,
+      beforeBypass: rms(left, sampleRate, 0.3, 0.45),
+      afterBypass: rms(left, sampleRate, 0.55, 0.6),
+      oldTailAfterReenable: stereoDifference(left, right, sampleRate, 0.702, 0.709),
+      newWetSignal: stereoDifference(left, right, sampleRate, 0.76, 0.85),
+      bypassMaximumStep: maximumSampleStep(left, sampleRate, 0.48, 0.55),
+      enableMaximumStep: maximumSampleStep(left, sampleRate, 0.68, 0.75),
+    };
+  });
+
+  expect(transition.amountAfterBypass).toBe(100);
+  expect(transition.beforeBypass).toBeGreaterThan(0.000_1);
+  expect(transition.afterBypass).toBeLessThan(0.000_001);
+  expect(transition.oldTailAfterReenable).toBeLessThan(0.000_001);
+  expect(transition.newWetSignal).toBeGreaterThan(0.000_1);
+  expect(transition.bypassMaximumStep).toBeLessThan(0.05);
+  expect(transition.enableMaximumStep).toBeLessThan(0.06);
+});
+
 interface RenderOptions {
   readonly frequency: number;
   readonly amplitude?: number;
@@ -8,8 +138,8 @@ interface RenderOptions {
 
 async function renderAmp(page: import('@playwright/test').Page, options: RenderOptions): Promise<number> {
   return page.evaluate(async ({ frequency, amplitude = 0.1, controls = {} }) => {
-    const modulePath = '/src/audio/AudioEngine.ts';
-    const { AudioEngine } = await import(modulePath) as typeof import('../src/audio/AudioEngine');
+    const harnessPath = '/tests/offlineAudioHarness.ts';
+    const { connectOfflineEngine, rms } = await import(harnessPath) as typeof import('./offlineAudioHarness');
     const sampleRate = 48_000;
     const context = new OfflineAudioContext(1, sampleRate, sampleRate);
     const source = context.createOscillator();
@@ -17,37 +147,12 @@ async function renderAmp(page: import('@playwright/test').Page, options: RenderO
     source.frequency.value = frequency;
     inputGain.gain.value = amplitude;
     source.connect(inputGain);
-    Object.defineProperty(context, 'createMediaStreamSource', { value: () => inputGain });
-    Object.defineProperty(context, 'resume', { value: async () => undefined });
-
-    const track = {
-      getSettings: () => ({ channelCount: 1, echoCancellation: false, noiseSuppression: false, autoGainControl: false }),
-      stop: () => undefined,
-    };
-    const stream = { getAudioTracks: () => [track], getTracks: () => [track] };
-    const mediaDevices = {
-      getUserMedia: async () => stream,
-      enumerateDevices: async () => [],
-      addEventListener: () => undefined,
-      removeEventListener: () => undefined,
-    };
-    const engine = new AudioEngine({
-      mediaDevices: mediaDevices as unknown as MediaDevices,
-      createAudioContext: () => context as unknown as AudioContext,
-      requestAnimationFrame: () => 1,
-      cancelAnimationFrame: () => undefined,
-    });
-    engine.applyControls({ ...engine.snapshot.controls, ...controls });
-    await engine.connectInput();
-    await engine.setMonitoring(true);
+    await connectOfflineEngine(context, inputGain, controls);
     source.start();
 
     const rendered = await context.startRendering();
     const channel = rendered.getChannelData(0);
-    const start = Math.floor(channel.length * 0.75);
-    let squared = 0;
-    for (let index = start; index < channel.length; index += 1) squared += channel[index] ** 2;
-    return Math.sqrt(squared / (channel.length - start)) / amplitude;
+    return rms(channel, sampleRate, 0.75, 1) / amplitude;
   }, options);
 }
 
@@ -130,35 +235,78 @@ test('bypasses Compression without losing Amount and maps Amount toward firm com
   expect(firm).toBeLessThan(bypassed * 0.75);
 });
 
-test('renders Clean Gain and EQ before Compression, then Master Volume', async ({ page }) => {
+test('renders Clean Gain and EQ before Compression, then Reverb and Master Volume', async ({ page }) => {
   await page.goto('/');
 
   const compressed = await renderAmp(page, {
     frequency: 800,
     amplitude: 0.1,
-    controls: { compressionAmount: 100, compressionBypassed: false, masterVolumeDb: 0 },
+    controls: { compressionAmount: 100, compressionBypassed: false, reverbAmount: 100, reverbBypassed: false, masterVolumeDb: 0 },
   });
   const gainCompensated = await renderAmp(page, {
     frequency: 800,
     amplitude: 0.1,
-    controls: { cleanGainDb: 12, compressionAmount: 100, compressionBypassed: false, masterVolumeDb: -12 },
+    controls: { cleanGainDb: 12, compressionAmount: 100, compressionBypassed: false, reverbAmount: 100, reverbBypassed: false, masterVolumeDb: -12 },
   });
   const eqCompensated = await renderAmp(page, {
     frequency: 800,
     amplitude: 0.1,
-    controls: { middleDb: 12, compressionAmount: 100, compressionBypassed: false, masterVolumeDb: -12 },
+    controls: { middleDb: 12, compressionAmount: 100, compressionBypassed: false, reverbAmount: 100, reverbBypassed: false, masterVolumeDb: -12 },
+  });
+  const reverbAtUnity = await renderAmp(page, {
+    frequency: 800,
+    controls: { compressionBypassed: true, reverbAmount: 100, reverbBypassed: false, masterVolumeDb: 0 },
+  });
+  const reverbAttenuated = await renderAmp(page, {
+    frequency: 800,
+    controls: { compressionBypassed: true, reverbAmount: 100, reverbBypassed: false, masterVolumeDb: -12 },
+  });
+  const compressedReverbTail = await page.evaluate(async () => {
+    const harnessPath = '/tests/offlineAudioHarness.ts';
+    const { connectOfflineEngine, rms } = await import(harnessPath) as typeof import('./offlineAudioHarness');
+    const sampleRate = 48_000;
+
+    async function render(compressionBypassed: boolean) {
+      const context = new OfflineAudioContext(2, sampleRate * 1.4, sampleRate);
+      const source = context.createBufferSource();
+      const input = context.createBuffer(1, Math.round(sampleRate * 0.3), sampleRate);
+      const samples = input.getChannelData(0);
+      for (let index = Math.round(sampleRate * 0.05); index < samples.length; index += 1) {
+        samples[index] = 0.8 * Math.sin(2 * Math.PI * 440 * index / sampleRate);
+      }
+      source.buffer = input;
+      await connectOfflineEngine(context, source, {
+        compressionAmount: 100,
+        compressionBypassed,
+        reverbAmount: 100,
+        reverbBypassed: false,
+        masterVolumeDb: 0,
+      });
+      source.start();
+      const rendered = await context.startRendering();
+      const channel = rendered.getChannelData(0);
+      return {
+        early: rms(channel, sampleRate, 0.4, 0.55),
+        late: rms(channel, sampleRate, 1.1, 1.25),
+      };
+    }
+
+    return { bypassed: await render(true), compressed: await render(false) };
   });
 
   expect(gainCompensated).toBeLessThan(compressed * 0.6);
   expect(eqCompensated).toBeLessThan(compressed * 0.6);
+  expect(reverbAttenuated / reverbAtUnity).toBeCloseTo(10 ** (-12 / 20), 2);
+  expect(compressedReverbTail.compressed.early).toBeLessThan(compressedReverbTail.bypassed.early * 0.75);
+  expect(compressedReverbTail.compressed.late).toBeLessThan(compressedReverbTail.bypassed.late * 0.75);
 });
 
 test('crossfades Compression Stage Bypass without an output click', async ({ page }) => {
   await page.goto('/');
 
   const transition = await page.evaluate(async () => {
-    const modulePath = '/src/audio/AudioEngine.ts';
-    const { AudioEngine } = await import(modulePath) as typeof import('../src/audio/AudioEngine');
+    const harnessPath = '/tests/offlineAudioHarness.ts';
+    const { connectOfflineEngine, maximumSampleStep, rms } = await import(harnessPath) as typeof import('./offlineAudioHarness');
     const sampleRate = 48_000;
     const context = new OfflineAudioContext(1, sampleRate, sampleRate);
     const resumeRendering = context.resume.bind(context);
@@ -167,30 +315,11 @@ test('crossfades Compression Stage Bypass without an output click', async ({ pag
     source.frequency.value = 440;
     inputGain.gain.value = 0.5;
     source.connect(inputGain);
-    Object.defineProperty(context, 'createMediaStreamSource', { value: () => inputGain });
-    Object.defineProperty(context, 'resume', { value: async () => undefined });
-
-    const track = { getSettings: () => ({ channelCount: 1 }), stop: () => undefined };
-    const stream = { getAudioTracks: () => [track], getTracks: () => [track] };
-    const engine = new AudioEngine({
-      mediaDevices: {
-        getUserMedia: async () => stream,
-        enumerateDevices: async () => [],
-        addEventListener: () => undefined,
-        removeEventListener: () => undefined,
-      } as unknown as MediaDevices,
-      createAudioContext: () => context as unknown as AudioContext,
-      requestAnimationFrame: () => 1,
-      cancelAnimationFrame: () => undefined,
-    });
-    engine.applyControls({
-      ...engine.snapshot.controls,
+    const engine = await connectOfflineEngine(context, inputGain, {
       compressionAmount: 100,
       compressionBypassed: true,
       masterVolumeDb: 0,
     });
-    await engine.connectInput();
-    await engine.setMonitoring(true);
 
     const suspended = context.suspend(0.5);
     source.start();
@@ -200,20 +329,11 @@ test('crossfades Compression Stage Bypass without an output click', async ({ pag
     await resumeRendering();
     const rendered = await rendering;
     const samples = rendered.getChannelData(0);
-
-    function rms(startSeconds: number, endSeconds: number): number {
-      const start = Math.floor(startSeconds * sampleRate);
-      const end = Math.floor(endSeconds * sampleRate);
-      let squared = 0;
-      for (let index = start; index < end; index += 1) squared += samples[index] ** 2;
-      return Math.sqrt(squared / (end - start));
-    }
-
-    let maximumStep = 0;
-    for (let index = Math.floor(0.48 * sampleRate); index < Math.floor(0.55 * sampleRate); index += 1) {
-      maximumStep = Math.max(maximumStep, Math.abs(samples[index] - samples[index - 1]));
-    }
-    return { before: rms(0.3, 0.45), after: rms(0.75, 0.95), maximumStep };
+    return {
+      before: rms(samples, sampleRate, 0.3, 0.45),
+      after: rms(samples, sampleRate, 0.75, 0.95),
+      maximumStep: maximumSampleStep(samples, sampleRate, 0.48, 0.55),
+    };
   });
 
   expect(transition.after).toBeLessThan(transition.before * 0.75);
