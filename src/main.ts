@@ -85,6 +85,26 @@ function renderStructure(current: AudioSnapshot): void {
         ${dbControl('clean-gain', 'Clean Gain', current.controls.cleanGainDb, -12, 24)}
       </section>
 
+      <section class="panel" aria-labelledby="eq-title">
+        <div class="panel-heading"><h2 id="eq-title">Three-Band EQ</h2><span>Clean Voice shaping</span></div>
+        <p>Shape lows, mids, and highs around familiar musical centers.</p>
+        <div class="control-stack">
+          ${dbControl('bass', 'Bass', current.controls.bassDb, -12, 12)}
+          ${dbControl('middle', 'Middle', current.controls.middleDb, -12, 12)}
+          ${dbControl('treble', 'Treble', current.controls.trebleDb, -12, 12)}
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="compression-title">
+        <div class="panel-heading"><h2 id="compression-title">Compression</h2><span id="compression-state">${current.controls.compressionBypassed ? 'Bypassed' : 'Active'}</span></div>
+        <p>Raise Amount for progressively firmer dynamics control.</p>
+        <label class="stage-toggle" for="compression-bypass">
+          <input id="compression-bypass" type="checkbox" ${current.controls.compressionBypassed ? 'checked' : ''}>
+          Compression Stage Bypass
+        </label>
+        ${percentControl('compression-amount', 'Compression Amount', current.controls.compressionAmount)}
+      </section>
+
       <section class="panel" aria-labelledby="master-volume-title">
         <div class="panel-heading"><h2 id="master-volume-title">Master Volume</h2><span>Attenuation only</span></div>
         <p>Sets the final Amp Chain level independently of the monitoring switch.</p>
@@ -123,8 +143,15 @@ function bindStructureEvents(): void {
     const deviceId = (event.currentTarget as HTMLSelectElement).value;
     void engine.selectOutput(deviceId === '' ? undefined : deviceId);
   });
-  bindDbControl('clean-gain', (cleanGainDb) => engine.applyControls({ ...snapshot.controls, cleanGainDb }));
-  bindDbControl('master-volume', (masterVolumeDb) => engine.applyControls({ ...snapshot.controls, masterVolumeDb }));
+  bindContinuousControl('clean-gain', (cleanGainDb) => engine.applyControls({ ...snapshot.controls, cleanGainDb }));
+  bindContinuousControl('bass', (bassDb) => engine.applyControls({ ...snapshot.controls, bassDb }));
+  bindContinuousControl('middle', (middleDb) => engine.applyControls({ ...snapshot.controls, middleDb }));
+  bindContinuousControl('treble', (trebleDb) => engine.applyControls({ ...snapshot.controls, trebleDb }));
+  bindContinuousControl('compression-amount', (compressionAmount) => engine.applyControls({ ...snapshot.controls, compressionAmount }));
+  root.querySelector<HTMLInputElement>('#compression-bypass')?.addEventListener('change', (event) => {
+    engine.applyControls({ ...snapshot.controls, compressionBypassed: (event.currentTarget as HTMLInputElement).checked });
+  });
+  bindContinuousControl('master-volume', (masterVolumeDb) => engine.applyControls({ ...snapshot.controls, masterVolumeDb }));
   root.querySelector<HTMLButtonElement>('#monitoring-toggle')?.addEventListener('click', () => {
     if (snapshot.monitoring) {
       void engine.setMonitoring(false);
@@ -145,7 +172,7 @@ function bindStructureEvents(): void {
   root.querySelector<HTMLButtonElement>('#clear-clip')?.addEventListener('click', () => engine.clearClip());
 }
 
-function bindDbControl(id: string, apply: (value: number) => void): void {
+function bindContinuousControl(id: string, apply: (value: number) => void): void {
   const slider = root.querySelector<HTMLInputElement>(`#${id}-slider`);
   const numeric = root.querySelector<HTMLInputElement>(`#${id}-value`);
   slider?.addEventListener('input', () => apply(slider.valueAsNumber));
@@ -160,14 +187,22 @@ function bindDbControl(id: string, apply: (value: number) => void): void {
 
 function renderControls(controls: AmpControlSettings): void {
   setControlValue('clean-gain', controls.cleanGainDb);
+  setControlValue('bass', controls.bassDb);
+  setControlValue('middle', controls.middleDb);
+  setControlValue('treble', controls.trebleDb);
+  setControlValue('compression-amount', controls.compressionAmount, 0);
+  const compressionBypass = root.querySelector<HTMLInputElement>('#compression-bypass');
+  const compressionState = root.querySelector<HTMLElement>('#compression-state');
+  if (compressionBypass !== null) compressionBypass.checked = controls.compressionBypassed;
+  if (compressionState !== null) compressionState.textContent = controls.compressionBypassed ? 'Bypassed' : 'Active';
   setControlValue('master-volume', controls.masterVolumeDb);
 }
 
-function setControlValue(id: string, value: number): void {
+function setControlValue(id: string, value: number, fractionDigits = 1): void {
   const slider = root.querySelector<HTMLInputElement>(`#${id}-slider`);
   const numeric = root.querySelector<HTMLInputElement>(`#${id}-value`);
   if (slider !== null && slider.valueAsNumber !== value) slider.value = String(value);
-  if (numeric !== null && numeric.value !== value.toFixed(1)) numeric.value = value.toFixed(1);
+  if (numeric !== null && numeric.value !== value.toFixed(fractionDigits)) numeric.value = value.toFixed(fractionDigits);
 }
 
 function renderMeters(current: AudioSnapshot): void {
@@ -216,12 +251,23 @@ function meterPanel(id: 'input' | 'output', title: string, reading: InputMeterSn
 }
 
 function dbControl(id: string, label: string, value: number, minimum: number, maximum: number): string {
-  return `<div class="db-control">
+  return `<div class="continuous-control">
     <label for="${id}-slider">${label}</label>
     <input id="${id}-slider" aria-label="${label} slider" type="range" min="${minimum}" max="${maximum}" step="0.1" value="${value}">
     <div class="numeric-control">
       <input id="${id}-value" aria-label="${label} value" type="number" inputmode="decimal" min="${minimum}" max="${maximum}" step="0.1" value="${value.toFixed(1)}">
       <span aria-hidden="true">dB</span>
+    </div>
+  </div>`;
+}
+
+function percentControl(id: string, label: string, value: number): string {
+  return `<div class="continuous-control">
+    <label for="${id}-slider">${label}</label>
+    <input id="${id}-slider" aria-label="${label} slider" type="range" min="0" max="100" step="1" value="${value}">
+    <div class="numeric-control">
+      <input id="${id}-value" aria-label="${label} value" type="number" inputmode="numeric" min="0" max="100" step="1" value="${value}">
+      <span aria-hidden="true">%</span>
     </div>
   </div>`;
 }
@@ -294,6 +340,11 @@ function loadControls(): AmpControlSettings {
     const parsed = JSON.parse(raw) as Partial<AmpControlSettings>;
     return {
       cleanGainDb: typeof parsed.cleanGainDb === 'number' ? parsed.cleanGainDb : DEFAULT_AMP_CONTROLS.cleanGainDb,
+      bassDb: typeof parsed.bassDb === 'number' ? parsed.bassDb : DEFAULT_AMP_CONTROLS.bassDb,
+      middleDb: typeof parsed.middleDb === 'number' ? parsed.middleDb : DEFAULT_AMP_CONTROLS.middleDb,
+      trebleDb: typeof parsed.trebleDb === 'number' ? parsed.trebleDb : DEFAULT_AMP_CONTROLS.trebleDb,
+      compressionAmount: typeof parsed.compressionAmount === 'number' ? parsed.compressionAmount : DEFAULT_AMP_CONTROLS.compressionAmount,
+      compressionBypassed: typeof parsed.compressionBypassed === 'boolean' ? parsed.compressionBypassed : DEFAULT_AMP_CONTROLS.compressionBypassed,
       masterVolumeDb: typeof parsed.masterVolumeDb === 'number' ? parsed.masterVolumeDb : DEFAULT_AMP_CONTROLS.masterVolumeDb,
     };
   } catch {

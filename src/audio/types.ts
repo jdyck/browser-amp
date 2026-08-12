@@ -24,10 +24,23 @@ export interface InputSettings {
 
 export interface AmpControlSettings {
   readonly cleanGainDb: number;
+  readonly bassDb: number;
+  readonly middleDb: number;
+  readonly trebleDb: number;
+  readonly compressionAmount: number;
+  readonly compressionBypassed: boolean;
   readonly masterVolumeDb: number;
 }
 
-export const DEFAULT_AMP_CONTROLS: AmpControlSettings = { cleanGainDb: 0, masterVolumeDb: -18 };
+export const DEFAULT_AMP_CONTROLS: AmpControlSettings = {
+  cleanGainDb: 0,
+  bassDb: 0,
+  middleDb: 0,
+  trebleDb: 0,
+  compressionAmount: 25,
+  compressionBypassed: true,
+  masterVolumeDb: -18,
+};
 
 export interface InputMeterSnapshot {
   readonly dbfs: number;

@@ -15,6 +15,19 @@ function audioContext(overrides: Record<string, unknown> = {}): AudioContext {
     createChannelSplitter: vi.fn(() => audioNode()),
     createAnalyser: vi.fn(() => audioNode({ fftSize: 2048, getFloatTimeDomainData: vi.fn() })),
     createGain: vi.fn(() => audioNode({ gain: { value: 1, cancelScheduledValues: vi.fn(), setValueAtTime: vi.fn(), linearRampToValueAtTime: vi.fn() } })),
+    createBiquadFilter: vi.fn(() => audioNode({
+      type: 'peaking',
+      frequency: { value: 0 },
+      Q: { value: 0 },
+      gain: { value: 0, cancelScheduledValues: vi.fn(), setValueAtTime: vi.fn(), linearRampToValueAtTime: vi.fn() },
+    })),
+    createDynamicsCompressor: vi.fn(() => audioNode({
+      threshold: { value: -24, cancelScheduledValues: vi.fn(), setValueAtTime: vi.fn(), linearRampToValueAtTime: vi.fn() },
+      ratio: { value: 12, cancelScheduledValues: vi.fn(), setValueAtTime: vi.fn(), linearRampToValueAtTime: vi.fn() },
+      attack: { value: 0.003, cancelScheduledValues: vi.fn(), setValueAtTime: vi.fn(), linearRampToValueAtTime: vi.fn() },
+      release: { value: 0.25, cancelScheduledValues: vi.fn(), setValueAtTime: vi.fn(), linearRampToValueAtTime: vi.fn() },
+      knee: { value: 30, cancelScheduledValues: vi.fn(), setValueAtTime: vi.fn(), linearRampToValueAtTime: vi.fn() },
+    })),
     resume: vi.fn(),
     close: vi.fn(),
     ...overrides,
@@ -85,16 +98,40 @@ describe('AudioEngine', () => {
     expect(engine.snapshot).toMatchObject({ lifecycle: 'connected-muted', monitoring: false });
   });
 
-  it('clamps Clean Gain and Master Volume without changing Master Volume when monitoring stops', async () => {
+  it('clamps exact controls and preserves settings when monitoring stops', async () => {
     const engine = new AudioEngine(browser());
-    expect(engine.snapshot.controls).toEqual({ cleanGainDb: 0, masterVolumeDb: -18 });
+    expect(engine.snapshot.controls).toEqual({
+      cleanGainDb: 0,
+      bassDb: 0,
+      middleDb: 0,
+      trebleDb: 0,
+      compressionAmount: 25,
+      compressionBypassed: true,
+      masterVolumeDb: -18,
+    });
 
-    engine.applyControls({ cleanGainDb: 30, masterVolumeDb: -12.26 });
+    engine.applyControls({
+      cleanGainDb: 30,
+      bassDb: -20,
+      middleDb: 3.26,
+      trebleDb: 20,
+      compressionAmount: 74.6,
+      compressionBypassed: false,
+      masterVolumeDb: -12.26,
+    });
     await engine.connectInput();
     await engine.setMonitoring(true);
     await engine.setMonitoring(false);
 
-    expect(engine.snapshot.controls).toEqual({ cleanGainDb: 24, masterVolumeDb: -12.3 });
+    expect(engine.snapshot.controls).toEqual({
+      cleanGainDb: 24,
+      bassDb: -12,
+      middleDb: 3.3,
+      trebleDb: 12,
+      compressionAmount: 75,
+      compressionBypassed: false,
+      masterVolumeDb: -12.3,
+    });
   });
 
   it('routes to a permitted browser-visible output when the AudioContext supports selection', async () => {
@@ -123,7 +160,7 @@ describe('AudioEngine', () => {
   it('mutes a routing failure without changing Master Volume', async () => {
     const setSinkId = vi.fn().mockRejectedValue(new DOMException('Unavailable', 'NotFoundError'));
     const engine = new AudioEngine(browser({ createAudioContext: () => audioContext({ setSinkId }) }));
-    engine.applyControls({ cleanGainDb: 6, masterVolumeDb: -12 });
+    engine.applyControls({ ...engine.snapshot.controls, cleanGainDb: 6, masterVolumeDb: -12 });
     await engine.connectInput();
     await engine.setMonitoring(true);
 

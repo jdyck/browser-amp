@@ -48,6 +48,14 @@ async function installAudioBrowser(page: Page, options: { clipOnce?: boolean; ou
         };
         return node({ gain });
       }
+      createBiquadFilter() {
+        const gain = { value: 0, cancelScheduledValues: () => gain, setValueAtTime: (value: number) => { gain.value = value; return gain; }, linearRampToValueAtTime: (value: number) => { gain.value = value; return gain; } };
+        return node({ type: 'peaking', frequency: { value: 0 }, Q: { value: 0 }, gain });
+      }
+      createDynamicsCompressor() {
+        const parameter = (value: number) => ({ value, cancelScheduledValues: () => undefined, setValueAtTime: () => undefined, linearRampToValueAtTime: () => undefined });
+        return node({ threshold: parameter(-24), ratio: parameter(12), attack: parameter(0.003), release: parameter(0.25), knee: parameter(30) });
+      }
       resume() { return Promise.resolve(); }
       close() { return Promise.resolve(); }
     }
@@ -76,22 +84,54 @@ test('synchronizes, clamps, and restores controls without restoring Processed Mo
 
   const cleanGain = page.getByLabel('Clean Gain value');
   const cleanGainSlider = page.getByLabel('Clean Gain slider');
+  const bass = page.getByLabel('Bass value');
+  const bassSlider = page.getByLabel('Bass slider');
+  const middle = page.getByLabel('Middle value');
+  const treble = page.getByLabel('Treble value');
+  const compressionAmount = page.getByLabel('Compression Amount value');
+  const compressionAmountSlider = page.getByLabel('Compression Amount slider');
+  const compressionBypass = page.getByLabel('Compression Stage Bypass');
   const masterVolume = page.getByLabel('Master Volume value');
 
   await expect(cleanGain).toHaveValue('0.0');
+  await expect(bass).toHaveValue('0.0');
+  await expect(middle).toHaveValue('0.0');
+  await expect(treble).toHaveValue('0.0');
+  await expect(compressionAmount).toHaveValue('25');
+  await expect(compressionBypass).toBeChecked();
   await expect(masterVolume).toHaveValue('-18.0');
 
   await cleanGain.fill('30');
   await cleanGain.press('Enter');
+  await bass.fill('20');
+  await bass.press('Enter');
+  await middle.fill('3.26');
+  await middle.press('Enter');
+  await treble.fill('-20');
+  await treble.press('Enter');
+  await compressionAmount.fill('101');
+  await compressionAmount.press('Enter');
+  await compressionBypass.uncheck();
   await masterVolume.fill('-12.26');
   await masterVolume.press('Enter');
 
   await expect(cleanGain).toHaveValue('24.0');
   await expect(cleanGainSlider).toHaveValue('24');
+  await expect(bass).toHaveValue('12.0');
+  await expect(bassSlider).toHaveValue('12');
+  await expect(middle).toHaveValue('3.3');
+  await expect(treble).toHaveValue('-12.0');
+  await expect(compressionAmount).toHaveValue('100');
+  await expect(compressionAmountSlider).toHaveValue('100');
   await expect(masterVolume).toHaveValue('-12.3');
 
   await page.reload();
   await expect(page.getByLabel('Clean Gain value')).toHaveValue('24.0');
+  await expect(page.getByLabel('Bass value')).toHaveValue('12.0');
+  await expect(page.getByLabel('Middle value')).toHaveValue('3.3');
+  await expect(page.getByLabel('Treble value')).toHaveValue('-12.0');
+  await expect(page.getByLabel('Compression Amount value')).toHaveValue('100');
+  await expect(page.getByLabel('Compression Stage Bypass')).not.toBeChecked();
   await expect(page.getByLabel('Master Volume value')).toHaveValue('-12.3');
   await expect(page.getByRole('button', { name: 'Enable Monitoring' })).toBeDisabled();
 });
@@ -139,4 +179,29 @@ test('keeps the input selector mounted while the meter updates', async ({ page }
   await page.waitForTimeout(100);
 
   await expect(selector).toHaveAttribute('data-regression-node', 'original');
+});
+
+test('keeps exact controls keyboard-operable and in Amp Chain order on a narrow layout', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 900 });
+  await page.goto('/');
+
+  const bassSlider = page.getByLabel('Bass slider');
+  await bassSlider.focus();
+  await bassSlider.press('ArrowRight');
+  await expect(page.getByLabel('Bass value')).toHaveValue('0.1');
+
+  await expect(page.locator('.panel > .panel-heading > h2')).toHaveText([
+    'Live Guitar Input',
+    'Input Level Meter',
+    'Clean Gain',
+    'Three-Band EQ',
+    'Compression',
+    'Master Volume',
+    'Output Level Meter',
+    'Processed Monitoring',
+  ]);
+
+  const amountBounds = await page.getByLabel('Compression Amount value').boundingBox();
+  expect(amountBounds).not.toBeNull();
+  expect((amountBounds?.x ?? 0) + (amountBounds?.width ?? 0)).toBeLessThanOrEqual(320);
 });

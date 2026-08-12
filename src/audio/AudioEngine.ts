@@ -5,6 +5,30 @@ import { DEFAULT_AMP_CONTROLS, type AmpControlSettings, type AudioEngine as Audi
 
 const initialSettings: InputSettings = { selectedInputDeviceId: undefined, inputChannel: 0 };
 
+export interface CompressionSettings {
+  readonly thresholdDb: number;
+  readonly ratio: number;
+  readonly attackSeconds: number;
+  readonly releaseSeconds: number;
+  readonly kneeDb: number;
+}
+
+export function normalizeCompressionAmount(amount: number): number {
+  return Math.round(Math.min(100, Math.max(0, amount)));
+}
+
+export function compressionSettings(amount: number): CompressionSettings {
+  const normalizedAmount = normalizeCompressionAmount(amount);
+  const proportion = normalizedAmount / 100;
+  return {
+    thresholdDb: normalizedAmount === 0 ? 0 : -36 * proportion,
+    ratio: 1 + 5 * proportion,
+    attackSeconds: 0.01,
+    releaseSeconds: 0.15,
+    kneeDb: 12,
+  };
+}
+
 function initialSnapshot(): AudioSnapshot {
   return {
     ...initialSettings,
@@ -37,7 +61,7 @@ function rawCaptureWarnings(settings: MediaTrackSettings): string[] {
   return requested.flatMap(([key, label]) => settings[key] !== false ? [`${label} could not be confirmed disabled by this browser.`] : []);
 }
 
-/** Owns capture, the Clean Gain path, metering, output routing, and the explicit monitoring mute. */
+/** Owns capture, the native Amp Chain, metering, output routing, and the explicit monitoring mute. */
 export class AudioEngine implements AudioEngineContract {
   #environment: BrowserAudio;
   #snapshot = initialSnapshot();
@@ -48,6 +72,12 @@ export class AudioEngine implements AudioEngineContract {
   #splitter: ChannelSplitterNode | undefined;
   #inputAnalyser: AnalyserNode | undefined;
   #cleanGain: GainNode | undefined;
+  #bassEq: BiquadFilterNode | undefined;
+  #middleEq: BiquadFilterNode | undefined;
+  #trebleEq: BiquadFilterNode | undefined;
+  #compressor: DynamicsCompressorNode | undefined;
+  #compressionDryGain: GainNode | undefined;
+  #compressionWetGain: GainNode | undefined;
   #masterGain: GainNode | undefined;
   #outputAnalyser: AnalyserNode | undefined;
   #monitorGain: GainNode | undefined;
@@ -100,11 +130,35 @@ export class AudioEngine implements AudioEngineContract {
       this.#inputAnalyser = this.#context.createAnalyser();
       this.#inputAnalyser.fftSize = 2048;
       this.#cleanGain = this.#context.createGain();
+      this.#bassEq = this.#context.createBiquadFilter();
+      this.#middleEq = this.#context.createBiquadFilter();
+      this.#trebleEq = this.#context.createBiquadFilter();
+      this.#compressor = this.#context.createDynamicsCompressor();
+      this.#compressionDryGain = this.#context.createGain();
+      this.#compressionWetGain = this.#context.createGain();
       this.#masterGain = this.#context.createGain();
       this.#outputAnalyser = this.#context.createAnalyser();
       this.#outputAnalyser.fftSize = 2048;
       this.#monitorGain = this.#context.createGain();
       this.#cleanGain.gain.value = dbToLinearGain(this.#snapshot.controls.cleanGainDb);
+      this.#bassEq.type = 'lowshelf';
+      this.#bassEq.frequency.value = 120;
+      this.#bassEq.gain.value = this.#snapshot.controls.bassDb;
+      this.#middleEq.type = 'peaking';
+      this.#middleEq.frequency.value = 800;
+      this.#middleEq.Q.value = 0.8;
+      this.#middleEq.gain.value = this.#snapshot.controls.middleDb;
+      this.#trebleEq.type = 'highshelf';
+      this.#trebleEq.frequency.value = 3_200;
+      this.#trebleEq.gain.value = this.#snapshot.controls.trebleDb;
+      const compression = compressionSettings(this.#snapshot.controls.compressionAmount);
+      this.#compressor.threshold.value = compression.thresholdDb;
+      this.#compressor.ratio.value = compression.ratio;
+      this.#compressor.attack.value = compression.attackSeconds;
+      this.#compressor.release.value = compression.releaseSeconds;
+      this.#compressor.knee.value = compression.kneeDb;
+      this.#compressionDryGain.gain.value = this.#snapshot.controls.compressionBypassed ? 1 : 0;
+      this.#compressionWetGain.gain.value = this.#snapshot.controls.compressionBypassed ? 0 : 1;
       this.#masterGain.gain.value = dbToLinearGain(this.#snapshot.controls.masterVolumeDb);
       this.#monitorGain.gain.value = 0;
       const channelCount = Math.max(1, settings.channelCount ?? 1);
@@ -117,7 +171,14 @@ export class AudioEngine implements AudioEngineContract {
         this.#source.connect(this.#inputAnalyser);
       }
       this.#inputAnalyser.connect(this.#cleanGain);
-      this.#cleanGain.connect(this.#masterGain);
+      this.#cleanGain.connect(this.#bassEq);
+      this.#bassEq.connect(this.#middleEq);
+      this.#middleEq.connect(this.#trebleEq);
+      this.#trebleEq.connect(this.#compressionDryGain);
+      this.#trebleEq.connect(this.#compressor);
+      this.#compressor.connect(this.#compressionWetGain);
+      this.#compressionDryGain.connect(this.#masterGain);
+      this.#compressionWetGain.connect(this.#masterGain);
       this.#masterGain.connect(this.#outputAnalyser);
       this.#outputAnalyser.connect(this.#monitorGain);
       this.#monitorGain.connect(this.#context.destination);
@@ -169,12 +230,41 @@ export class AudioEngine implements AudioEngineContract {
   }
 
   public applyControls(settings: AmpControlSettings): void {
+    const previousControls = this.#snapshot.controls;
     const controls = {
       cleanGainDb: Number.isFinite(settings.cleanGainDb) ? normalizeDb(settings.cleanGainDb, -12, 24) : this.#snapshot.controls.cleanGainDb,
+      bassDb: Number.isFinite(settings.bassDb) ? normalizeDb(settings.bassDb, -12, 12) : this.#snapshot.controls.bassDb,
+      middleDb: Number.isFinite(settings.middleDb) ? normalizeDb(settings.middleDb, -12, 12) : this.#snapshot.controls.middleDb,
+      trebleDb: Number.isFinite(settings.trebleDb) ? normalizeDb(settings.trebleDb, -12, 12) : this.#snapshot.controls.trebleDb,
+      compressionAmount: Number.isFinite(settings.compressionAmount)
+        ? normalizeCompressionAmount(settings.compressionAmount)
+        : this.#snapshot.controls.compressionAmount,
+      compressionBypassed: typeof settings.compressionBypassed === 'boolean'
+        ? settings.compressionBypassed
+        : this.#snapshot.controls.compressionBypassed,
       masterVolumeDb: Number.isFinite(settings.masterVolumeDb) ? normalizeDb(settings.masterVolumeDb, -60, 0) : this.#snapshot.controls.masterVolumeDb,
     };
     if (this.#context !== undefined) {
       if (this.#cleanGain !== undefined) smoothGainToDb(this.#cleanGain.gain, controls.cleanGainDb, this.#context.currentTime);
+      if (this.#bassEq !== undefined) smoothGainToValue(this.#bassEq.gain, controls.bassDb, this.#context.currentTime);
+      if (this.#middleEq !== undefined) smoothGainToValue(this.#middleEq.gain, controls.middleDb, this.#context.currentTime);
+      if (this.#trebleEq !== undefined) smoothGainToValue(this.#trebleEq.gain, controls.trebleDb, this.#context.currentTime);
+      if (this.#compressor !== undefined && controls.compressionAmount !== previousControls.compressionAmount) {
+        const compression = compressionSettings(controls.compressionAmount);
+        smoothGainToValue(this.#compressor.threshold, compression.thresholdDb, this.#context.currentTime);
+        smoothGainToValue(this.#compressor.ratio, compression.ratio, this.#context.currentTime);
+        smoothGainToValue(this.#compressor.attack, compression.attackSeconds, this.#context.currentTime);
+        smoothGainToValue(this.#compressor.release, compression.releaseSeconds, this.#context.currentTime);
+        smoothGainToValue(this.#compressor.knee, compression.kneeDb, this.#context.currentTime);
+      }
+      if (controls.compressionBypassed !== previousControls.compressionBypassed) {
+        if (this.#compressionDryGain !== undefined) {
+          smoothGainToValue(this.#compressionDryGain.gain, controls.compressionBypassed ? 1 : 0, this.#context.currentTime);
+        }
+        if (this.#compressionWetGain !== undefined) {
+          smoothGainToValue(this.#compressionWetGain.gain, controls.compressionBypassed ? 0 : 1, this.#context.currentTime);
+        }
+      }
       if (this.#masterGain !== undefined) smoothGainToDb(this.#masterGain.gain, controls.masterVolumeDb, this.#context.currentTime);
     }
     this.#update({ controls });
@@ -261,6 +351,12 @@ export class AudioEngine implements AudioEngineContract {
     this.#splitter?.disconnect();
     this.#inputAnalyser?.disconnect();
     this.#cleanGain?.disconnect();
+    this.#bassEq?.disconnect();
+    this.#middleEq?.disconnect();
+    this.#trebleEq?.disconnect();
+    this.#compressor?.disconnect();
+    this.#compressionDryGain?.disconnect();
+    this.#compressionWetGain?.disconnect();
     this.#masterGain?.disconnect();
     this.#outputAnalyser?.disconnect();
     this.#monitorGain?.disconnect();
@@ -272,6 +368,12 @@ export class AudioEngine implements AudioEngineContract {
     this.#splitter = undefined;
     this.#inputAnalyser = undefined;
     this.#cleanGain = undefined;
+    this.#bassEq = undefined;
+    this.#middleEq = undefined;
+    this.#trebleEq = undefined;
+    this.#compressor = undefined;
+    this.#compressionDryGain = undefined;
+    this.#compressionWetGain = undefined;
     this.#masterGain = undefined;
     this.#outputAnalyser = undefined;
     this.#monitorGain = undefined;

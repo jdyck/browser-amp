@@ -23,9 +23,12 @@ h3 { font-size: 1rem; }
 select { width: 100%; padding: .55rem; border-radius: .35rem; border: 1px solid #697469; background: #101610; color: inherit; }
 .field-help, .hint { color: #bbc5bb; font-size: .9rem; font-weight: 400; }
 .field-help { display: block; margin-top: .35rem; }
-.db-control { display: grid; grid-template-columns: 1fr auto; gap: .6rem 1rem; align-items: center; }
-.db-control > label { grid-column: 1 / -1; font-weight: 700; }
-.db-control input[type='range'] { width: 100%; accent-color: #b6e47c; }
+.continuous-control { display: grid; grid-template-columns: 1fr auto; gap: .6rem 1rem; align-items: center; }
+.continuous-control > label { grid-column: 1 / -1; font-weight: 700; }
+.continuous-control input[type='range'] { width: 100%; accent-color: #b6e47c; }
+.control-stack { display: grid; gap: 1.25rem; }
+.stage-toggle { display: flex; gap: .6rem; align-items: center; margin: 1rem 0; font-weight: 700; }
+.stage-toggle input { width: 1.15rem; height: 1.15rem; accent-color: #b6e47c; }
 .numeric-control { display: flex; align-items: center; gap: .35rem; }
 .numeric-control input { width: 6.5rem; padding: .45rem .55rem; border-radius: .35rem; border: 1px solid #697469; background: #101610; color: inherit; text-align: right; }
 .meter { position: relative; height: 1.3rem; overflow: hidden; border-radius: .2rem; background: linear-gradient(90deg, #2b9b53 0 80%, #d4bb45 80% 95%, #df5252 95%); }
@@ -44,6 +47,6 @@ select { width: 100%; padding: .55rem; border-radius: .35rem; border: 1px solid 
   .workbench { width: min(100% - 1.25rem, 46rem); padding: 1.5rem 0; }
   .panel-heading, .actions, .meter-footer { align-items: flex-start; flex-direction: column; gap: .5rem; }
   .actions button { width: 100%; }
-  .db-control { grid-template-columns: 1fr; }
+  .continuous-control { grid-template-columns: 1fr; }
   .numeric-control { justify-content: flex-end; }
 }
