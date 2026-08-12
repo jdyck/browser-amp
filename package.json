@@ -10,7 +10,8 @@
     "typecheck": "tsc -b --pretty false",
     "test": "vitest run",
     "test:browser": "playwright test",
-    "test:production": "npm run build && playwright test --config=playwright.production.config.ts"
+    "test:production": "npm run build && playwright test --config=playwright.production.config.ts",
+    "test:deployed": "playwright test --config=playwright.deployed.config.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.55.0",

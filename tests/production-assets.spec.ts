@@ -3,10 +3,15 @@ import { expect, test } from '@playwright/test';
 test('loads the production app and its generated assets from the repository path', async ({ page }) => {
   const failedRequests: string[] = [];
   const errorResponses: string[] = [];
+  const browserErrors: string[] = [];
   page.on('requestfailed', (request) => failedRequests.push(request.url()));
   page.on('response', (response) => {
     if (response.status() >= 400) errorResponses.push(`${response.status()} ${response.url()}`);
   });
+  page.on('console', (message) => {
+    if (message.type() === 'error') browserErrors.push(message.text());
+  });
+  page.on('pageerror', (error) => browserErrors.push(error.message));
 
   await page.goto('./');
   await expect(page.getByRole('heading', { name: 'Browser Amp' })).toBeVisible();
@@ -22,4 +27,5 @@ test('loads the production app and its generated assets from the repository path
   expect(assetPaths).toEqual(assetPaths.map(() => expect.stringMatching(/^\/browser-amp\//)));
   expect(failedRequests).toEqual([]);
   expect(errorResponses).toEqual([]);
+  expect(browserErrors).toEqual([]);
 });

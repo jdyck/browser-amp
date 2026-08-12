@@ -23,6 +23,7 @@ Attach the GitHub Actions run that proves each command passed for the candidate 
 - [ ] `npm run test:browser` — localhost UI and OfflineAudioContext tests
 - [ ] `npm run test:production` — the same UI behaviors against `dist` at `/browser-amp/`, plus generated-asset path checks
 - [ ] The `dist` artifact deployed from that run to the `github-pages` environment
+- [ ] `npm run test:deployed` — the same UI and asset checks pass against the deployed HTTPS Pages URL
 
 ## Production HTTPS smoke test
 
