@@ -18,8 +18,8 @@ test('loads the production app and its generated assets from the repository path
 
   const assetPaths = await page.locator('script[src], link[rel="stylesheet"][href]').evaluateAll((elements) => (
     elements.map((element) => {
-      const attribute = element instanceof HTMLScriptElement ? element.src : (element as HTMLLinkElement).href;
-      return new URL(attribute).pathname;
+      const assetUrl = element instanceof HTMLScriptElement ? element.src : (element as HTMLLinkElement).href;
+      return new URL(assetUrl).pathname;
     })
   ));
 
