@@ -1,8 +1,8 @@
 import { defineConfig } from '@playwright/test';
+import { productionSmokeTests } from './playwright.smoke';
 
 export default defineConfig({
-  testDir: './tests',
-  testMatch: ['app.spec.ts', 'production-assets.spec.ts'],
+  ...productionSmokeTests,
   webServer: {
     command: 'npm run preview -- --host 127.0.0.1 --port 4174',
     port: 4174,

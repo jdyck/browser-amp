@@ -21,15 +21,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
-      - name: Set up Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          cache: npm
-      - name: Install dependencies
-        run: npm ci
-      - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+      - name: Set up validation runtime
+        uses: ./.github/actions/setup-validation
       - name: Typecheck
         run: npm run typecheck
       - name: Run unit and AudioEngine tests
@@ -67,15 +60,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
-      - name: Set up Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          cache: npm
-      - name: Install dependencies
-        run: npm ci
-      - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+      - name: Set up validation runtime
+        uses: ./.github/actions/setup-validation
       - name: Run smoke tests against deployed Pages URL
         run: npm run test:deployed
         env:

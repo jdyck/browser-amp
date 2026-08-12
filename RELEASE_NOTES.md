@@ -23,4 +23,4 @@ Browser Amp 0.1.0 is the first release of the Clean Amp Workbench.
 - Reverb Stage Bypass intentionally chops the current tail with a short transition.
 - Browser and interface latency varies. The release does not promise a universal round-trip latency threshold.
 
-Hardware evidence and the production sign-off procedure are recorded in [the release validation log](docs/release-validation.md).
+Hardware evidence must be recorded with the production sign-off procedure in [the release validation log](docs/release-validation.md).

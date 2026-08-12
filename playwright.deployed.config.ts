@@ -1,4 +1,5 @@
 import { defineConfig } from '@playwright/test';
+import { productionSmokeTests } from './playwright.smoke';
 
 const deploymentUrl = process.env.PLAYWRIGHT_BASE_URL;
 
@@ -7,7 +8,6 @@ if (deploymentUrl === undefined) {
 }
 
 export default defineConfig({
-  testDir: './tests',
-  testMatch: ['app.spec.ts', 'production-assets.spec.ts'],
+  ...productionSmokeTests,
   use: { baseURL: deploymentUrl.endsWith('/') ? deploymentUrl : `${deploymentUrl}/` },
 });
