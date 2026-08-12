@@ -1,3 +1,8 @@
+import type { AmpControlSettings } from '../controls';
+
+export { DEFAULT_AMP_CONTROLS } from '../controls';
+export type { AmpControlSettings } from '../controls';
+
 export type ConnectionLifecycle = 'disconnected' | 'connecting' | 'connected-muted' | 'monitoring' | 'error';
 
 export interface InputDevice {
@@ -21,30 +26,6 @@ export interface InputSettings {
   readonly selectedInputDeviceId: string | undefined;
   readonly inputChannel: number;
 }
-
-export interface AmpControlSettings {
-  readonly cleanGainDb: number;
-  readonly bassDb: number;
-  readonly middleDb: number;
-  readonly trebleDb: number;
-  readonly compressionAmount: number;
-  readonly compressionBypassed: boolean;
-  readonly reverbAmount: number;
-  readonly reverbBypassed: boolean;
-  readonly masterVolumeDb: number;
-}
-
-export const DEFAULT_AMP_CONTROLS: AmpControlSettings = {
-  cleanGainDb: 0,
-  bassDb: 0,
-  middleDb: 0,
-  trebleDb: 0,
-  compressionAmount: 25,
-  compressionBypassed: true,
-  reverbAmount: 20,
-  reverbBypassed: true,
-  masterVolumeDb: -18,
-};
 
 export interface InputMeterSnapshot {
   readonly dbfs: number;

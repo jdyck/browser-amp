@@ -6,6 +6,7 @@ button { cursor: pointer; border: 0; border-radius: .4rem; padding: .65rem 1rem;
 button.secondary { color: #edf2ec; background: #384238; }
 button.compact { padding: .35rem .65rem; font-size: .8rem; }
 button:disabled { cursor: not-allowed; opacity: .52; }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 3px solid #f2d569; outline-offset: 3px; }
 .workbench { width: min(100% - 2rem, 46rem); margin: 0 auto; padding: 3rem 0; }
 header { margin-bottom: 1.5rem; }
 h1, h2, h3, p { margin-top: 0; }

@@ -9,7 +9,11 @@ async function installAudioBrowser(page: Page, options: { clipOnce?: boolean; ou
     const stream = { getAudioTracks: () => [track], getTracks: () => [track] };
     Object.defineProperty(navigator, 'mediaDevices', {
       value: {
-        getUserMedia: async () => stream,
+        getUserMedia: async () => {
+          const state = window as Window & { captureRequests?: number };
+          state.captureRequests = (state.captureRequests ?? 0) + 1;
+          return stream;
+        },
         enumerateDevices: async () => [
           { deviceId: 'microphone', kind: 'audioinput', label: 'Built-in Microphone' },
           { deviceId: 'irig-hd-2', kind: 'audioinput', label: 'iRig HD 2' },
@@ -168,6 +172,60 @@ test('requires a separate monitoring action and remembers dismissed Hardware Dir
   await page.getByRole('button', { name: 'Checked — Enable Monitoring' }).click();
   await expect(page.getByRole('button', { name: 'Disable Monitoring' })).toBeVisible();
   await page.reload();
+  await page.getByRole('button', { name: 'Connect Input' }).click();
+  await page.getByRole('button', { name: 'Enable Monitoring' }).click();
+  await expect(page.getByRole('button', { name: 'Disable Monitoring' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Before you monitor' })).toHaveCount(0);
+});
+
+test('Reset Controls restores sound defaults without changing connection, monitoring, or dismissed guidance', async ({ page }) => {
+  await installAudioBrowser(page);
+  await page.goto('/');
+  await page.getByLabel('Clean Gain value').fill('9');
+  await page.getByLabel('Bass value').fill('-4');
+  await page.getByLabel('Compression Stage Bypass').uncheck();
+  await page.getByLabel('Reverb Amount value').fill('60');
+  await page.getByLabel('Reverb Stage Bypass').uncheck();
+  await page.getByLabel('Master Volume value').fill('-6');
+  await page.getByRole('button', { name: 'Connect Input' }).click();
+  await page.getByRole('button', { name: 'Enable Monitoring' }).click();
+  await page.getByRole('button', { name: 'Checked — Enable Monitoring' }).click();
+
+  await page.getByRole('button', { name: 'Reset Controls' }).click();
+
+  await expect(page.getByLabel('Clean Gain value')).toHaveValue('0.0');
+  await expect(page.getByLabel('Bass value')).toHaveValue('0.0');
+  await expect(page.getByLabel('Middle value')).toHaveValue('0.0');
+  await expect(page.getByLabel('Treble value')).toHaveValue('0.0');
+  await expect(page.getByLabel('Compression Amount value')).toHaveValue('25');
+  await expect(page.getByLabel('Compression Stage Bypass')).toBeChecked();
+  await expect(page.getByLabel('Reverb Amount value')).toHaveValue('20');
+  await expect(page.getByLabel('Reverb Stage Bypass')).toBeChecked();
+  await expect(page.getByLabel('Master Volume value')).toHaveValue('-18.0');
+  await expect(page.locator('.connection-state')).toHaveText('Connected — monitoring');
+  await expect(page.getByRole('button', { name: 'Disable Monitoring' })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => (window as Window & { captureRequests?: number }).captureRequests)).toBe(1);
+
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('browser-amp.saved-control-settings') ?? 'null'));
+  expect(saved).toEqual({
+    version: 1,
+    controls: {
+      cleanGainDb: 0,
+      bassDb: 0,
+      middleDb: 0,
+      trebleDb: 0,
+      compressionAmount: 25,
+      compressionBypassed: true,
+      reverbAmount: 20,
+      reverbBypassed: true,
+      masterVolumeDb: -18,
+    },
+    hardwareDirectMonitoringGuidanceDismissed: true,
+  });
+
+  await page.reload();
+  await expect(page.locator('.connection-state')).toHaveText('Disconnected');
+  await expect(page.getByRole('button', { name: 'Enable Monitoring' })).toBeDisabled();
   await page.getByRole('button', { name: 'Connect Input' }).click();
   await page.getByRole('button', { name: 'Enable Monitoring' }).click();
   await expect(page.getByRole('button', { name: 'Disable Monitoring' })).toBeVisible();

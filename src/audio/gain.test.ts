@@ -1,13 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import { dbToLinearGain, normalizeDb, smoothGainToDb } from './gain';
+import { dbToLinearGain, smoothGainToDb } from './gain';
 
 describe('gain controls', () => {
-  it('normalizes displayed values to their range and 0.1 dB precision', () => {
-    expect(normalizeDb(24.08, -12, 24)).toBe(24);
-    expect(normalizeDb(-18.26, -60, 0)).toBe(-18.3);
-    expect(normalizeDb(-72, -60, 0)).toBe(-60);
-  });
-
   it('maps decibels to linear gain without adding a nonlinear transfer', () => {
     expect(dbToLinearGain(0)).toBe(1);
     expect(dbToLinearGain(6)).toBeCloseTo(1.9953, 4);

@@ -7,10 +7,6 @@ export interface SchedulableAudioParam {
   linearRampToValueAtTime(value: number, endTime: number): AudioParam;
 }
 
-export function normalizeDb(value: number, minimum: number, maximum: number): number {
-  return Math.round(Math.min(maximum, Math.max(minimum, value)) * 10) / 10;
-}
-
 export function dbToLinearGain(db: number): number {
   return 10 ** (db / 20);
 }

@@ -1,8 +1,9 @@
 import { browserAudio, type BrowserAudio } from './browserAudio';
-import { dbToLinearGain, GAIN_SMOOTHING_SECONDS, normalizeDb, smoothGainToDb, smoothGainToValue } from './gain';
+import { DEFAULT_AMP_CONTROLS, normalizeAmpControlSettings, normalizePercentAmount } from '../controls';
+import { dbToLinearGain, GAIN_SMOOTHING_SECONDS, smoothGainToDb, smoothGainToValue } from './gain';
 import { meterReadingFromSamples, METER_FLOOR_DBFS, nextPeakHold, type PeakHold } from './meter';
 import { createPlateImpulse } from './reverb';
-import { DEFAULT_AMP_CONTROLS, type AmpControlSettings, type AudioEngine as AudioEngineContract, type AudioSnapshot, type InputDevice, type InputSettings, type OutputDevice } from './types';
+import type { AmpControlSettings, AudioEngine as AudioEngineContract, AudioSnapshot, InputDevice, InputSettings, OutputDevice } from './types';
 
 const initialSettings: InputSettings = { selectedInputDeviceId: undefined, inputChannel: 0 };
 // Bound full-scale Amount to a strong but usable wet return (about -20 dB).
@@ -23,10 +24,6 @@ export interface CompressionSettings {
   readonly attackSeconds: number;
   readonly releaseSeconds: number;
   readonly kneeDb: number;
-}
-
-export function normalizePercentAmount(amount: number): number {
-  return Math.round(Math.min(100, Math.max(0, amount)));
 }
 
 export function compressionSettings(amount: number): CompressionSettings {
@@ -260,25 +257,7 @@ export class AudioEngine implements AudioEngineContract {
 
   public applyControls(settings: AmpControlSettings): void {
     const previousControls = this.#snapshot.controls;
-    const controls = {
-      cleanGainDb: Number.isFinite(settings.cleanGainDb) ? normalizeDb(settings.cleanGainDb, -12, 24) : this.#snapshot.controls.cleanGainDb,
-      bassDb: Number.isFinite(settings.bassDb) ? normalizeDb(settings.bassDb, -12, 12) : this.#snapshot.controls.bassDb,
-      middleDb: Number.isFinite(settings.middleDb) ? normalizeDb(settings.middleDb, -12, 12) : this.#snapshot.controls.middleDb,
-      trebleDb: Number.isFinite(settings.trebleDb) ? normalizeDb(settings.trebleDb, -12, 12) : this.#snapshot.controls.trebleDb,
-      compressionAmount: Number.isFinite(settings.compressionAmount)
-        ? normalizePercentAmount(settings.compressionAmount)
-        : this.#snapshot.controls.compressionAmount,
-      compressionBypassed: typeof settings.compressionBypassed === 'boolean'
-        ? settings.compressionBypassed
-        : this.#snapshot.controls.compressionBypassed,
-      reverbAmount: Number.isFinite(settings.reverbAmount)
-        ? normalizePercentAmount(settings.reverbAmount)
-        : this.#snapshot.controls.reverbAmount,
-      reverbBypassed: typeof settings.reverbBypassed === 'boolean'
-        ? settings.reverbBypassed
-        : this.#snapshot.controls.reverbBypassed,
-      masterVolumeDb: Number.isFinite(settings.masterVolumeDb) ? normalizeDb(settings.masterVolumeDb, -60, 0) : this.#snapshot.controls.masterVolumeDb,
-    };
+    const controls = normalizeAmpControlSettings(settings, previousControls);
     if (this.#context !== undefined) {
       if (this.#cleanGain !== undefined) smoothGainToDb(this.#cleanGain.gain, controls.cleanGainDb, this.#context.currentTime);
       if (this.#bassEq !== undefined) smoothGainToValue(this.#bassEq.gain, controls.bassDb, this.#context.currentTime);

@@ -1,12 +1,13 @@
 import { AudioEngine } from './audio/AudioEngine';
-import { DEFAULT_AMP_CONTROLS, type AmpControlSettings, type AudioSnapshot, type InputMeterSnapshot } from './audio/types';
+import type { AudioSnapshot, InputMeterSnapshot } from './audio/types';
+import { AMP_CONTROL_DEFINITIONS, type AmpControlSettings, type ContinuousControlDefinition } from './controls';
+import { WorkbenchPreferencesStore, resetControls, type StoredWorkbenchPreferences } from './settings';
 import './style.css';
 
-const CONTROLS_STORAGE_KEY = 'browser-amp.controls';
-const GUIDANCE_STORAGE_KEY = 'browser-amp.hardware-direct-monitoring-dismissed';
-
+const preferencesStore = new WorkbenchPreferencesStore(browserStorage());
+let workbenchPreferences = preferencesStore.load();
 const engine = new AudioEngine();
-engine.applyControls(loadControls());
+engine.applyControls(workbenchPreferences.controls);
 
 const app = document.querySelector<HTMLElement>('#app');
 if (app === null) throw new Error('Application root is missing.');
@@ -14,7 +15,7 @@ const root = app;
 
 let snapshot = engine.snapshot;
 let guidanceOpen = false;
-let guidanceDismissed = readStorage(GUIDANCE_STORAGE_KEY) === 'true';
+let guidanceDismissed = workbenchPreferences.hardwareDirectMonitoringGuidanceDismissed;
 
 function meterRegion(dbfs: number): string {
   if (dbfs > -3) return 'red';
@@ -29,7 +30,7 @@ function meterPositionPercent(dbfs: number): number {
 function render(next: AudioSnapshot): void {
   const previous = snapshot;
   snapshot = next;
-  if (previous.controls !== next.controls) saveControls(next.controls);
+  if (previous.controls !== next.controls) updateStoredPreferences({ controls: next.controls });
   if (structureChanged(previous, next)) renderStructure(next);
   renderControls(next.controls);
   renderMeters(next);
@@ -59,6 +60,7 @@ function renderStructure(current: AudioSnapshot): void {
         <p class="eyebrow">Clean Amp Workbench</p>
         <h1 id="page-title">Browser Amp</h1>
         <p>Connect a Live Guitar Input, shape a clean signal, then explicitly enable Processed Monitoring.</p>
+        <button id="reset-controls" type="button" class="secondary">Reset Controls</button>
       </header>
 
       <section class="panel" aria-labelledby="input-title">
@@ -82,16 +84,16 @@ function renderStructure(current: AudioSnapshot): void {
       <section class="panel" aria-labelledby="clean-gain-title">
         <div class="panel-heading"><h2 id="clean-gain-title">Clean Gain</h2><span>Linear gain</span></div>
         <p>Raise or lower the clean signal without intentional saturation.</p>
-        ${dbControl('clean-gain', 'Clean Gain', current.controls.cleanGainDb, -12, 24)}
+        ${dbControl('clean-gain', 'Clean Gain', current.controls.cleanGainDb, AMP_CONTROL_DEFINITIONS.cleanGainDb)}
       </section>
 
       <section class="panel" aria-labelledby="eq-title">
         <div class="panel-heading"><h2 id="eq-title">Three-Band EQ</h2><span>Clean Voice shaping</span></div>
         <p>Shape lows, mids, and highs around familiar musical centers.</p>
         <div class="control-stack">
-          ${dbControl('bass', 'Bass', current.controls.bassDb, -12, 12)}
-          ${dbControl('middle', 'Middle', current.controls.middleDb, -12, 12)}
-          ${dbControl('treble', 'Treble', current.controls.trebleDb, -12, 12)}
+          ${dbControl('bass', 'Bass', current.controls.bassDb, AMP_CONTROL_DEFINITIONS.bassDb)}
+          ${dbControl('middle', 'Middle', current.controls.middleDb, AMP_CONTROL_DEFINITIONS.middleDb)}
+          ${dbControl('treble', 'Treble', current.controls.trebleDb, AMP_CONTROL_DEFINITIONS.trebleDb)}
         </div>
       </section>
 
@@ -102,7 +104,7 @@ function renderStructure(current: AudioSnapshot): void {
           <input id="compression-bypass" type="checkbox" ${current.controls.compressionBypassed ? 'checked' : ''}>
           Compression Stage Bypass
         </label>
-        ${percentControl('compression-amount', 'Compression Amount', current.controls.compressionAmount)}
+        ${percentControl('compression-amount', 'Compression Amount', current.controls.compressionAmount, AMP_CONTROL_DEFINITIONS.compressionAmount)}
       </section>
 
       <section class="panel" aria-labelledby="reverb-title">
@@ -112,13 +114,13 @@ function renderStructure(current: AudioSnapshot): void {
           <input id="reverb-bypass" type="checkbox" ${current.controls.reverbBypassed ? 'checked' : ''}>
           Reverb Stage Bypass
         </label>
-        ${percentControl('reverb-amount', 'Reverb Amount', current.controls.reverbAmount)}
+        ${percentControl('reverb-amount', 'Reverb Amount', current.controls.reverbAmount, AMP_CONTROL_DEFINITIONS.reverbAmount)}
       </section>
 
       <section class="panel" aria-labelledby="master-volume-title">
         <div class="panel-heading"><h2 id="master-volume-title">Master Volume</h2><span>Attenuation only</span></div>
         <p>Sets the final Amp Chain level independently of the monitoring switch.</p>
-        ${dbControl('master-volume', 'Master Volume', current.controls.masterVolumeDb, -60, 0)}
+        ${dbControl('master-volume', 'Master Volume', current.controls.masterVolumeDb, AMP_CONTROL_DEFINITIONS.masterVolumeDb)}
       </section>
 
       ${meterPanel('output', 'Output Level Meter', current.outputMeter, 'Post-Master signal before browser output.')}
@@ -137,6 +139,11 @@ function renderStructure(current: AudioSnapshot): void {
 }
 
 function bindStructureEvents(): void {
+  root.querySelector<HTMLButtonElement>('#reset-controls')?.addEventListener('click', () => {
+    workbenchPreferences = resetControls(workbenchPreferences);
+    preferencesStore.save(workbenchPreferences);
+    engine.applyControls(workbenchPreferences.controls);
+  });
   root.querySelector<HTMLButtonElement>('#connect')?.addEventListener('click', () => void engine.connectInput({ deviceId: snapshot.selectedInputDeviceId }));
   root.querySelector<HTMLButtonElement>('#disconnect')?.addEventListener('click', () => void engine.disconnectInput());
   root.querySelector<HTMLSelectElement>('#input-device')?.addEventListener('change', (event) => {
@@ -200,28 +207,29 @@ function bindContinuousControl(id: string, apply: (value: number) => void): void
 }
 
 function renderControls(controls: AmpControlSettings): void {
-  setControlValue('clean-gain', controls.cleanGainDb);
-  setControlValue('bass', controls.bassDb);
-  setControlValue('middle', controls.middleDb);
-  setControlValue('treble', controls.trebleDb);
-  setControlValue('compression-amount', controls.compressionAmount, 0);
+  setControlValue('clean-gain', controls.cleanGainDb, AMP_CONTROL_DEFINITIONS.cleanGainDb);
+  setControlValue('bass', controls.bassDb, AMP_CONTROL_DEFINITIONS.bassDb);
+  setControlValue('middle', controls.middleDb, AMP_CONTROL_DEFINITIONS.middleDb);
+  setControlValue('treble', controls.trebleDb, AMP_CONTROL_DEFINITIONS.trebleDb);
+  setControlValue('compression-amount', controls.compressionAmount, AMP_CONTROL_DEFINITIONS.compressionAmount);
   const compressionBypass = root.querySelector<HTMLInputElement>('#compression-bypass');
   const compressionState = root.querySelector<HTMLElement>('#compression-state');
   if (compressionBypass !== null) compressionBypass.checked = controls.compressionBypassed;
   if (compressionState !== null) compressionState.textContent = controls.compressionBypassed ? 'Bypassed' : 'Active';
-  setControlValue('reverb-amount', controls.reverbAmount, 0);
+  setControlValue('reverb-amount', controls.reverbAmount, AMP_CONTROL_DEFINITIONS.reverbAmount);
   const reverbBypass = root.querySelector<HTMLInputElement>('#reverb-bypass');
   const reverbState = root.querySelector<HTMLElement>('#reverb-state');
   if (reverbBypass !== null) reverbBypass.checked = controls.reverbBypassed;
   if (reverbState !== null) reverbState.textContent = controls.reverbBypassed ? 'Bypassed' : 'Active';
-  setControlValue('master-volume', controls.masterVolumeDb);
+  setControlValue('master-volume', controls.masterVolumeDb, AMP_CONTROL_DEFINITIONS.masterVolumeDb);
 }
 
-function setControlValue(id: string, value: number, fractionDigits = 1): void {
+function setControlValue(id: string, value: number, definition: ContinuousControlDefinition): void {
   const slider = root.querySelector<HTMLInputElement>(`#${id}-slider`);
   const numeric = root.querySelector<HTMLInputElement>(`#${id}-value`);
   if (slider !== null && slider.valueAsNumber !== value) slider.value = String(value);
-  if (numeric !== null && numeric.value !== value.toFixed(fractionDigits)) numeric.value = value.toFixed(fractionDigits);
+  const formatted = value.toFixed(definition.fractionDigits);
+  if (numeric !== null && numeric.value !== formatted) numeric.value = formatted;
 }
 
 function renderMeters(current: AudioSnapshot): void {
@@ -269,23 +277,23 @@ function meterPanel(id: 'input' | 'output', title: string, reading: InputMeterSn
   </section>`;
 }
 
-function dbControl(id: string, label: string, value: number, minimum: number, maximum: number): string {
+function dbControl(id: string, label: string, value: number, definition: ContinuousControlDefinition): string {
   return `<div class="continuous-control">
     <label for="${id}-slider">${label}</label>
-    <input id="${id}-slider" aria-label="${label} slider" type="range" min="${minimum}" max="${maximum}" step="0.1" value="${value}">
+    <input id="${id}-slider" aria-label="${label} slider" type="range" min="${definition.minimum}" max="${definition.maximum}" step="${definition.step}" value="${value}">
     <div class="numeric-control">
-      <input id="${id}-value" aria-label="${label} value" type="number" inputmode="decimal" min="${minimum}" max="${maximum}" step="0.1" value="${value.toFixed(1)}">
+      <input id="${id}-value" aria-label="${label} value" type="number" inputmode="decimal" min="${definition.minimum}" max="${definition.maximum}" step="${definition.step}" value="${value.toFixed(definition.fractionDigits)}">
       <span aria-hidden="true">dB</span>
     </div>
   </div>`;
 }
 
-function percentControl(id: string, label: string, value: number): string {
+function percentControl(id: string, label: string, value: number, definition: ContinuousControlDefinition): string {
   return `<div class="continuous-control">
     <label for="${id}-slider">${label}</label>
-    <input id="${id}-slider" aria-label="${label} slider" type="range" min="0" max="100" step="1" value="${value}">
+    <input id="${id}-slider" aria-label="${label} slider" type="range" min="${definition.minimum}" max="${definition.maximum}" step="${definition.step}" value="${value}">
     <div class="numeric-control">
-      <input id="${id}-value" aria-label="${label} value" type="number" inputmode="numeric" min="0" max="100" step="1" value="${value}">
+      <input id="${id}-value" aria-label="${label} value" type="number" inputmode="numeric" min="${definition.minimum}" max="${definition.maximum}" step="${definition.step}" value="${value.toFixed(definition.fractionDigits)}">
       <span aria-hidden="true">%</span>
     </div>
   </div>`;
@@ -342,7 +350,7 @@ function hardwareGuidance(): string {
 function dismissGuidance(): void {
   guidanceDismissed = true;
   guidanceOpen = false;
-  writeStorage(GUIDANCE_STORAGE_KEY, 'true');
+  updateStoredPreferences({ hardwareDirectMonitoringGuidanceDismissed: true });
   rerenderStructure();
 }
 
@@ -352,44 +360,16 @@ function rerenderStructure(): void {
   renderMeters(snapshot);
 }
 
-function loadControls(): AmpControlSettings {
-  const raw = readStorage(CONTROLS_STORAGE_KEY);
-  if (raw === undefined) return DEFAULT_AMP_CONTROLS;
-  try {
-    const parsed = JSON.parse(raw) as Partial<AmpControlSettings>;
-    return {
-      cleanGainDb: typeof parsed.cleanGainDb === 'number' ? parsed.cleanGainDb : DEFAULT_AMP_CONTROLS.cleanGainDb,
-      bassDb: typeof parsed.bassDb === 'number' ? parsed.bassDb : DEFAULT_AMP_CONTROLS.bassDb,
-      middleDb: typeof parsed.middleDb === 'number' ? parsed.middleDb : DEFAULT_AMP_CONTROLS.middleDb,
-      trebleDb: typeof parsed.trebleDb === 'number' ? parsed.trebleDb : DEFAULT_AMP_CONTROLS.trebleDb,
-      compressionAmount: typeof parsed.compressionAmount === 'number' ? parsed.compressionAmount : DEFAULT_AMP_CONTROLS.compressionAmount,
-      compressionBypassed: typeof parsed.compressionBypassed === 'boolean' ? parsed.compressionBypassed : DEFAULT_AMP_CONTROLS.compressionBypassed,
-      reverbAmount: typeof parsed.reverbAmount === 'number' ? parsed.reverbAmount : DEFAULT_AMP_CONTROLS.reverbAmount,
-      reverbBypassed: typeof parsed.reverbBypassed === 'boolean' ? parsed.reverbBypassed : DEFAULT_AMP_CONTROLS.reverbBypassed,
-      masterVolumeDb: typeof parsed.masterVolumeDb === 'number' ? parsed.masterVolumeDb : DEFAULT_AMP_CONTROLS.masterVolumeDb,
-    };
-  } catch {
-    return DEFAULT_AMP_CONTROLS;
-  }
+function updateStoredPreferences(change: Partial<Omit<StoredWorkbenchPreferences, 'version'>>): void {
+  workbenchPreferences = { ...workbenchPreferences, ...change };
+  preferencesStore.save(workbenchPreferences);
 }
 
-function saveControls(controls: AmpControlSettings): void {
-  writeStorage(CONTROLS_STORAGE_KEY, JSON.stringify(controls));
-}
-
-function readStorage(key: string): string | undefined {
+function browserStorage(): Storage | undefined {
   try {
-    return localStorage.getItem(key) ?? undefined;
+    return window.localStorage;
   } catch {
     return undefined;
-  }
-}
-
-function writeStorage(key: string, value: string): void {
-  try {
-    localStorage.setItem(key, value);
-  } catch {
-    // The controls still work when private browsing or policy blocks storage.
   }
 }
 
