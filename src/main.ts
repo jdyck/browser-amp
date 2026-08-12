@@ -49,11 +49,13 @@ function structureChanged(previous: AudioSnapshot, next: AudioSnapshot): boolean
     || previous.outputRouting.devices !== next.outputRouting.devices
     || previous.outputRouting.selectedDeviceId !== next.outputRouting.selectedDeviceId
     || previous.outputRouting.error !== next.outputRouting.error
-    || previous.error !== next.error;
+    || previous.error !== next.error
+    || previous.recovery !== next.recovery;
 }
 
 function renderStructure(current: AudioSnapshot): void {
   const connected = current.lifecycle === 'connected-muted' || current.lifecycle === 'monitoring';
+  const recovery = recoveryPresentation(current, connected);
   root.innerHTML = `
     <section class="workbench" aria-labelledby="page-title">
       <header>
@@ -70,13 +72,13 @@ function renderStructure(current: AudioSnapshot): void {
         </div>
         <p id="connection-description">${connectionDescription(current)}</p>
         <div class="actions">
-          <button id="connect" type="button" ${current.lifecycle === 'connecting' ? 'disabled' : ''}>${connected ? 'Reconnect Input' : 'Connect Input'}</button>
+          <button id="connect" type="button" ${current.lifecycle === 'connecting' ? 'disabled' : ''}>${recovery.connectButtonLabel}</button>
           ${connected ? '<button id="disconnect" type="button" class="secondary">Disconnect</button>' : ''}
         </div>
         ${current.devices.length > 0 ? deviceSelector(current) : ''}
         ${current.inputChannelCount > 1 ? channelSelector(current) : ''}
         ${current.rawCaptureWarnings.map((warning) => `<p class="warning" role="alert">${escapeHtml(warning)}</p>`).join('')}
-        ${current.error === undefined ? '' : `<p class="error" role="alert">${escapeHtml(current.error)}</p>`}
+        ${recovery.inputMessage === undefined ? '' : `<p class="error" role="alert">${escapeHtml(recovery.inputMessage)}</p>`}
       </section>
 
       ${meterPanel('input', 'Input Level Meter', current.meter, 'Live Guitar Input before Clean Gain. Connecting and metering remain silent until Processed Monitoring is enabled.')}
@@ -130,7 +132,11 @@ function renderStructure(current: AudioSnapshot): void {
         <p>${routingDescription(current)}</p>
         ${outputSelector(current, connected)}
         ${current.outputRouting.error === undefined ? '' : `<p class="error" role="alert">${escapeHtml(current.outputRouting.error)}</p>`}
-        <button id="monitoring-toggle" type="button" ${connected ? '' : 'disabled'}>${current.monitoring ? 'Disable Monitoring' : 'Enable Monitoring'}</button>
+        ${recovery.monitoringMessage === undefined ? '' : `<p class="error" role="alert">${escapeHtml(recovery.monitoringMessage)}</p>`}
+        <div class="actions">
+          ${recovery.retrySelectedOutput ? '<button id="retry-output" type="button" class="secondary">Retry Selected Output</button>' : ''}
+          <button id="monitoring-toggle" type="button" ${recovery.monitoringDisabled ? 'disabled' : ''}>${recovery.monitoringButtonLabel}</button>
+        </div>
         ${guidanceOpen ? hardwareGuidance() : ''}
       </section>
     </section>`;
@@ -148,7 +154,7 @@ function bindStructureEvents(): void {
   root.querySelector<HTMLButtonElement>('#disconnect')?.addEventListener('click', () => void engine.disconnectInput());
   root.querySelector<HTMLSelectElement>('#input-device')?.addEventListener('change', (event) => {
     const deviceId = (event.currentTarget as HTMLSelectElement).value;
-    if (deviceId !== '') void engine.connectInput({ deviceId });
+    void engine.connectInput({ deviceId: deviceId === '' ? undefined : deviceId });
   });
   root.querySelector<HTMLSelectElement>('#input-channel')?.addEventListener('change', (event) => {
     engine.applySettings({
@@ -159,6 +165,9 @@ function bindStructureEvents(): void {
   root.querySelector<HTMLSelectElement>('#output-device')?.addEventListener('change', (event) => {
     const deviceId = (event.currentTarget as HTMLSelectElement).value;
     void engine.selectOutput(deviceId === '' ? undefined : deviceId);
+  });
+  root.querySelector<HTMLButtonElement>('#retry-output')?.addEventListener('click', () => {
+    void engine.selectOutput(snapshot.outputRouting.selectedDeviceId);
   });
   bindContinuousControl('clean-gain', (cleanGainDb) => engine.applyControls({ ...snapshot.controls, cleanGainDb }));
   bindContinuousControl('bass', (bassDb) => engine.applyControls({ ...snapshot.controls, bassDb }));
@@ -314,6 +323,54 @@ function connectionDescription(current: AudioSnapshot): string {
   return 'Start by connecting an audio interface or microphone visible to your browser.';
 }
 
+interface RecoveryPresentation {
+  readonly connectButtonLabel: string;
+  readonly inputMessage: string | undefined;
+  readonly monitoringMessage: string | undefined;
+  readonly monitoringButtonLabel: string;
+  readonly monitoringDisabled: boolean;
+  readonly retrySelectedOutput: boolean;
+}
+
+function recoveryPresentation(current: AudioSnapshot, connected: boolean): RecoveryPresentation {
+  const presentation: RecoveryPresentation = {
+    connectButtonLabel: connected ? 'Reconnect Input' : 'Connect Input',
+    inputMessage: undefined,
+    monitoringMessage: undefined,
+    monitoringButtonLabel: current.monitoring ? 'Disable Monitoring' : 'Enable Monitoring',
+    monitoringDisabled: !connected,
+    retrySelectedOutput: false,
+  };
+  if (current.recovery === undefined) return presentation;
+
+  switch (current.recovery.action) {
+    case 'reconnect-input':
+      return {
+        ...presentation,
+        connectButtonLabel: current.recovery.code === 'permission-denied'
+          || current.recovery.code === 'no-input-devices'
+          || current.recovery.code === 'input-connection-failed'
+          ? 'Try Again'
+          : 'Reconnect Input',
+        inputMessage: current.recovery.message,
+      };
+    case 'resume-monitoring':
+      return {
+        ...presentation,
+        monitoringMessage: current.recovery.message,
+        monitoringButtonLabel: 'Resume Monitoring',
+      };
+    case 'choose-output':
+      return {
+        ...presentation,
+        monitoringButtonLabel: 'Choose Output Before Monitoring',
+        monitoringDisabled: true,
+        retrySelectedOutput: current.outputRouting.selectedDeviceId !== undefined
+          && current.outputRouting.devices.some((device) => device.id === current.outputRouting.selectedDeviceId),
+      };
+  }
+}
+
 function routingDescription(current: AudioSnapshot): string {
   if (current.outputRouting.mode === 'selectable') return 'Choose a permitted browser-visible output, or keep the system default.';
   if (current.outputRouting.mode === 'system') return 'This browser does not expose output selection. Output follows your browser and system sound settings.';
@@ -321,8 +378,9 @@ function routingDescription(current: AudioSnapshot): string {
 }
 
 function deviceSelector(current: AudioSnapshot): string {
+  const selectedUnavailable = unavailableDeviceOption(current.selectedInputDeviceId, current.devices, 'input');
   const options = current.devices.map((device) => `<option value="${escapeHtml(device.id)}" ${device.id === current.selectedInputDeviceId ? 'selected' : ''}>${escapeHtml(device.label)}</option>`).join('');
-  return `<label class="field" for="input-device">Input device</label><select id="input-device" aria-describedby="device-help"><option value="">System default</option>${options}</select><span id="device-help" class="field-help">Choose a device to reconnect to it explicitly.</span>`;
+  return `<label class="field" for="input-device">Input device</label><select id="input-device" aria-describedby="device-help"><option value="">System default</option>${selectedUnavailable}${options}</select><span id="device-help" class="field-help">Choose a device to reconnect to it explicitly.</span>`;
 }
 
 function channelSelector(current: AudioSnapshot): string {
@@ -332,8 +390,19 @@ function channelSelector(current: AudioSnapshot): string {
 
 function outputSelector(current: AudioSnapshot, connected: boolean): string {
   if (!connected || current.outputRouting.mode !== 'selectable') return '';
+  const selectedUnavailable = unavailableDeviceOption(current.outputRouting.selectedDeviceId, current.outputRouting.devices, 'output');
   const options = current.outputRouting.devices.map((device) => `<option value="${escapeHtml(device.id)}" ${device.id === current.outputRouting.selectedDeviceId ? 'selected' : ''}>${escapeHtml(device.label)}</option>`).join('');
-  return `<label class="field" for="output-device">Output device</label><select id="output-device"><option value="">System default</option>${options}</select>`;
+  return `<label class="field" for="output-device">Output device</label><select id="output-device"><option value="">System default</option>${selectedUnavailable}${options}</select>`;
+}
+
+function unavailableDeviceOption(
+  selectedDeviceId: string | undefined,
+  devices: readonly { readonly id: string }[],
+  kind: 'input' | 'output',
+): string {
+  return selectedDeviceId !== undefined && !devices.some((device) => device.id === selectedDeviceId)
+    ? `<option value="${escapeHtml(selectedDeviceId)}" selected>Unavailable ${kind} (selected)</option>`
+    : '';
 }
 
 function hardwareGuidance(): string {

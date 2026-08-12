@@ -7,7 +7,7 @@ function audioNode(properties: Record<string, unknown> = {}): AudioNode {
 }
 
 function audioContext(overrides: Record<string, unknown> = {}): AudioContext {
-  return {
+  return Object.assign(new EventTarget(), {
     currentTime: 1,
     sampleRate: 48_000,
     destination: audioNode(),
@@ -43,26 +43,37 @@ function audioContext(overrides: Record<string, unknown> = {}): AudioContext {
     resume: vi.fn(),
     close: vi.fn(),
     ...overrides,
-  } as unknown as AudioContext;
+  }) as unknown as AudioContext;
+}
+
+function capture(trackSettings: MediaTrackSettings = {}): { readonly stream: MediaStream; readonly track: MediaStreamTrack } {
+  const track = Object.assign(new EventTarget(), {
+    getSettings: () => ({ channelCount: 2, deviceId: 'guitar-interface', echoCancellation: false, noiseSuppression: false, autoGainControl: false, ...trackSettings }),
+    stop: vi.fn(),
+  }) as unknown as MediaStreamTrack;
+  const stream = { getAudioTracks: () => [track], getTracks: () => [track] } as unknown as MediaStream;
+  return { stream, track };
+}
+
+function testMediaDevices(overrides: Record<string, unknown> = {}): MediaDevices {
+  const { stream } = capture();
+  return Object.assign(new EventTarget(), {
+    getUserMedia: vi.fn().mockResolvedValue(stream),
+    enumerateDevices: vi.fn().mockResolvedValue([
+      { deviceId: 'guitar-interface', kind: 'audioinput', label: 'Guitar interface' },
+      { deviceId: 'headphones', kind: 'audiooutput', label: 'Studio headphones' },
+    ]),
+    ...overrides,
+  }) as unknown as MediaDevices;
 }
 
 function browser(overrides: Partial<BrowserAudio> = {}, trackSettings: MediaTrackSettings = {}): BrowserAudio {
-  const track = {
-    getSettings: () => ({ channelCount: 2, deviceId: 'guitar-interface', echoCancellation: false, noiseSuppression: false, autoGainControl: false, ...trackSettings }),
-    stop: vi.fn(),
-  } as unknown as MediaStreamTrack;
-  const stream = { getAudioTracks: () => [track], getTracks: () => [track] } as unknown as MediaStream;
+  const { stream } = capture(trackSettings);
 
   return {
-    mediaDevices: {
+    mediaDevices: testMediaDevices({
       getUserMedia: vi.fn().mockResolvedValue(stream),
-      enumerateDevices: vi.fn().mockResolvedValue([
-        { deviceId: 'guitar-interface', kind: 'audioinput', label: 'Guitar interface' },
-        { deviceId: 'headphones', kind: 'audiooutput', label: 'Studio headphones' },
-      ]),
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-    } as unknown as MediaDevices,
+    }),
     createAudioContext: vi.fn(() => audioContext()),
     requestAnimationFrame: vi.fn(() => 1),
     cancelAnimationFrame: vi.fn(),
@@ -188,7 +199,11 @@ describe('AudioEngine', () => {
       lifecycle: 'connected-muted',
       monitoring: false,
       controls: { cleanGainDb: 6, masterVolumeDb: -12 },
-      outputRouting: { error: 'The browser could not route audio to that output. Monitoring was muted.' },
+      outputRouting: {
+        selectedDeviceId: 'missing-output',
+        error: 'The browser could not route audio to that output. Choose an available output, then enable monitoring again.',
+      },
+      recovery: { code: 'output-routing-failed', action: 'choose-output' },
     });
   });
 
@@ -239,6 +254,21 @@ describe('AudioEngine', () => {
     });
   });
 
+  it('rejects a capture that does not match the exact input selection', async () => {
+    const environment = browser({}, { deviceId: 'built-in' });
+    const engine = new AudioEngine(environment);
+
+    await engine.connectInput({ deviceId: 'guitar-interface' });
+
+    expect(environment.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1);
+    expect(engine.snapshot).toMatchObject({
+      lifecycle: 'error',
+      monitoring: false,
+      selectedInputDeviceId: 'guitar-interface',
+      recovery: { code: 'input-selection-failed', action: 'reconnect-input' },
+    });
+  });
+
   it('keeps mono input mono and hides the input-channel capability', async () => {
     const environment = browser({}, { channelCount: 1 });
     const engine = new AudioEngine(environment);
@@ -254,18 +284,266 @@ describe('AudioEngine', () => {
 
     await engine.connectInput();
 
-    expect(engine.snapshot.rawCaptureWarnings).toEqual(['Noise suppression could not be confirmed disabled by this browser.']);
+    expect(engine.snapshot.rawCaptureWarnings).toEqual([
+      'Noise suppression could not be confirmed disabled. Check browser or system input settings before monitoring.',
+    ]);
   });
 
   it('reports a permission failure and remains muted', async () => {
     const baseline = browser();
     const environment = browser({
-      mediaDevices: { ...baseline.mediaDevices, getUserMedia: vi.fn().mockRejectedValue(new DOMException('Denied', 'NotAllowedError')) } as unknown as MediaDevices,
+      mediaDevices: testMediaDevices({
+        enumerateDevices: baseline.mediaDevices.enumerateDevices,
+        getUserMedia: vi.fn().mockRejectedValue(new DOMException('Denied', 'NotAllowedError')),
+      }),
     });
     const engine = new AudioEngine(environment);
 
     await engine.connectInput();
 
-    expect(engine.snapshot).toMatchObject({ lifecycle: 'error', monitoring: false, error: 'Microphone permission was not granted.' });
+    expect(engine.snapshot).toMatchObject({
+      lifecycle: 'error',
+      monitoring: false,
+      recovery: { code: 'permission-denied', action: 'reconnect-input' },
+    });
+  });
+
+  it('distinguishes a missing input from an unavailable exact selection', async () => {
+    const noInputDevices = testMediaDevices({
+      getUserMedia: vi.fn().mockRejectedValue(new DOMException('No inputs', 'NotFoundError')),
+      enumerateDevices: vi.fn().mockResolvedValue([]),
+    });
+    const missingInputEngine = new AudioEngine(browser({ mediaDevices: noInputDevices }));
+
+    await missingInputEngine.connectInput();
+
+    expect(missingInputEngine.snapshot).toMatchObject({
+      lifecycle: 'error',
+      monitoring: false,
+      recovery: { code: 'no-input-devices', action: 'reconnect-input' },
+    });
+
+    const exactSelection = testMediaDevices({
+      getUserMedia: vi.fn().mockRejectedValue(new DOMException('Gone', 'NotFoundError')),
+      enumerateDevices: vi.fn().mockResolvedValue([
+        { deviceId: 'built-in', kind: 'audioinput', label: 'Built-in microphone' },
+      ]),
+    });
+    const exactSelectionEngine = new AudioEngine(browser({ mediaDevices: exactSelection }));
+
+    await exactSelectionEngine.connectInput({ deviceId: 'guitar-interface' });
+
+    expect(exactSelection.getUserMedia).toHaveBeenCalledTimes(1);
+    expect(exactSelectionEngine.snapshot).toMatchObject({
+      lifecycle: 'error',
+      monitoring: false,
+      selectedInputDeviceId: 'guitar-interface',
+      devices: [{ id: 'built-in', label: 'Built-in microphone' }],
+      recovery: { code: 'input-selection-failed', action: 'reconnect-input' },
+    });
+  });
+
+  it('silences Processed Monitoring when the active input is lost and waits for an explicit reconnect', async () => {
+    const activeCapture = capture();
+    const replacementCapture = capture();
+    const getUserMedia = vi.fn()
+      .mockResolvedValueOnce(activeCapture.stream)
+      .mockResolvedValueOnce(replacementCapture.stream);
+    const environment = browser({
+      mediaDevices: testMediaDevices({ getUserMedia }),
+    });
+    const engine = new AudioEngine(environment);
+    engine.applyControls({ ...engine.snapshot.controls, cleanGainDb: 9, masterVolumeDb: -12 });
+    await engine.connectInput({ deviceId: 'guitar-interface' });
+    await engine.setMonitoring(true);
+
+    activeCapture.track.dispatchEvent(new Event('ended'));
+
+    expect(engine.snapshot).toMatchObject({
+      lifecycle: 'error',
+      monitoring: false,
+      controls: { cleanGainDb: 9, masterVolumeDb: -12 },
+      recovery: {
+        code: 'input-device-lost',
+        action: 'reconnect-input',
+      },
+    });
+    expect(getUserMedia).toHaveBeenCalledTimes(1);
+
+    await engine.connectInput({ deviceId: 'guitar-interface' });
+    expect(getUserMedia).toHaveBeenCalledTimes(2);
+    expect(engine.snapshot).toMatchObject({ lifecycle: 'connected-muted', monitoring: false, recovery: undefined });
+  });
+
+  it('preserves a valid input channel and output route across explicit input reconnection', async () => {
+    const activeCapture = capture({ channelCount: 2 });
+    const replacementCapture = capture({ channelCount: 2 });
+    const getUserMedia = vi.fn()
+      .mockResolvedValueOnce(activeCapture.stream)
+      .mockResolvedValueOnce(replacementCapture.stream);
+    const setSinkId = vi.fn().mockResolvedValue(undefined);
+    const engine = new AudioEngine(browser({
+      mediaDevices: testMediaDevices({ getUserMedia }),
+      createAudioContext: () => audioContext({ setSinkId }),
+    }));
+    await engine.connectInput({ deviceId: 'guitar-interface' });
+    engine.applySettings({ selectedInputDeviceId: 'guitar-interface', inputChannel: 1 });
+    await engine.selectOutput('headphones');
+    await engine.setMonitoring(true);
+
+    activeCapture.track.dispatchEvent(new Event('ended'));
+    await engine.connectInput({ deviceId: 'guitar-interface' });
+
+    expect(setSinkId).toHaveBeenNthCalledWith(1, 'headphones');
+    expect(setSinkId).toHaveBeenNthCalledWith(2, 'headphones');
+    expect(engine.snapshot).toMatchObject({
+      lifecycle: 'connected-muted',
+      monitoring: false,
+      inputChannel: 1,
+      outputRouting: { selectedDeviceId: 'headphones', error: undefined },
+      recovery: undefined,
+    });
+  });
+
+  it('silences a suspended AudioContext and only resumes after a player action', async () => {
+    const context = audioContext();
+    const resume = vi.mocked(context.resume).mockImplementation(async () => {
+      Object.assign(context, { state: 'running' });
+    });
+    const engine = new AudioEngine(browser({ createAudioContext: () => context }));
+    await engine.connectInput();
+    await engine.setMonitoring(true);
+    expect(resume).toHaveBeenCalledTimes(1);
+
+    Object.assign(context, { state: 'suspended' });
+    context.dispatchEvent(new Event('statechange'));
+
+    expect(engine.snapshot).toMatchObject({
+      lifecycle: 'connected-muted',
+      monitoring: false,
+      recovery: {
+        code: 'audio-context-suspended',
+        action: 'resume-monitoring',
+      },
+    });
+    expect(resume).toHaveBeenCalledTimes(1);
+
+    await engine.setMonitoring(true);
+    expect(resume).toHaveBeenCalledTimes(2);
+    expect(engine.snapshot).toMatchObject({ lifecycle: 'monitoring', monitoring: true, recovery: undefined });
+  });
+
+  it('surfaces AudioContext suspension while connected and already muted', async () => {
+    const context = audioContext();
+    const engine = new AudioEngine(browser({ createAudioContext: () => context }));
+    await engine.connectInput();
+
+    Object.assign(context, { state: 'suspended' });
+    context.dispatchEvent(new Event('statechange'));
+
+    expect(engine.snapshot).toMatchObject({
+      lifecycle: 'connected-muted',
+      monitoring: false,
+      recovery: { code: 'audio-context-suspended', action: 'resume-monitoring' },
+    });
+  });
+
+  it('refreshes device capabilities without changing a valid active route', async () => {
+    let devices: MediaDeviceInfo[] = [
+      { deviceId: 'guitar-interface', kind: 'audioinput', label: 'Guitar interface' } as MediaDeviceInfo,
+      { deviceId: 'headphones', kind: 'audiooutput', label: 'Studio headphones' } as MediaDeviceInfo,
+    ];
+    const mediaDevices = testMediaDevices({ enumerateDevices: vi.fn(async () => devices) });
+    const setSinkId = vi.fn().mockResolvedValue(undefined);
+    const engine = new AudioEngine(browser({
+      mediaDevices,
+      createAudioContext: () => audioContext({ setSinkId }),
+    }));
+    engine.applyControls({ ...engine.snapshot.controls, cleanGainDb: 6 });
+    await engine.connectInput({ deviceId: 'guitar-interface' });
+    engine.applySettings({ selectedInputDeviceId: 'guitar-interface', inputChannel: 1 });
+    await engine.selectOutput('headphones');
+    await engine.setMonitoring(true);
+
+    devices = [
+      ...devices,
+      { deviceId: 'usb-cable', kind: 'audioinput', label: 'USB cable' } as MediaDeviceInfo,
+      { deviceId: 'speakers', kind: 'audiooutput', label: 'Studio speakers' } as MediaDeviceInfo,
+    ];
+    mediaDevices.dispatchEvent(new Event('devicechange'));
+
+    await vi.waitFor(() => expect(engine.snapshot.devices).toHaveLength(2));
+    expect(engine.snapshot).toMatchObject({
+      lifecycle: 'monitoring',
+      monitoring: true,
+      selectedInputDeviceId: 'guitar-interface',
+      inputChannel: 1,
+      controls: { cleanGainDb: 6 },
+      outputRouting: { selectedDeviceId: 'headphones' },
+    });
+    expect(engine.snapshot.outputRouting.devices).toHaveLength(2);
+  });
+
+  it('mutes an invalid active output route and preserves it for explicit recovery', async () => {
+    let devices: MediaDeviceInfo[] = [
+      { deviceId: 'guitar-interface', kind: 'audioinput', label: 'Guitar interface' } as MediaDeviceInfo,
+      { deviceId: 'headphones', kind: 'audiooutput', label: 'Studio headphones' } as MediaDeviceInfo,
+    ];
+    const mediaDevices = testMediaDevices({ enumerateDevices: vi.fn(async () => devices) });
+    const engine = new AudioEngine(browser({
+      mediaDevices,
+      createAudioContext: () => audioContext({ setSinkId: vi.fn().mockResolvedValue(undefined) }),
+    }));
+    engine.applyControls({ ...engine.snapshot.controls, masterVolumeDb: -9 });
+    await engine.connectInput({ deviceId: 'guitar-interface' });
+    await engine.selectOutput('headphones');
+    await engine.setMonitoring(true);
+
+    devices = devices.filter((device) => device.deviceId !== 'headphones');
+    mediaDevices.dispatchEvent(new Event('devicechange'));
+
+    await vi.waitFor(() => expect(engine.snapshot.monitoring).toBe(false));
+    expect(engine.snapshot).toMatchObject({
+      lifecycle: 'connected-muted',
+      controls: { masterVolumeDb: -9 },
+      outputRouting: { selectedDeviceId: 'headphones' },
+      recovery: { code: 'output-device-lost', action: 'choose-output' },
+    });
+  });
+
+  it('does not fall back after unplug and replug of the active input', async () => {
+    let devices: MediaDeviceInfo[] = [
+      { deviceId: 'guitar-interface', kind: 'audioinput', label: 'Guitar interface' } as MediaDeviceInfo,
+      { deviceId: 'headphones', kind: 'audiooutput', label: 'Studio headphones' } as MediaDeviceInfo,
+    ];
+    const mediaDevices = testMediaDevices({ enumerateDevices: vi.fn(async () => devices) });
+    const engine = new AudioEngine(browser({ mediaDevices }));
+    await engine.connectInput({ deviceId: 'guitar-interface' });
+    await engine.setMonitoring(true);
+
+    devices = devices.filter((device) => device.deviceId !== 'guitar-interface');
+    mediaDevices.dispatchEvent(new Event('devicechange'));
+
+    await vi.waitFor(() => expect(engine.snapshot.lifecycle).toBe('error'));
+    expect(engine.snapshot).toMatchObject({
+      monitoring: false,
+      selectedInputDeviceId: 'guitar-interface',
+      recovery: { code: 'input-device-lost', action: 'reconnect-input' },
+    });
+    expect(mediaDevices.getUserMedia).toHaveBeenCalledTimes(1);
+
+    devices = [
+      { deviceId: 'guitar-interface', kind: 'audioinput', label: 'Guitar interface' } as MediaDeviceInfo,
+      ...devices,
+    ];
+    mediaDevices.dispatchEvent(new Event('devicechange'));
+
+    await vi.waitFor(() => expect(engine.snapshot.devices).toContainEqual({ id: 'guitar-interface', label: 'Guitar interface' }));
+    expect(engine.snapshot).toMatchObject({ lifecycle: 'error', monitoring: false });
+    expect(mediaDevices.getUserMedia).toHaveBeenCalledTimes(1);
+
+    await engine.connectInput({ deviceId: 'guitar-interface' });
+    expect(mediaDevices.getUserMedia).toHaveBeenCalledTimes(2);
+    expect(engine.snapshot).toMatchObject({ lifecycle: 'connected-muted', monitoring: false });
   });
 });

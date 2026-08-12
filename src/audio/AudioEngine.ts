@@ -3,7 +3,7 @@ import { DEFAULT_AMP_CONTROLS, normalizeAmpControlSettings, normalizePercentAmou
 import { dbToLinearGain, GAIN_SMOOTHING_SECONDS, smoothGainToDb, smoothGainToValue } from './gain';
 import { meterReadingFromSamples, METER_FLOOR_DBFS, nextPeakHold, type PeakHold } from './meter';
 import { createPlateImpulse } from './reverb';
-import type { AmpControlSettings, AudioEngine as AudioEngineContract, AudioSnapshot, InputDevice, InputSettings, OutputDevice } from './types';
+import type { AmpControlSettings, AudioEngine as AudioEngineContract, AudioRecoverySnapshot, AudioSnapshot, InputDevice, InputSettings, OutputDevice } from './types';
 
 const initialSettings: InputSettings = { selectedInputDeviceId: undefined, inputChannel: 0 };
 // Bound full-scale Amount to a strong but usable wet return (about -20 dB).
@@ -52,13 +52,63 @@ function initialSnapshot(): AudioSnapshot {
     outputMeter: { dbfs: METER_FLOOR_DBFS, peakDbfs: METER_FLOOR_DBFS },
     clipLatched: false,
     error: undefined,
+    recovery: undefined,
   };
 }
 
-function userFacingError(error: unknown): string {
-  if (error instanceof DOMException && error.name === 'NotAllowedError') return 'Microphone permission was not granted.';
-  if (error instanceof DOMException && error.name === 'NotFoundError') return 'The selected input device is not available.';
-  return 'Could not connect the selected input device.';
+const RECOVERIES = {
+  permissionDenied: {
+    code: 'permission-denied',
+    action: 'reconnect-input',
+    message: 'Microphone access is blocked. Allow access in browser settings, then choose Try Again.',
+  },
+  noInputDevices: {
+    code: 'no-input-devices',
+    action: 'reconnect-input',
+    message: 'No audio input is available. Connect an audio interface or microphone, then choose Try Again.',
+  },
+  inputSelectionFailed: {
+    code: 'input-selection-failed',
+    action: 'reconnect-input',
+    message: 'The selected input device is unavailable. Reconnect it or choose another input, then try again.',
+  },
+  inputConnectionFailed: {
+    code: 'input-connection-failed',
+    action: 'reconnect-input',
+    message: 'The input connection failed. Check the device and browser audio settings, then choose Try Again.',
+  },
+  inputDeviceLost: {
+    code: 'input-device-lost',
+    action: 'reconnect-input',
+    message: 'The active input device was disconnected. Reconnect it or choose another input, then reconnect explicitly.',
+  },
+  outputDeviceLost: {
+    code: 'output-device-lost',
+    action: 'choose-output',
+    message: 'The selected output device was disconnected. Choose an available output, then enable monitoring again.',
+  },
+  outputRoutingFailed: {
+    code: 'output-routing-failed',
+    action: 'choose-output',
+    message: 'The browser could not route audio to that output. Choose an available output, then enable monitoring again.',
+  },
+  audioContextSuspended: {
+    code: 'audio-context-suspended',
+    action: 'resume-monitoring',
+    message: 'Audio was suspended by the browser. Return to this tab, then choose Resume Monitoring.',
+  },
+  audioContextResumeFailed: {
+    code: 'audio-context-resume-failed',
+    action: 'resume-monitoring',
+    message: 'Audio was not resumed. Return to this tab, then choose Resume Monitoring.',
+  },
+} as const satisfies Record<string, AudioRecoverySnapshot>;
+
+function connectionRecovery(error: unknown, exactDeviceRequested: boolean): AudioRecoverySnapshot {
+  if (error instanceof DOMException && error.name === 'NotAllowedError') return RECOVERIES.permissionDenied;
+  if (error instanceof DOMException && error.name === 'NotFoundError' && exactDeviceRequested) return RECOVERIES.inputSelectionFailed;
+  if (error instanceof DOMException && error.name === 'NotFoundError') return RECOVERIES.noInputDevices;
+  return RECOVERIES.inputConnectionFailed;
 }
 
 function rawCaptureWarnings(settings: MediaTrackSettings): string[] {
@@ -67,7 +117,9 @@ function rawCaptureWarnings(settings: MediaTrackSettings): string[] {
     ['noiseSuppression', 'Noise suppression'],
     ['autoGainControl', 'Automatic gain control'],
   ];
-  return requested.flatMap(([key, label]) => settings[key] !== false ? [`${label} could not be confirmed disabled by this browser.`] : []);
+  return requested.flatMap(([key, label]) => settings[key] !== false
+    ? [`${label} could not be confirmed disabled. Check browser or system input settings before monitoring.`]
+    : []);
 }
 
 /** Owns capture, the native Amp Chain, metering, output routing, and the explicit monitoring mute. */
@@ -77,6 +129,7 @@ export class AudioEngine implements AudioEngineContract {
   #listeners = new Set<(snapshot: AudioSnapshot) => void>();
   #context: AudioContext | undefined;
   #stream: MediaStream | undefined;
+  #track: MediaStreamTrack | undefined;
   #source: AudioNode | undefined;
   #splitter: ChannelSplitterNode | undefined;
   #inputAnalyser: AnalyserNode | undefined;
@@ -115,15 +168,19 @@ export class AudioEngine implements AudioEngineContract {
   }
 
   public async connectInput(command: { readonly deviceId?: string } = {}): Promise<void> {
+    const preservedInputChannel = this.#snapshot.inputChannel;
+    const preservedOutputDeviceId = this.#snapshot.outputRouting.selectedDeviceId;
     await this.#stopCapture();
     this.#update({
       lifecycle: 'connecting',
       monitoring: false,
       error: undefined,
+      recovery: undefined,
+      selectedInputDeviceId: command.deviceId,
       rawCaptureWarnings: [],
       meter: { dbfs: METER_FLOOR_DBFS, peakDbfs: METER_FLOOR_DBFS },
       outputMeter: { dbfs: METER_FLOOR_DBFS, peakDbfs: METER_FLOOR_DBFS },
-      outputRouting: { mode: 'pending', devices: [], selectedDeviceId: undefined, error: undefined },
+      outputRouting: { mode: 'pending', devices: [], selectedDeviceId: preservedOutputDeviceId, error: undefined },
     });
     const audio: MediaTrackConstraints = {
       echoCancellation: false,
@@ -139,7 +196,13 @@ export class AudioEngine implements AudioEngineContract {
       if (track === undefined) throw new DOMException('No audio track', 'NotFoundError');
       const settings = track.getSettings();
       this.#stream = stream;
+      this.#track = track;
+      if (command.deviceId !== undefined && settings.deviceId !== command.deviceId) {
+        throw new DOMException('Exact input selection was not honored', 'NotFoundError');
+      }
+      track.addEventListener('ended', this.#handleInputEnded);
       this.#context = this.#environment.createAudioContext();
+      this.#context.addEventListener('statechange', this.#handleContextStateChange);
       this.#source = this.#context.createMediaStreamSource(stream);
       this.#inputAnalyser = this.#context.createAnalyser();
       this.#inputAnalyser.fftSize = 2048;
@@ -182,7 +245,7 @@ export class AudioEngine implements AudioEngineContract {
       this.#masterGain.gain.value = dbToLinearGain(this.#snapshot.controls.masterVolumeDb);
       this.#monitorGain.gain.value = 0;
       const channelCount = Math.max(1, settings.channelCount ?? 1);
-      const selectedChannel = 0;
+      const selectedChannel = Math.min(preservedInputChannel, channelCount - 1);
       if (channelCount > 1) {
         this.#splitter = this.#context.createChannelSplitter(channelCount);
         this.#source.connect(this.#splitter);
@@ -210,25 +273,49 @@ export class AudioEngine implements AudioEngineContract {
       this.#monitorGain.connect(this.#context.destination);
       const { inputs: devices, outputs } = await this.#devices();
       const sinkContext = this.#sinkContext();
-      const outputRouting = {
-        mode: sinkContext === undefined ? 'system' as const : 'selectable' as const,
-        devices: sinkContext === undefined ? [] : outputs,
-        selectedDeviceId: undefined,
-        error: undefined,
-      };
+      let outputRecovery: AudioRecoverySnapshot | undefined;
+      if (sinkContext !== undefined && preservedOutputDeviceId !== undefined) {
+        if (!outputs.some((device) => device.id === preservedOutputDeviceId)) {
+          outputRecovery = RECOVERIES.outputDeviceLost;
+        } else {
+          try {
+            await sinkContext.setSinkId(preservedOutputDeviceId);
+          } catch {
+            outputRecovery = RECOVERIES.outputRoutingFailed;
+          }
+        }
+      }
+      const outputRouting = sinkContext === undefined
+        ? { mode: 'system' as const, devices: [], selectedDeviceId: undefined, error: undefined }
+        : {
+          mode: 'selectable' as const,
+          devices: outputs,
+          selectedDeviceId: preservedOutputDeviceId,
+          error: outputRecovery?.message,
+        };
       this.#update({
         lifecycle: 'connected-muted',
+        monitoring: false,
         devices,
         selectedInputDeviceId: settings.deviceId || command.deviceId,
         inputChannelCount: channelCount,
         inputChannel: selectedChannel,
         rawCaptureWarnings: rawCaptureWarnings(settings),
         outputRouting,
+        error: outputRecovery?.message,
+        recovery: outputRecovery,
       });
       this.#scheduleMeter();
     } catch (error) {
       await this.#stopCapture();
-      this.#update({ lifecycle: 'error', error: userFacingError(error), monitoring: false });
+      const recovery = connectionRecovery(error, command.deviceId !== undefined);
+      let devices = this.#snapshot.devices;
+      try {
+        devices = (await this.#devices()).inputs;
+      } catch {
+        // Keep the last known choices when device enumeration also fails.
+      }
+      this.#enterRecovery(recovery, { lifecycle: 'error', devices });
     }
   }
 
@@ -245,13 +332,19 @@ export class AudioEngine implements AudioEngineContract {
   public async setMonitoring(enabled: boolean): Promise<void> {
     if (this.#snapshot.lifecycle !== 'connected-muted' && this.#snapshot.lifecycle !== 'monitoring') return;
     if (this.#context === undefined || this.#monitorGain === undefined) return;
+    if (enabled && this.#snapshot.recovery?.action === 'choose-output') return;
     try {
       if (enabled) await this.#context.resume();
+      if (enabled && this.#context.state !== 'running') throw new DOMException('AudioContext did not resume', 'InvalidStateError');
       smoothGainToValue(this.#monitorGain.gain, enabled ? 1 : 0, this.#context.currentTime);
-      this.#update({ lifecycle: enabled ? 'monitoring' : 'connected-muted', monitoring: enabled, error: undefined });
+      this.#update({
+        lifecycle: enabled ? 'monitoring' : 'connected-muted',
+        monitoring: enabled,
+        error: enabled ? undefined : this.#snapshot.error,
+        recovery: enabled ? undefined : this.#snapshot.recovery,
+      });
     } catch {
-      this.#monitorGain.gain.value = 0;
-      this.#update({ lifecycle: 'connected-muted', monitoring: false, error: 'Processed Monitoring could not be started.' });
+      this.#enterRecovery(RECOVERIES.audioContextResumeFailed);
     }
   }
 
@@ -310,13 +403,18 @@ export class AudioEngine implements AudioEngineContract {
     if (context === undefined || this.#snapshot.outputRouting.mode !== 'selectable') return;
     try {
       await context.setSinkId(deviceId ?? '');
-      this.#update({ outputRouting: { ...this.#snapshot.outputRouting, selectedDeviceId: deviceId, error: undefined } });
-    } catch {
-      await this.setMonitoring(false);
+      const resolvesOutputRecovery = this.#snapshot.recovery?.action === 'choose-output';
       this.#update({
+        outputRouting: { ...this.#snapshot.outputRouting, selectedDeviceId: deviceId, error: undefined },
+        error: resolvesOutputRecovery ? undefined : this.#snapshot.error,
+        recovery: resolvesOutputRecovery ? undefined : this.#snapshot.recovery,
+      });
+    } catch {
+      this.#enterRecovery(RECOVERIES.outputRoutingFailed, {
         outputRouting: {
           ...this.#snapshot.outputRouting,
-          error: 'The browser could not route audio to that output. Monitoring was muted.',
+          selectedDeviceId: deviceId,
+          error: RECOVERIES.outputRoutingFailed.message,
         },
       });
     }
@@ -333,11 +431,68 @@ export class AudioEngine implements AudioEngineContract {
   }
 
   #refreshDevices = (): void => {
-    void this.#devices().then(({ inputs: devices, outputs }) => this.#update({
-      devices,
-      outputRouting: { ...this.#snapshot.outputRouting, devices: this.#sinkContext() === undefined ? [] : outputs },
-    }));
+    void this.#devices().then(({ inputs: devices, outputs }) => {
+      const connected = this.#snapshot.lifecycle === 'connected-muted' || this.#snapshot.lifecycle === 'monitoring';
+      const selectedInputDeviceId = this.#snapshot.selectedInputDeviceId;
+      const visibleOutputs = this.#sinkContext() === undefined ? [] : outputs;
+      const outputRouting = { ...this.#snapshot.outputRouting, devices: visibleOutputs };
+
+      if (connected
+        && selectedInputDeviceId !== undefined
+        && !devices.some((device) => device.id === selectedInputDeviceId)) {
+        this.#handleInputEnded();
+        this.#update({ devices, outputRouting });
+        return;
+      }
+
+      const selectedOutputDeviceId = this.#snapshot.outputRouting.selectedDeviceId;
+      if (connected
+        && this.#snapshot.outputRouting.mode === 'selectable'
+        && selectedOutputDeviceId !== undefined
+        && !outputs.some((device) => device.id === selectedOutputDeviceId)) {
+        this.#enterRecovery(RECOVERIES.outputDeviceLost, {
+          devices,
+          outputRouting: { ...outputRouting, error: RECOVERIES.outputDeviceLost.message },
+        });
+        return;
+      }
+
+      this.#update({ devices, outputRouting });
+    });
   };
+
+  #handleInputEnded = (): void => {
+    if (this.#snapshot.lifecycle !== 'connected-muted' && this.#snapshot.lifecycle !== 'monitoring') return;
+    this.#enterRecovery(RECOVERIES.inputDeviceLost, { lifecycle: 'error' });
+    void this.#stopCapture();
+  };
+
+  #handleContextStateChange = (): void => {
+    if (this.#context === undefined) return;
+    if (this.#snapshot.lifecycle !== 'connected-muted' && this.#snapshot.lifecycle !== 'monitoring') return;
+    if (this.#context.state === 'running') return;
+    this.#enterRecovery(RECOVERIES.audioContextSuspended);
+  };
+
+  #enterRecovery(recovery: AudioRecoverySnapshot, change: Partial<AudioSnapshot> = {}): void {
+    this.#silenceMonitoring();
+    this.#update({
+      lifecycle: 'connected-muted',
+      monitoring: false,
+      error: recovery.message,
+      recovery,
+      ...change,
+    });
+  }
+
+  #silenceMonitoring(): void {
+    if (this.#monitorGain === undefined) return;
+    if (this.#context !== undefined) {
+      this.#monitorGain.gain.cancelScheduledValues(this.#context.currentTime);
+      this.#monitorGain.gain.setValueAtTime(0, this.#context.currentTime);
+    }
+    this.#monitorGain.gain.value = 0;
+  }
 
   async #devices(): Promise<{ readonly inputs: readonly InputDevice[]; readonly outputs: readonly OutputDevice[] }> {
     const devices = await this.#environment.mediaDevices.enumerateDevices();
@@ -433,10 +588,14 @@ export class AudioEngine implements AudioEngineContract {
     this.#masterGain?.disconnect();
     this.#outputAnalyser?.disconnect();
     this.#monitorGain?.disconnect();
-    this.#stream?.getTracks().forEach((track) => track.stop());
-    if (this.#context !== undefined) await this.#context.close();
+    const context = this.#context;
+    const stream = this.#stream;
+    this.#track?.removeEventListener('ended', this.#handleInputEnded);
+    context?.removeEventListener('statechange', this.#handleContextStateChange);
+    stream?.getTracks().forEach((track) => track.stop());
     this.#context = undefined;
     this.#stream = undefined;
+    this.#track = undefined;
     this.#source = undefined;
     this.#splitter = undefined;
     this.#inputAnalyser = undefined;
@@ -456,6 +615,7 @@ export class AudioEngine implements AudioEngineContract {
     this.#monitorGain = undefined;
     this.#inputPeak = { dbfs: METER_FLOOR_DBFS, heldAt: 0 };
     this.#outputPeak = { dbfs: METER_FLOOR_DBFS, heldAt: 0 };
+    if (context !== undefined) await context.close();
   }
 
   #update(change: Partial<AudioSnapshot>): void {

@@ -1,36 +1,73 @@
 import { expect, test, type Page } from '@playwright/test';
 
-async function installAudioBrowser(page: Page, options: { clipOnce?: boolean; outputSelection?: boolean } = {}): Promise<void> {
-  await page.addInitScript(({ clipOnce, outputSelection }) => {
-    const track = {
-      getSettings: () => ({ channelCount: 1, deviceId: 'microphone', echoCancellation: false, noiseSuppression: false, autoGainControl: false }),
-      stop: () => undefined,
+async function installAudioBrowser(page: Page, options: {
+  clipOnce?: boolean;
+  outputSelection?: boolean;
+  permissionDenied?: boolean;
+  routingFailure?: boolean;
+} = {}): Promise<void> {
+  await page.addInitScript(({ clipOnce, outputSelection, permissionDenied, routingFailure }) => {
+    const testWindow = window as Window & {
+      captureRequests?: number;
+      resumeRequests?: number;
+      selectedSink?: string;
+      setInputConnected?: (connected: boolean) => void;
+      setOutputConnected?: (connected: boolean) => void;
+      simulateBackground?: () => void;
+      simulateForeground?: () => void;
     };
-    const stream = { getAudioTracks: () => [track], getTracks: () => [track] };
-    Object.defineProperty(navigator, 'mediaDevices', {
-      value: {
-        getUserMedia: async () => {
-          const state = window as Window & { captureRequests?: number };
-          state.captureRequests = (state.captureRequests ?? 0) + 1;
-          return stream;
-        },
-        enumerateDevices: async () => [
-          { deviceId: 'microphone', kind: 'audioinput', label: 'Built-in Microphone' },
-          { deviceId: 'irig-hd-2', kind: 'audioinput', label: 'iRig HD 2' },
-          { deviceId: 'headphones', kind: 'audiooutput', label: 'Studio Headphones' },
-        ],
-        addEventListener: () => undefined,
+    let inputConnected = true;
+    let outputConnected = true;
+    let activeContext: MockAudioContext | undefined;
+    const mediaDevices = Object.assign(new EventTarget(), {
+      getUserMedia: async (constraints: MediaStreamConstraints) => {
+        testWindow.captureRequests = (testWindow.captureRequests ?? 0) + 1;
+        if (permissionDenied) throw new DOMException('Denied', 'NotAllowedError');
+        const audio = typeof constraints.audio === 'object' ? constraints.audio : undefined;
+        const exactDevice = typeof audio?.deviceId === 'object' && 'exact' in audio.deviceId
+          ? String(audio.deviceId.exact)
+          : undefined;
+        if ((exactDevice === 'irig-hd-2' && !inputConnected) || (exactDevice !== undefined && exactDevice !== 'irig-hd-2')) {
+          throw new DOMException('Unavailable', 'NotFoundError');
+        }
+        const deviceId = exactDevice ?? (inputConnected ? 'irig-hd-2' : 'microphone');
+        const track = Object.assign(new EventTarget(), {
+          getSettings: () => ({ channelCount: 1, deviceId, echoCancellation: false, noiseSuppression: false, autoGainControl: false }),
+          stop: () => undefined,
+        });
+        const stream = { getAudioTracks: () => [track], getTracks: () => [track] };
+        return stream;
       },
+      enumerateDevices: async () => [
+        { deviceId: 'microphone', kind: 'audioinput', label: 'Built-in Microphone' },
+        ...(inputConnected ? [{ deviceId: 'irig-hd-2', kind: 'audioinput', label: 'iRig HD 2' }] : []),
+        ...(outputConnected ? [{ deviceId: 'headphones', kind: 'audiooutput', label: 'Studio Headphones' }] : []),
+      ],
+    });
+    Object.defineProperty(navigator, 'mediaDevices', {
+      value: mediaDevices,
       configurable: true,
     });
+    testWindow.setInputConnected = (connected) => {
+      inputConnected = connected;
+      mediaDevices.dispatchEvent(new Event('devicechange'));
+    };
+    testWindow.setOutputConnected = (connected) => {
+      outputConnected = connected;
+      mediaDevices.dispatchEvent(new Event('devicechange'));
+    };
 
     const node = (properties: Record<string, unknown> = {}) => ({ connect: () => undefined, disconnect: () => undefined, ...properties });
     let analyserIndex = 0;
-    class MockAudioContext {
+    class MockAudioContext extends EventTarget {
       currentTime = 1;
       sampleRate = 48_000;
       destination = node();
       state = 'running';
+      constructor() {
+        super();
+        activeContext = this;
+      }
       createMediaStreamSource() { return node(); }
       createAnalyser() {
         const index = analyserIndex++;
@@ -66,17 +103,36 @@ async function installAudioBrowser(page: Page, options: { clipOnce?: boolean; ou
         return { duration: length / sampleRate, length, numberOfChannels: channels, sampleRate, getChannelData: (channel: number) => data[channel] };
       }
       createConvolver() { return node({ buffer: null, normalize: true }); }
-      resume() { return Promise.resolve(); }
-      close() { return Promise.resolve(); }
+      resume() {
+        testWindow.resumeRequests = (testWindow.resumeRequests ?? 0) + 1;
+        this.state = 'running';
+        return Promise.resolve();
+      }
+      close() {
+        this.state = 'closed';
+        return Promise.resolve();
+      }
     }
     if (outputSelection) {
       Object.defineProperty(MockAudioContext.prototype, 'setSinkId', {
         value: (deviceId: string) => {
-          (window as Window & { selectedSink?: string }).selectedSink = deviceId;
+          if (routingFailure) return Promise.reject(new DOMException('Unavailable', 'NotFoundError'));
+          testWindow.selectedSink = deviceId;
           return Promise.resolve();
         },
       });
     }
+    testWindow.simulateBackground = () => {
+      if (activeContext === undefined) return;
+      activeContext.state = 'suspended';
+      activeContext.dispatchEvent(new Event('statechange'));
+    };
+    testWindow.simulateForeground = () => {
+      if (activeContext === undefined) return;
+      activeContext.state = 'running';
+      activeContext.dispatchEvent(new Event('statechange'));
+      document.dispatchEvent(new Event('visibilitychange'));
+    };
     Object.defineProperty(window, 'AudioContext', { value: MockAudioContext, configurable: true });
   }, options);
 }
@@ -255,6 +311,109 @@ test('keeps the input selector mounted while the meter updates', async ({ page }
   await page.waitForTimeout(100);
 
   await expect(selector).toHaveAttribute('data-regression-node', 'original');
+});
+
+test('offers a keyboard-accessible retry after permission denial on a narrow layout', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 900 });
+  await installAudioBrowser(page, { permissionDenied: true });
+  await page.goto('/');
+
+  await page.getByRole('button', { name: 'Connect Input' }).click();
+
+  await expect(page.getByRole('status')).toContainText('Connection interrupted');
+  await expect(page.getByRole('alert')).toContainText('Allow access in browser settings');
+  const retry = page.getByRole('button', { name: 'Try Again' });
+  await retry.focus();
+  await retry.press('Enter');
+  await expect.poll(() => page.evaluate(() => (window as Window & { captureRequests?: number }).captureRequests)).toBe(2);
+  const bounds = await retry.boundingBox();
+  expect(bounds).not.toBeNull();
+  expect((bounds?.x ?? 0) + (bounds?.width ?? 0)).toBeLessThanOrEqual(320);
+});
+
+test('stays muted through active-input unplug and replug until explicit reconnection', async ({ page }) => {
+  await installAudioBrowser(page);
+  await page.goto('/');
+  await page.getByLabel('Clean Gain value').fill('7');
+  await page.getByRole('button', { name: 'Connect Input' }).click();
+  await page.getByRole('button', { name: 'Enable Monitoring' }).click();
+  await page.getByRole('button', { name: 'Checked — Enable Monitoring' }).click();
+
+  await page.evaluate(() => (window as Window & { setInputConnected?: (connected: boolean) => void }).setInputConnected?.(false));
+
+  await expect(page.getByRole('status')).toContainText('Connection interrupted');
+  await expect(page.getByRole('alert')).toContainText('active input device was disconnected');
+  await expect(page.getByRole('button', { name: 'Reconnect Input' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Enable Monitoring' })).toBeDisabled();
+  await expect(page.getByLabel('Clean Gain value')).toHaveValue('7.0');
+  await expect.poll(() => page.evaluate(() => (window as Window & { captureRequests?: number }).captureRequests)).toBe(1);
+
+  await page.evaluate(() => (window as Window & { setInputConnected?: (connected: boolean) => void }).setInputConnected?.(true));
+  await expect(page.getByLabel('Input device')).toContainText('iRig HD 2');
+  await expect(page.getByRole('status')).toContainText('Connection interrupted');
+  await page.getByRole('button', { name: 'Reconnect Input' }).click();
+
+  await expect(page.getByRole('status')).toContainText('Connected — muted');
+  await expect(page.getByRole('button', { name: 'Enable Monitoring' })).toBeEnabled();
+  await expect(page.getByLabel('Clean Gain value')).toHaveValue('7.0');
+  await expect.poll(() => page.evaluate(() => (window as Window & { captureRequests?: number }).captureRequests)).toBe(2);
+});
+
+test('does not restart monitoring across background and foreground suspension', async ({ page }) => {
+  await installAudioBrowser(page);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Connect Input' }).click();
+  await page.getByRole('button', { name: 'Enable Monitoring' }).click();
+  await page.getByRole('button', { name: 'Checked — Enable Monitoring' }).click();
+  await expect.poll(() => page.evaluate(() => (window as Window & { resumeRequests?: number }).resumeRequests)).toBe(1);
+
+  await page.evaluate(() => (window as Window & { simulateBackground?: () => void }).simulateBackground?.());
+
+  await expect(page.getByText('Audio was suspended by the browser')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Resume Monitoring' })).toBeVisible();
+  await page.evaluate(() => (window as Window & { simulateForeground?: () => void }).simulateForeground?.());
+  await expect(page.getByRole('button', { name: 'Resume Monitoring' })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => (window as Window & { resumeRequests?: number }).resumeRequests)).toBe(1);
+
+  await page.getByRole('button', { name: 'Resume Monitoring' }).click();
+  await expect(page.getByRole('button', { name: 'Disable Monitoring' })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => (window as Window & { resumeRequests?: number }).resumeRequests)).toBe(2);
+});
+
+test('requires an explicit output choice and monitoring action after output loss', async ({ page }) => {
+  await installAudioBrowser(page, { outputSelection: true });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Connect Input' }).click();
+  await page.getByLabel('Output device').selectOption('headphones');
+  await page.getByRole('button', { name: 'Enable Monitoring' }).click();
+  await page.getByRole('button', { name: 'Checked — Enable Monitoring' }).click();
+
+  await page.evaluate(() => (window as Window & { setOutputConnected?: (connected: boolean) => void }).setOutputConnected?.(false));
+
+  await expect(page.getByText('selected output device was disconnected')).toBeVisible();
+  await expect(page.getByLabel('Output device')).toContainText('Unavailable output');
+  await expect(page.getByRole('button', { name: 'Choose Output Before Monitoring' })).toBeDisabled();
+
+  await page.evaluate(() => (window as Window & { setOutputConnected?: (connected: boolean) => void }).setOutputConnected?.(true));
+  await expect(page.getByText('selected output device was disconnected')).toBeVisible();
+  await page.getByRole('button', { name: 'Retry Selected Output' }).click();
+  await expect(page.getByRole('button', { name: 'Enable Monitoring' })).toBeEnabled();
+  await expect(page.locator('#monitoring-state')).toHaveText('Off');
+  await page.getByRole('button', { name: 'Enable Monitoring' }).click();
+  await expect(page.getByRole('button', { name: 'Disable Monitoring' })).toBeVisible();
+});
+
+test('surfaces an actionable routing failure and remains muted', async ({ page }) => {
+  await installAudioBrowser(page, { outputSelection: true, routingFailure: true });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Connect Input' }).click();
+
+  await page.getByLabel('Output device').selectOption('headphones');
+
+  await expect(page.getByText('browser could not route audio to that output')).toBeVisible();
+  await expect(page.locator('#monitoring-state')).toHaveText('Off');
+  await expect(page.getByRole('button', { name: 'Retry Selected Output' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Choose Output Before Monitoring' })).toBeDisabled();
 });
 
 test('keeps exact controls keyboard-operable and in Amp Chain order on a narrow layout', async ({ page }) => {

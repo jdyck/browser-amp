@@ -5,6 +5,25 @@ export type { AmpControlSettings } from '../controls';
 
 export type ConnectionLifecycle = 'disconnected' | 'connecting' | 'connected-muted' | 'monitoring' | 'error';
 
+interface AudioRecoveryBase {
+  readonly message: string;
+}
+
+export type AudioRecoverySnapshot = AudioRecoveryBase & (
+  | {
+    readonly code: 'permission-denied' | 'no-input-devices' | 'input-selection-failed' | 'input-connection-failed' | 'input-device-lost';
+    readonly action: 'reconnect-input';
+  }
+  | {
+    readonly code: 'output-device-lost' | 'output-routing-failed';
+    readonly action: 'choose-output';
+  }
+  | {
+    readonly code: 'audio-context-suspended' | 'audio-context-resume-failed';
+    readonly action: 'resume-monitoring';
+  }
+);
+
 export interface InputDevice {
   readonly id: string;
   readonly label: string;
@@ -44,6 +63,7 @@ export interface AudioSnapshot extends InputSettings {
   readonly outputMeter: InputMeterSnapshot;
   readonly clipLatched: boolean;
   readonly error: string | undefined;
+  readonly recovery: AudioRecoverySnapshot | undefined;
 }
 
 export interface AudioEngine {

@@ -8,11 +8,12 @@ export async function connectOfflineEngine(
 ): Promise<AudioEngine> {
   Object.defineProperty(context, 'createMediaStreamSource', { value: () => input });
   Object.defineProperty(context, 'resume', { value: async () => undefined });
+  Object.defineProperty(context, 'state', { value: 'running', configurable: true });
 
-  const track = {
+  const track = Object.assign(new EventTarget(), {
     getSettings: () => ({ channelCount: 1, echoCancellation: false, noiseSuppression: false, autoGainControl: false }),
     stop: () => undefined,
-  };
+  });
   const stream = { getAudioTracks: () => [track], getTracks: () => [track] };
   const engine = new AudioEngine({
     mediaDevices: {
