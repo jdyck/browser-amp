@@ -7,9 +7,9 @@ Use this log to sign off one deployed commit. Do not infer hardware behavior fro
 | Field | Evidence |
 | --- | --- |
 | Commit SHA | |
-| Validation date and tester | |
-| macOS version and Mac model | |
-| Chrome version | |
+| Validation date and tester | 2026-08-14 — tester not recorded |
+| macOS version and Mac model | macOS — version and Mac model not recorded |
+| Chrome version | Chrome — version not recorded |
 | Production URL | `https://jdyck.github.io/browser-amp/` |
 | GitHub Actions run | |
 | Release decision | Pending / Pass / Fail |
@@ -42,15 +42,17 @@ Run this section against the exact production URL in Chrome, not Vite preview.
 
 Notes and evidence links:
 
+- 2026-08-14 manual hardware report: Browser Amp input and Processed Monitoring worked in Chrome on macOS with iRig HD 2, a Scarlett/Focusrite interface, and an instrument-to-USB cable. MacBook internal speakers and its headphone jack both received monitoring. The Focusrite output route initially failed, then worked after routing was adjusted; preserve the exact route in the full interface record when it is known.
+
 ## Validation Interface summary
 
 Fill one row after completing the full interface record below. If an interface is unavailable, record why; do not mark it passed.
 
 | Validation Interface | Available | Browser device label | Physical guitar jack / Input Channel | Capture processing reported | Intended output route | Guitar-only / no mic fallback | Result and evidence |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| iRig HD 2 | | | | | | | |
-| Scarlett | | | | | | | |
-| Instrument-to-USB cable | | | | | | | |
+| iRig HD 2 | Yes | Not recorded | Not recorded | Not recorded | MacBook internal speakers and headphone jack | Reported guitar input; no fallback issue reported | **Reported pass** — manual Chrome/macOS test on 2026-08-14; full record pending |
+| Scarlett | Yes | Focusrite/Scarlett label not recorded | Not recorded | Not recorded | Focusrite output route (exact jack/routing not recorded) | Reported guitar input; no fallback issue reported | **Reported pass** — output routing initially failed, then worked after adjustment; full record pending |
+| Instrument-to-USB cable | Yes | Not recorded | Integrated USB instrument input | Not recorded | MacBook internal speakers and headphone jack | Reported guitar input; no fallback issue reported | **Reported pass** — manual Chrome/macOS test on 2026-08-14; full record pending |
 
 ## Full physical interface record
 
