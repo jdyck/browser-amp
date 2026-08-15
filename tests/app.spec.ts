@@ -154,13 +154,13 @@ test('synchronizes, clamps, and restores controls without restoring Processed Mo
   const bassSlider = page.getByLabel('Bass slider');
   const middle = page.getByLabel('Middle value');
   const treble = page.getByLabel('Treble value');
-  const compressionAmount = page.getByLabel('Compression Amount value');
-  const compressionAmountSlider = page.getByLabel('Compression Amount slider');
+  const compressionAmount = page.getByLabel('Compression value');
+  const compressionAmountSlider = page.getByLabel('Compression slider');
   const compressionBypass = page.getByLabel('Compression Stage Bypass');
-  const reverbAmount = page.getByLabel('Reverb Amount value');
-  const reverbAmountSlider = page.getByLabel('Reverb Amount slider');
+  const reverbAmount = page.getByLabel('Reverb value');
+  const reverbAmountSlider = page.getByLabel('Reverb slider');
   const reverbBypass = page.getByLabel('Reverb Stage Bypass');
-  const masterVolume = page.getByLabel('Master Volume value');
+  const masterVolume = page.getByLabel('Master value');
 
   await expect(cleanGain).toHaveValue('0.0');
   await expect(bass).toHaveValue('0.0');
@@ -206,11 +206,11 @@ test('synchronizes, clamps, and restores controls without restoring Processed Mo
   await expect(page.getByLabel('Bass value')).toHaveValue('12.0');
   await expect(page.getByLabel('Middle value')).toHaveValue('3.3');
   await expect(page.getByLabel('Treble value')).toHaveValue('-12.0');
-  await expect(page.getByLabel('Compression Amount value')).toHaveValue('100');
+  await expect(page.getByLabel('Compression value')).toHaveValue('100');
   await expect(page.getByLabel('Compression Stage Bypass')).not.toBeChecked();
-  await expect(page.getByLabel('Reverb Amount value')).toHaveValue('0');
+  await expect(page.getByLabel('Reverb value')).toHaveValue('0');
   await expect(page.getByLabel('Reverb Stage Bypass')).not.toBeChecked();
-  await expect(page.getByLabel('Master Volume value')).toHaveValue('-12.3');
+  await expect(page.getByLabel('Master value')).toHaveValue('-12.3');
   await expect(page.getByRole('button', { name: 'Enable Monitoring' })).toBeDisabled();
 });
 
@@ -240,9 +240,9 @@ test('Reset Controls restores sound defaults without changing connection, monito
   await page.getByLabel('Clean Gain value').fill('9');
   await page.getByLabel('Bass value').fill('-4');
   await page.getByLabel('Compression Stage Bypass').uncheck();
-  await page.getByLabel('Reverb Amount value').fill('60');
+  await page.getByLabel('Reverb value').fill('60');
   await page.getByLabel('Reverb Stage Bypass').uncheck();
-  await page.getByLabel('Master Volume value').fill('-6');
+  await page.getByLabel('Master value').fill('-6');
   await page.getByRole('button', { name: 'Connect Input' }).click();
   await page.getByRole('button', { name: 'Enable Monitoring' }).click();
   await page.getByRole('button', { name: 'Checked — Enable Monitoring' }).click();
@@ -253,11 +253,11 @@ test('Reset Controls restores sound defaults without changing connection, monito
   await expect(page.getByLabel('Bass value')).toHaveValue('0.0');
   await expect(page.getByLabel('Middle value')).toHaveValue('0.0');
   await expect(page.getByLabel('Treble value')).toHaveValue('0.0');
-  await expect(page.getByLabel('Compression Amount value')).toHaveValue('25');
+  await expect(page.getByLabel('Compression value')).toHaveValue('25');
   await expect(page.getByLabel('Compression Stage Bypass')).toBeChecked();
-  await expect(page.getByLabel('Reverb Amount value')).toHaveValue('20');
+  await expect(page.getByLabel('Reverb value')).toHaveValue('20');
   await expect(page.getByLabel('Reverb Stage Bypass')).toBeChecked();
-  await expect(page.getByLabel('Master Volume value')).toHaveValue('-18.0');
+  await expect(page.getByLabel('Master value')).toHaveValue('-18.0');
   await expect(page.locator('.connection-state')).toHaveText('Connected — monitoring');
   await expect(page.getByRole('button', { name: 'Disable Monitoring' })).toBeVisible();
   await expect.poll(() => page.evaluate(() => (window as Window & { captureRequests?: number }).captureRequests)).toBe(1);
@@ -425,19 +425,16 @@ test('keeps exact controls keyboard-operable and in Amp Chain order on a narrow 
   await bassSlider.press('ArrowRight');
   await expect(page.getByLabel('Bass value')).toHaveValue('0.1');
 
-  await expect(page.locator('.panel > .panel-heading > h2')).toHaveText([
-    'Live Guitar Input',
-    'Input Level Meter',
+  await expect(page.locator('.panel[aria-label]')).toHaveCount(5);
+  await expect(page.locator('.panel[aria-label]').evaluateAll((panels) => panels.map((panel) => panel.getAttribute('aria-label')))).resolves.toEqual([
     'Clean Gain',
     'Three-Band EQ',
     'Compression',
     'Reverb',
     'Master Volume',
-    'Output Level Meter',
-    'Processed Monitoring',
   ]);
 
-  const amountBounds = await page.getByLabel('Compression Amount value').boundingBox();
+  const amountBounds = await page.getByLabel('Compression value').boundingBox();
   expect(amountBounds).not.toBeNull();
   expect((amountBounds?.x ?? 0) + (amountBounds?.width ?? 0)).toBeLessThanOrEqual(320);
 });

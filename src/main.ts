@@ -59,9 +59,7 @@ function renderStructure(current: AudioSnapshot): void {
   root.innerHTML = `
     <section class="workbench" aria-labelledby="page-title">
       <header>
-        <p class="eyebrow">Clean Amp Workbench</p>
         <h1 id="page-title">Browser Amp</h1>
-        <p>Connect a Live Guitar Input, shape a clean signal, then explicitly enable Processed Monitoring.</p>
         <button id="reset-controls" type="button" class="secondary">Reset Controls</button>
       </header>
 
@@ -83,15 +81,11 @@ function renderStructure(current: AudioSnapshot): void {
 
       ${meterPanel('input', 'Input Level Meter', current.meter, 'Live Guitar Input before Clean Gain. Connecting and metering remain silent until Processed Monitoring is enabled.')}
 
-      <section class="panel" aria-labelledby="clean-gain-title">
-        <div class="panel-heading"><h2 id="clean-gain-title">Clean Gain</h2><span>Linear gain</span></div>
-        <p>Raise or lower the clean signal without intentional saturation.</p>
+      <section class="panel" aria-label="Clean Gain">
         ${dbControl('clean-gain', 'Clean Gain', current.controls.cleanGainDb, AMP_CONTROL_DEFINITIONS.cleanGainDb)}
       </section>
 
-      <section class="panel" aria-labelledby="eq-title">
-        <div class="panel-heading"><h2 id="eq-title">Three-Band EQ</h2><span>Clean Voice shaping</span></div>
-        <p>Shape lows, mids, and highs around familiar musical centers.</p>
+      <section class="panel" aria-label="Three-Band EQ">
         <div class="control-stack">
           ${dbControl('bass', 'Bass', current.controls.bassDb, AMP_CONTROL_DEFINITIONS.bassDb)}
           ${dbControl('middle', 'Middle', current.controls.middleDb, AMP_CONTROL_DEFINITIONS.middleDb)}
@@ -99,30 +93,24 @@ function renderStructure(current: AudioSnapshot): void {
         </div>
       </section>
 
-      <section class="panel" aria-labelledby="compression-title">
-        <div class="panel-heading"><h2 id="compression-title">Compression</h2><span id="compression-state">${current.controls.compressionBypassed ? 'Bypassed' : 'Active'}</span></div>
-        <p>Raise Amount for progressively firmer dynamics control.</p>
+      <section class="panel" aria-label="Compression">
         <label class="stage-toggle" for="compression-bypass">
           <input id="compression-bypass" type="checkbox" ${current.controls.compressionBypassed ? 'checked' : ''}>
           Compression Stage Bypass
         </label>
-        ${percentControl('compression-amount', 'Compression Amount', current.controls.compressionAmount, AMP_CONTROL_DEFINITIONS.compressionAmount)}
+        ${percentControl('compression-amount', 'Compression', current.controls.compressionAmount, AMP_CONTROL_DEFINITIONS.compressionAmount)}
       </section>
 
-      <section class="panel" aria-labelledby="reverb-title">
-        <div class="panel-heading"><h2 id="reverb-title">Reverb</h2><span id="reverb-state">${current.controls.reverbBypassed ? 'Bypassed' : 'Active'}</span></div>
-        <p>Add a simple, plate-inspired spatial tail while keeping the dry attack immediate.</p>
+      <section class="panel" aria-label="Reverb">
         <label class="stage-toggle" for="reverb-bypass">
           <input id="reverb-bypass" type="checkbox" ${current.controls.reverbBypassed ? 'checked' : ''}>
           Reverb Stage Bypass
         </label>
-        ${percentControl('reverb-amount', 'Reverb Amount', current.controls.reverbAmount, AMP_CONTROL_DEFINITIONS.reverbAmount)}
+        ${percentControl('reverb-amount', 'Reverb', current.controls.reverbAmount, AMP_CONTROL_DEFINITIONS.reverbAmount)}
       </section>
 
-      <section class="panel" aria-labelledby="master-volume-title">
-        <div class="panel-heading"><h2 id="master-volume-title">Master Volume</h2><span>Attenuation only</span></div>
-        <p>Sets the final Amp Chain level independently of the monitoring switch.</p>
-        ${dbControl('master-volume', 'Master Volume', current.controls.masterVolumeDb, AMP_CONTROL_DEFINITIONS.masterVolumeDb)}
+      <section class="panel" aria-label="Master Volume">
+        ${dbControl('master-volume', 'Master', current.controls.masterVolumeDb, AMP_CONTROL_DEFINITIONS.masterVolumeDb)}
       </section>
 
       ${meterPanel('output', 'Output Level Meter', current.outputMeter, 'Post-Master signal before browser output.')}
@@ -222,14 +210,10 @@ function renderControls(controls: AmpControlSettings): void {
   setControlValue('treble', controls.trebleDb, AMP_CONTROL_DEFINITIONS.trebleDb);
   setControlValue('compression-amount', controls.compressionAmount, AMP_CONTROL_DEFINITIONS.compressionAmount);
   const compressionBypass = root.querySelector<HTMLInputElement>('#compression-bypass');
-  const compressionState = root.querySelector<HTMLElement>('#compression-state');
   if (compressionBypass !== null) compressionBypass.checked = controls.compressionBypassed;
-  if (compressionState !== null) compressionState.textContent = controls.compressionBypassed ? 'Bypassed' : 'Active';
   setControlValue('reverb-amount', controls.reverbAmount, AMP_CONTROL_DEFINITIONS.reverbAmount);
   const reverbBypass = root.querySelector<HTMLInputElement>('#reverb-bypass');
-  const reverbState = root.querySelector<HTMLElement>('#reverb-state');
   if (reverbBypass !== null) reverbBypass.checked = controls.reverbBypassed;
-  if (reverbState !== null) reverbState.textContent = controls.reverbBypassed ? 'Bypassed' : 'Active';
   setControlValue('master-volume', controls.masterVolumeDb, AMP_CONTROL_DEFINITIONS.masterVolumeDb);
 }
 
