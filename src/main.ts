@@ -54,7 +54,7 @@ function structureChanged(previous: AudioSnapshot, next: AudioSnapshot): boolean
 }
 
 function renderStructure(current: AudioSnapshot): void {
-  const connected = current.lifecycle === 'connected-muted' || current.lifecycle === 'monitoring';
+  const connected = current.lifecycle === 'connected-muted' || current.lifecycle === 'monitoring' || current.lifecycle === 'interrupted';
   const recovery = recoveryPresentation(current, connected);
   root.innerHTML = `
     <section class="workbench" aria-labelledby="page-title">
@@ -312,6 +312,7 @@ function connectionLabel(current: AudioSnapshot): string {
   if (current.lifecycle === 'connecting') return 'Connecting…';
   if (current.lifecycle === 'monitoring') return 'Connected — monitoring';
   if (current.lifecycle === 'connected-muted') return 'Connected — muted';
+  if (current.lifecycle === 'interrupted') return 'Audio interrupted';
   if (current.lifecycle === 'error') return 'Connection interrupted';
   return 'Disconnected';
 }
@@ -319,6 +320,7 @@ function connectionLabel(current: AudioSnapshot): string {
 function connectionDescription(current: AudioSnapshot): string {
   if (current.lifecycle === 'monitoring') return 'Input is connected and Processed Monitoring is on.';
   if (current.lifecycle === 'connected-muted') return 'Input is connected and metering. Processed Monitoring is off.';
+  if (current.lifecycle === 'interrupted') return 'Audio was interrupted. Resume Processed Monitoring when you are ready.';
   if (current.lifecycle === 'connecting') return 'Waiting for browser permission.';
   return 'Start by connecting an audio interface or microphone visible to your browser.';
 }

@@ -419,7 +419,7 @@ describe('AudioEngine', () => {
     context.dispatchEvent(new Event('statechange'));
 
     expect(engine.snapshot).toMatchObject({
-      lifecycle: 'connected-muted',
+      lifecycle: 'interrupted',
       monitoring: false,
       recovery: {
         code: 'audio-context-suspended',
@@ -442,7 +442,7 @@ describe('AudioEngine', () => {
     context.dispatchEvent(new Event('statechange'));
 
     expect(engine.snapshot).toMatchObject({
-      lifecycle: 'connected-muted',
+      lifecycle: 'interrupted',
       monitoring: false,
       recovery: { code: 'audio-context-suspended', action: 'resume-monitoring' },
     });
@@ -517,9 +517,14 @@ describe('AudioEngine', () => {
       { deviceId: 'headphones', kind: 'audiooutput', label: 'Studio headphones' } as MediaDeviceInfo,
     ];
     const mediaDevices = testMediaDevices({ enumerateDevices: vi.fn(async () => devices) });
-    const engine = new AudioEngine(browser({ mediaDevices }));
+    const context = audioContext();
+    const engine = new AudioEngine(browser({ mediaDevices, createAudioContext: () => context }));
     await engine.connectInput({ deviceId: 'guitar-interface' });
     await engine.setMonitoring(true);
+
+    Object.assign(context, { state: 'suspended' });
+    context.dispatchEvent(new Event('statechange'));
+    expect(engine.snapshot.lifecycle).toBe('interrupted');
 
     devices = devices.filter((device) => device.deviceId !== 'guitar-interface');
     mediaDevices.dispatchEvent(new Event('devicechange'));

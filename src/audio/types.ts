@@ -3,7 +3,7 @@ import type { AmpControlSettings } from '../controls';
 export { DEFAULT_AMP_CONTROLS } from '../controls';
 export type { AmpControlSettings } from '../controls';
 
-export type ConnectionLifecycle = 'disconnected' | 'connecting' | 'connected-muted' | 'monitoring' | 'error';
+export type ConnectionLifecycle = 'disconnected' | 'connecting' | 'connected-muted' | 'monitoring' | 'interrupted' | 'error';
 
 interface AudioRecoveryBase {
   readonly message: string;

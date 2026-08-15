@@ -330,7 +330,7 @@ export class AudioEngine implements AudioEngineContract {
   }
 
   public async setMonitoring(enabled: boolean): Promise<void> {
-    if (this.#snapshot.lifecycle !== 'connected-muted' && this.#snapshot.lifecycle !== 'monitoring') return;
+    if (this.#snapshot.lifecycle !== 'connected-muted' && this.#snapshot.lifecycle !== 'monitoring' && this.#snapshot.lifecycle !== 'interrupted') return;
     if (this.#context === undefined || this.#monitorGain === undefined) return;
     if (enabled && this.#snapshot.recovery?.action === 'choose-output') return;
     try {
@@ -432,7 +432,7 @@ export class AudioEngine implements AudioEngineContract {
 
   #refreshDevices = (): void => {
     void this.#devices().then(({ inputs: devices, outputs }) => {
-      const connected = this.#snapshot.lifecycle === 'connected-muted' || this.#snapshot.lifecycle === 'monitoring';
+      const connected = this.#snapshot.lifecycle === 'connected-muted' || this.#snapshot.lifecycle === 'monitoring' || this.#snapshot.lifecycle === 'interrupted';
       const selectedInputDeviceId = this.#snapshot.selectedInputDeviceId;
       const visibleOutputs = this.#sinkContext() === undefined ? [] : outputs;
       const outputRouting = { ...this.#snapshot.outputRouting, devices: visibleOutputs };
@@ -462,7 +462,7 @@ export class AudioEngine implements AudioEngineContract {
   };
 
   #handleInputEnded = (): void => {
-    if (this.#snapshot.lifecycle !== 'connected-muted' && this.#snapshot.lifecycle !== 'monitoring') return;
+    if (this.#snapshot.lifecycle !== 'connected-muted' && this.#snapshot.lifecycle !== 'monitoring' && this.#snapshot.lifecycle !== 'interrupted') return;
     this.#enterRecovery(RECOVERIES.inputDeviceLost, { lifecycle: 'error' });
     void this.#stopCapture();
   };
@@ -471,7 +471,7 @@ export class AudioEngine implements AudioEngineContract {
     if (this.#context === undefined) return;
     if (this.#snapshot.lifecycle !== 'connected-muted' && this.#snapshot.lifecycle !== 'monitoring') return;
     if (this.#context.state === 'running') return;
-    this.#enterRecovery(RECOVERIES.audioContextSuspended);
+    this.#enterRecovery(RECOVERIES.audioContextSuspended, { lifecycle: 'interrupted' });
   };
 
   #enterRecovery(recovery: AudioRecoverySnapshot, change: Partial<AudioSnapshot> = {}): void {
