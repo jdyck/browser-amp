@@ -6,19 +6,19 @@ import './style.css';
 
 // `panel`, `connection-state`, and the `#monitoring-state`/`#clip-indicator` ids below are kept as literal
 // hooks (unstyled by CSS) because tests/app.spec.ts selects elements by these exact class/id strings.
-const PANEL = 'panel p-5 my-4 bg-panel border border-border rounded-xl';
+const PANEL = 'panel p-6 my-4 bg-card text-card-foreground border border-border rounded-lg';
 const PANEL_HEADING = 'flex justify-between gap-4 items-center mb-3 max-[34rem]:items-start max-[34rem]:flex-col max-[34rem]:gap-2';
-const PANEL_TITLE = 'text-[1.1rem] mb-0';
+const PANEL_TITLE = 'text-sm font-medium mb-0';
 const ACTIONS = 'flex justify-between gap-4 items-center max-[34rem]:items-start max-[34rem]:flex-col max-[34rem]:gap-2';
 const ACTION_BUTTON = 'max-[34rem]:w-full';
-const SECONDARY_BUTTON = 'bg-border text-fg';
+const SECONDARY_BUTTON = 'bg-secondary text-secondary-foreground';
 const SECONDARY_ACTION_BUTTON = `${SECONDARY_BUTTON} ${ACTION_BUTTON}`;
-const COMPACT_SECONDARY_BUTTON = `${SECONDARY_BUTTON} px-[.65rem] py-[.35rem] text-[.8rem]`;
-const STAGE_TOGGLE = 'flex gap-[.6rem] items-center my-4 font-bold';
-const STAGE_TOGGLE_CHECKBOX = 'w-[1.15rem] h-[1.15rem] accent-accent';
-const FIELD = 'block mt-4 mb-[.35rem] font-bold';
-const FIELD_HELP = 'block mt-[.35rem] text-muted text-[.9rem] font-normal';
-const STATE_VALUE = 'text-accent font-bold';
+const COMPACT_SECONDARY_BUTTON = `${SECONDARY_BUTTON} h-7 px-2 text-xs`;
+const STAGE_TOGGLE = 'flex gap-[.6rem] items-center my-4 font-medium';
+const STAGE_TOGGLE_CHECKBOX = 'w-4 h-4 accent-primary';
+const FIELD = 'block mt-4 mb-[.35rem] font-medium text-sm';
+const FIELD_HELP = 'block mt-[.35rem] text-muted-foreground text-xs font-normal';
+const STATE_VALUE = 'text-positive font-semibold';
 
 const preferencesStore = new WorkbenchPreferencesStore(browserStorage());
 let workbenchPreferences = preferencesStore.load();
@@ -91,8 +91,8 @@ function renderStructure(current: AudioSnapshot): void {
         </div>
         ${current.devices.length > 0 ? deviceSelector(current) : ''}
         ${current.inputChannelCount > 1 ? channelSelector(current) : ''}
-        ${current.rawCaptureWarnings.map((warning) => `<p class="text-warning" role="alert">${escapeHtml(warning)}</p>`).join('')}
-        ${recovery.inputMessage === undefined ? '' : `<p class="text-error font-bold" role="alert">${escapeHtml(recovery.inputMessage)}</p>`}
+        ${current.rawCaptureWarnings.map((warning) => `<p class="text-warning text-sm" role="alert">${escapeHtml(warning)}</p>`).join('')}
+        ${recovery.inputMessage === undefined ? '' : `<p class="text-destructive font-medium text-sm" role="alert">${escapeHtml(recovery.inputMessage)}</p>`}
       </section>
 
       ${meterPanel('input', 'Input Level Meter', current.meter, 'Live Guitar Input before Clean Gain. Connecting and metering remain silent until Processed Monitoring is enabled.')}
@@ -135,8 +135,8 @@ function renderStructure(current: AudioSnapshot): void {
         <div class="${PANEL_HEADING}"><h2 id="monitoring-title" class="${PANEL_TITLE}">Processed Monitoring</h2><strong id="monitoring-state" class="${STATE_VALUE}">${current.monitoring ? 'On' : 'Off'}</strong></div>
         <p>${routingDescription(current)}</p>
         ${outputSelector(current, connected)}
-        ${current.outputRouting.error === undefined ? '' : `<p class="text-error font-bold" role="alert">${escapeHtml(current.outputRouting.error)}</p>`}
-        ${recovery.monitoringMessage === undefined ? '' : `<p class="text-error font-bold" role="alert">${escapeHtml(recovery.monitoringMessage)}</p>`}
+        ${current.outputRouting.error === undefined ? '' : `<p class="text-destructive font-medium text-sm" role="alert">${escapeHtml(current.outputRouting.error)}</p>`}
+        ${recovery.monitoringMessage === undefined ? '' : `<p class="text-destructive font-medium text-sm" role="alert">${escapeHtml(recovery.monitoringMessage)}</p>`}
         <div class="${ACTIONS}">
           ${recovery.retrySelectedOutput ? `<button id="retry-output" type="button" class="${SECONDARY_ACTION_BUTTON}">Retry Selected Output</button>` : ''}
           <button id="monitoring-toggle" type="button" class="${ACTION_BUTTON}" ${recovery.monitoringDisabled ? 'disabled' : ''}>${recovery.monitoringButtonLabel}</button>
@@ -255,8 +255,8 @@ function renderMeters(current: AudioSnapshot): void {
 
 function clipIndicatorClass(active: boolean): string {
   return active
-    ? 'font-black tracking-[.08em] text-clip-active [text-shadow:0_0_.7rem_rgb(255_82_82_/_70%)]'
-    : 'font-black tracking-[.08em] text-clip-idle';
+    ? 'font-black tracking-[.08em] text-destructive [text-shadow:0_0_.7rem_oklch(0.704_0.191_22.216_/_70%)]'
+    : 'font-black tracking-[.08em] text-muted-foreground';
 }
 
 function updateMeter(id: string, reading: InputMeterSnapshot): void {
@@ -283,21 +283,21 @@ function meterPanel(id: 'input' | 'output', title: string, reading: InputMeterSn
   return `<section class="${PANEL}" aria-labelledby="${id}-meter-title">
     <div class="${PANEL_HEADING}">
       <h2 id="${id}-meter-title" class="${PANEL_TITLE}">${title}</h2>
-      <span id="${id}-meter-value" class="text-muted text-[.85rem]">${reading.dbfs.toFixed(1)} dBFS</span>
+      <span id="${id}-meter-value" class="text-muted-foreground text-xs">${reading.dbfs.toFixed(1)} dBFS</span>
     </div>
     <div id="${id}-meter" class="relative h-[1.3rem] overflow-hidden rounded-[.2rem] bg-[linear-gradient(90deg,#2b9b53_0_80%,#d4bb45_80%_95%,#df5252_95%)]" aria-label="${id === 'input' ? 'Input' : 'Output'} level" aria-valuemin="-60" aria-valuemax="0" aria-valuenow="${reading.dbfs}" role="progressbar">
       <div id="${id}-meter-fill" class="${METER_FILL} ${meterRegion(reading.dbfs)}" style="width: ${100 - meterPositionPercent(reading.dbfs)}%"></div>
       <div id="${id}-meter-peak" class="absolute top-0 bottom-0 w-[2px] bg-white" style="left: ${meterPositionPercent(reading.peakDbfs)}%"></div>
     </div>
-    <div class="flex justify-between gap-4 items-center text-muted text-xs mt-1" aria-hidden="true"><span>−60</span><span>−12</span><span>−3</span><span>0 dBFS</span></div>
-    <div class="flex justify-between gap-4 items-end mt-3 max-[34rem]:items-start max-[34rem]:flex-col max-[34rem]:gap-2"><p class="text-muted text-[.9rem]">${hint}</p>${clip}</div>
+    <div class="flex justify-between gap-4 items-center text-muted-foreground text-xs mt-1" aria-hidden="true"><span>−60</span><span>−12</span><span>−3</span><span>0 dBFS</span></div>
+    <div class="flex justify-between gap-4 items-end mt-3 max-[34rem]:items-start max-[34rem]:flex-col max-[34rem]:gap-2"><p class="text-muted-foreground text-xs">${hint}</p>${clip}</div>
   </section>`;
 }
 
 function dbControl(id: string, label: string, value: number, definition: ContinuousControlDefinition): string {
   return `<div class="grid grid-cols-[1fr_auto] max-[34rem]:grid-cols-1 gap-x-4 gap-y-[.6rem] items-center">
-    <label for="${id}-slider" class="col-span-2 max-[34rem]:col-span-1 font-bold">${label}</label>
-    <input id="${id}-slider" aria-label="${label} slider" type="range" class="w-full accent-accent" min="${definition.minimum}" max="${definition.maximum}" step="${definition.step}" value="${value}">
+    <label for="${id}-slider" class="col-span-2 max-[34rem]:col-span-1 font-medium text-sm">${label}</label>
+    <input id="${id}-slider" aria-label="${label} slider" type="range" class="w-full accent-primary" min="${definition.minimum}" max="${definition.maximum}" step="${definition.step}" value="${value}">
     <div class="flex items-center gap-[.35rem] max-[34rem]:justify-end">
       <input id="${id}-value" aria-label="${label} value" type="number" inputmode="decimal" class="${NUMERIC_INPUT}" min="${definition.minimum}" max="${definition.maximum}" step="${definition.step}" value="${value.toFixed(definition.fractionDigits)}">
       <span aria-hidden="true">dB</span>
@@ -305,12 +305,12 @@ function dbControl(id: string, label: string, value: number, definition: Continu
   </div>`;
 }
 
-const NUMERIC_INPUT = 'w-[6.5rem] py-[.45rem] px-[.55rem] rounded-[.35rem] border border-input-border bg-input-bg text-inherit text-right';
+const NUMERIC_INPUT = 'w-20 h-9 px-2 rounded-md border border-input bg-input-fill text-foreground text-right text-sm';
 
 function percentControl(id: string, label: string, value: number, definition: ContinuousControlDefinition): string {
   return `<div class="grid grid-cols-[1fr_auto] max-[34rem]:grid-cols-1 gap-x-4 gap-y-[.6rem] items-center">
-    <label for="${id}-slider" class="col-span-2 max-[34rem]:col-span-1 font-bold">${label}</label>
-    <input id="${id}-slider" aria-label="${label} slider" type="range" class="w-full accent-accent" min="${definition.minimum}" max="${definition.maximum}" step="${definition.step}" value="${value}">
+    <label for="${id}-slider" class="col-span-2 max-[34rem]:col-span-1 font-medium text-sm">${label}</label>
+    <input id="${id}-slider" aria-label="${label} slider" type="range" class="w-full accent-primary" min="${definition.minimum}" max="${definition.maximum}" step="${definition.step}" value="${value}">
     <div class="flex items-center gap-[.35rem] max-[34rem]:justify-end">
       <input id="${id}-value" aria-label="${label} value" type="number" inputmode="numeric" class="${NUMERIC_INPUT}" min="${definition.minimum}" max="${definition.maximum}" step="${definition.step}" value="${value.toFixed(definition.fractionDigits)}">
       <span aria-hidden="true">%</span>
@@ -418,9 +418,9 @@ function unavailableDeviceOption(
 }
 
 function hardwareGuidance(): string {
-  return `<aside class="mt-4 p-4 border border-guidance-border rounded-lg bg-guidance" aria-labelledby="guidance-title">
-    <h3 id="guidance-title" class="text-base mb-3">Before you monitor</h3>
-    <p class="mb-3">Disable Hardware Direct Monitoring on your audio interface so you hear the processed path, and use headphones.</p>
+  return `<aside class="mt-4 p-4 border border-warning/30 rounded-lg bg-warning/10" aria-labelledby="guidance-title">
+    <h3 id="guidance-title" class="text-sm font-medium mb-3">Before you monitor</h3>
+    <p class="mb-3 text-sm">Disable Hardware Direct Monitoring on your audio interface so you hear the processed path, and use headphones.</p>
     <div class="${ACTIONS}">
       <button id="confirm-monitoring" type="button" class="${ACTION_BUTTON}">Checked — Enable Monitoring</button>
       <button id="dismiss-guidance" type="button" class="${SECONDARY_ACTION_BUTTON}">Dismiss reminder</button>

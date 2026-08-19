@@ -1,45 +1,58 @@
 @import 'tailwindcss';
 
+/* Palette matches the shadcn/ui "Mira" style, Zinc theme, dark mode
+   (https://ui.shadcn.com/create?preset=bdvw9FgW) so the app looks like that
+   preset without pulling in shadcn or React. */
 @theme {
   --font-sans: Inter, ui-sans-serif, system-ui, sans-serif;
-  --color-bg: #111611;
-  --color-fg: #edf2ec;
-  --color-panel: #1b231b;
-  --color-border: #384238;
-  --color-input-border: #697469;
-  --color-input-bg: #101610;
-  --color-accent: #b6e47c;
-  --color-accent-fg: #102111;
-  --color-muted: #bbc5bb;
-  --color-focus: #f2d569;
+
+  --color-background: oklch(0.141 0.005 285.823);
+  --color-foreground: oklch(0.985 0 0);
+  --color-card: oklch(0.21 0.006 285.885);
+  --color-card-foreground: oklch(0.985 0 0);
+  --color-primary: oklch(0.92 0.004 286.32);
+  --color-primary-foreground: oklch(0.21 0.006 285.885);
+  --color-secondary: oklch(0.274 0.006 286.033);
+  --color-secondary-foreground: oklch(0.985 0 0);
+  --color-muted: oklch(0.274 0.006 286.033);
+  --color-muted-foreground: oklch(0.705 0.015 286.067);
+  --color-destructive: oklch(0.704 0.191 22.216);
+  --color-border: oklch(1 0 0 / 10%);
+  --color-input: oklch(1 0 0 / 15%);
+  --color-input-fill: oklch(1 0 0 / 4.5%);
+  --color-ring: oklch(0.552 0.016 285.938);
+
+  /* Not part of the shadcn Zinc palette: the amp still needs a warning tone and a
+     restrained "on" indicator for connection/monitoring status. */
   --color-warning: #f2d569;
-  --color-error: #ff9a9a;
-  --color-guidance-border: #d4bb45;
-  --color-guidance: #252719;
-  --color-clip-idle: #6b706b;
-  --color-clip-active: #ff6666;
+  --color-positive: #b6e47c;
+
+  --radius-sm: calc(.45rem - 4px);
+  --radius-md: calc(.45rem - 2px);
+  --radius-lg: .45rem;
+  --radius-xl: calc(.45rem + 4px);
 }
 
 @layer base {
   body {
-    @apply bg-bg text-fg font-sans leading-relaxed;
+    @apply bg-background text-foreground font-sans leading-relaxed antialiased;
   }
 
   button {
-    @apply cursor-pointer rounded-[.4rem] border-0 px-4 py-[.65rem] font-bold text-accent-fg bg-accent;
+    @apply cursor-pointer rounded-md border-0 px-4 h-9 text-sm font-medium text-primary-foreground bg-primary transition-colors;
   }
 
   button:disabled {
-    @apply cursor-not-allowed opacity-[.52];
+    @apply cursor-not-allowed opacity-50;
   }
 
   select {
-    @apply w-full p-[.55rem] rounded-[.35rem] border border-input-border bg-input-bg text-inherit;
+    @apply w-full h-9 px-3 rounded-md border border-input bg-input-fill text-foreground text-sm;
   }
 
   button:focus-visible,
   select:focus-visible,
   input:focus-visible {
-    @apply outline outline-[3px] outline-focus outline-offset-[3px];
+    @apply outline-none ring-[3px] ring-ring/50;
   }
 }
