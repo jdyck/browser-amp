@@ -4,6 +4,22 @@ import { AMP_CONTROL_DEFINITIONS, type AmpControlSettings, type ContinuousContro
 import { WorkbenchPreferencesStore, resetControls, type StoredWorkbenchPreferences } from './settings';
 import './style.css';
 
+// `panel`, `connection-state`, and the `#monitoring-state`/`#clip-indicator` ids below are kept as literal
+// hooks (unstyled by CSS) because tests/app.spec.ts selects elements by these exact class/id strings.
+const PANEL = 'panel p-5 my-4 bg-panel border border-border rounded-xl';
+const PANEL_HEADING = 'flex justify-between gap-4 items-center mb-3 max-[34rem]:items-start max-[34rem]:flex-col max-[34rem]:gap-2';
+const PANEL_TITLE = 'text-[1.1rem] mb-0';
+const ACTIONS = 'flex justify-between gap-4 items-center max-[34rem]:items-start max-[34rem]:flex-col max-[34rem]:gap-2';
+const ACTION_BUTTON = 'max-[34rem]:w-full';
+const SECONDARY_BUTTON = 'bg-border text-fg';
+const SECONDARY_ACTION_BUTTON = `${SECONDARY_BUTTON} ${ACTION_BUTTON}`;
+const COMPACT_SECONDARY_BUTTON = `${SECONDARY_BUTTON} px-[.65rem] py-[.35rem] text-[.8rem]`;
+const STAGE_TOGGLE = 'flex gap-[.6rem] items-center my-4 font-bold';
+const STAGE_TOGGLE_CHECKBOX = 'w-[1.15rem] h-[1.15rem] accent-accent';
+const FIELD = 'block mt-4 mb-[.35rem] font-bold';
+const FIELD_HELP = 'block mt-[.35rem] text-muted text-[.9rem] font-normal';
+const STATE_VALUE = 'text-accent font-bold';
+
 const preferencesStore = new WorkbenchPreferencesStore(browserStorage());
 let workbenchPreferences = preferencesStore.load();
 const engine = new AudioEngine();
@@ -57,73 +73,73 @@ function renderStructure(current: AudioSnapshot): void {
   const connected = current.lifecycle === 'connected-muted' || current.lifecycle === 'monitoring' || current.lifecycle === 'interrupted';
   const recovery = recoveryPresentation(current, connected);
   root.innerHTML = `
-    <section class="workbench" aria-labelledby="page-title">
-      <header>
-        <h1 id="page-title">Browser Amp</h1>
-        <button id="reset-controls" type="button" class="secondary">Reset Controls</button>
+    <section class="w-[min(100%-2rem,46rem)] max-[34rem]:w-[min(100%-1.25rem,46rem)] mx-auto py-12 max-[34rem]:py-6" aria-labelledby="page-title">
+      <header class="mb-6">
+        <h1 id="page-title" class="text-[clamp(2rem,6vw,3.5rem)] mb-1">Browser Amp</h1>
+        <button id="reset-controls" type="button" class="${SECONDARY_BUTTON}">Reset Controls</button>
       </header>
 
-      <section class="panel" aria-labelledby="input-title">
-        <div class="panel-heading">
-          <h2 id="input-title">Live Guitar Input</h2>
-          <output class="connection-state" role="status">${connectionLabel(current)}</output>
+      <section class="${PANEL}" aria-labelledby="input-title">
+        <div class="${PANEL_HEADING}">
+          <h2 id="input-title" class="${PANEL_TITLE}">Live Guitar Input</h2>
+          <output class="connection-state ${STATE_VALUE}" role="status">${connectionLabel(current)}</output>
         </div>
         <p id="connection-description">${connectionDescription(current)}</p>
-        <div class="actions">
-          <button id="connect" type="button" ${current.lifecycle === 'connecting' ? 'disabled' : ''}>${recovery.connectButtonLabel}</button>
-          ${connected ? '<button id="disconnect" type="button" class="secondary">Disconnect</button>' : ''}
+        <div class="${ACTIONS}">
+          <button id="connect" type="button" class="${ACTION_BUTTON}" ${current.lifecycle === 'connecting' ? 'disabled' : ''}>${recovery.connectButtonLabel}</button>
+          ${connected ? `<button id="disconnect" type="button" class="${SECONDARY_ACTION_BUTTON}">Disconnect</button>` : ''}
         </div>
         ${current.devices.length > 0 ? deviceSelector(current) : ''}
         ${current.inputChannelCount > 1 ? channelSelector(current) : ''}
-        ${current.rawCaptureWarnings.map((warning) => `<p class="warning" role="alert">${escapeHtml(warning)}</p>`).join('')}
-        ${recovery.inputMessage === undefined ? '' : `<p class="error" role="alert">${escapeHtml(recovery.inputMessage)}</p>`}
+        ${current.rawCaptureWarnings.map((warning) => `<p class="text-warning" role="alert">${escapeHtml(warning)}</p>`).join('')}
+        ${recovery.inputMessage === undefined ? '' : `<p class="text-error font-bold" role="alert">${escapeHtml(recovery.inputMessage)}</p>`}
       </section>
 
       ${meterPanel('input', 'Input Level Meter', current.meter, 'Live Guitar Input before Clean Gain. Connecting and metering remain silent until Processed Monitoring is enabled.')}
 
-      <section class="panel" aria-label="Clean Gain">
+      <section class="${PANEL}" aria-label="Clean Gain">
         ${dbControl('clean-gain', 'Clean Gain', current.controls.cleanGainDb, AMP_CONTROL_DEFINITIONS.cleanGainDb)}
       </section>
 
-      <section class="panel" aria-label="Three-Band EQ">
-        <div class="control-stack">
+      <section class="${PANEL}" aria-label="Three-Band EQ">
+        <div class="grid gap-5">
           ${dbControl('bass', 'Bass', current.controls.bassDb, AMP_CONTROL_DEFINITIONS.bassDb)}
           ${dbControl('middle', 'Middle', current.controls.middleDb, AMP_CONTROL_DEFINITIONS.middleDb)}
           ${dbControl('treble', 'Treble', current.controls.trebleDb, AMP_CONTROL_DEFINITIONS.trebleDb)}
         </div>
       </section>
 
-      <section class="panel" aria-label="Compression">
-        <label class="stage-toggle" for="compression-bypass">
-          <input id="compression-bypass" type="checkbox" ${current.controls.compressionBypassed ? 'checked' : ''}>
+      <section class="${PANEL}" aria-label="Compression">
+        <label class="${STAGE_TOGGLE}" for="compression-bypass">
+          <input id="compression-bypass" type="checkbox" class="${STAGE_TOGGLE_CHECKBOX}" ${current.controls.compressionBypassed ? 'checked' : ''}>
           Compression Stage Bypass
         </label>
         ${percentControl('compression-amount', 'Compression', current.controls.compressionAmount, AMP_CONTROL_DEFINITIONS.compressionAmount)}
       </section>
 
-      <section class="panel" aria-label="Reverb">
-        <label class="stage-toggle" for="reverb-bypass">
-          <input id="reverb-bypass" type="checkbox" ${current.controls.reverbBypassed ? 'checked' : ''}>
+      <section class="${PANEL}" aria-label="Reverb">
+        <label class="${STAGE_TOGGLE}" for="reverb-bypass">
+          <input id="reverb-bypass" type="checkbox" class="${STAGE_TOGGLE_CHECKBOX}" ${current.controls.reverbBypassed ? 'checked' : ''}>
           Reverb Stage Bypass
         </label>
         ${percentControl('reverb-amount', 'Reverb', current.controls.reverbAmount, AMP_CONTROL_DEFINITIONS.reverbAmount)}
       </section>
 
-      <section class="panel" aria-label="Master Volume">
+      <section class="${PANEL}" aria-label="Master Volume">
         ${dbControl('master-volume', 'Master', current.controls.masterVolumeDb, AMP_CONTROL_DEFINITIONS.masterVolumeDb)}
       </section>
 
       ${meterPanel('output', 'Output Level Meter', current.outputMeter, 'Post-Master signal before browser output.')}
 
-      <section class="panel monitoring" aria-labelledby="monitoring-title">
-        <div class="panel-heading"><h2 id="monitoring-title">Processed Monitoring</h2><strong id="monitoring-state">${current.monitoring ? 'On' : 'Off'}</strong></div>
+      <section class="${PANEL}" aria-labelledby="monitoring-title">
+        <div class="${PANEL_HEADING}"><h2 id="monitoring-title" class="${PANEL_TITLE}">Processed Monitoring</h2><strong id="monitoring-state" class="${STATE_VALUE}">${current.monitoring ? 'On' : 'Off'}</strong></div>
         <p>${routingDescription(current)}</p>
         ${outputSelector(current, connected)}
-        ${current.outputRouting.error === undefined ? '' : `<p class="error" role="alert">${escapeHtml(current.outputRouting.error)}</p>`}
-        ${recovery.monitoringMessage === undefined ? '' : `<p class="error" role="alert">${escapeHtml(recovery.monitoringMessage)}</p>`}
-        <div class="actions">
-          ${recovery.retrySelectedOutput ? '<button id="retry-output" type="button" class="secondary">Retry Selected Output</button>' : ''}
-          <button id="monitoring-toggle" type="button" ${recovery.monitoringDisabled ? 'disabled' : ''}>${recovery.monitoringButtonLabel}</button>
+        ${current.outputRouting.error === undefined ? '' : `<p class="text-error font-bold" role="alert">${escapeHtml(current.outputRouting.error)}</p>`}
+        ${recovery.monitoringMessage === undefined ? '' : `<p class="text-error font-bold" role="alert">${escapeHtml(recovery.monitoringMessage)}</p>`}
+        <div class="${ACTIONS}">
+          ${recovery.retrySelectedOutput ? `<button id="retry-output" type="button" class="${SECONDARY_ACTION_BUTTON}">Retry Selected Output</button>` : ''}
+          <button id="monitoring-toggle" type="button" class="${ACTION_BUTTON}" ${recovery.monitoringDisabled ? 'disabled' : ''}>${recovery.monitoringButtonLabel}</button>
         </div>
         ${guidanceOpen ? hardwareGuidance() : ''}
       </section>
@@ -231,10 +247,16 @@ function renderMeters(current: AudioSnapshot): void {
   const indicator = root.querySelector<HTMLElement>('#clip-indicator');
   const clear = root.querySelector<HTMLButtonElement>('#clear-clip');
   if (indicator !== null) {
-    indicator.classList.toggle('active', current.clipLatched);
+    indicator.className = clipIndicatorClass(current.clipLatched);
     indicator.setAttribute('aria-hidden', String(!current.clipLatched));
   }
   if (clear !== null) clear.disabled = !current.clipLatched;
+}
+
+function clipIndicatorClass(active: boolean): string {
+  return active
+    ? 'font-black tracking-[.08em] text-clip-active [text-shadow:0_0_.7rem_rgb(255_82_82_/_70%)]'
+    : 'font-black tracking-[.08em] text-clip-idle';
 }
 
 function updateMeter(id: string, reading: InputMeterSnapshot): void {
@@ -244,49 +266,53 @@ function updateMeter(id: string, reading: InputMeterSnapshot): void {
   const value = root.querySelector<HTMLElement>(`#${id}-meter-value`);
   if (meter === null || fill === null || peak === null || value === null) return;
   meter.setAttribute('aria-valuenow', String(reading.dbfs));
-  fill.className = `meter-fill ${meterRegion(reading.dbfs)}`;
+  fill.className = `${METER_FILL} ${meterRegion(reading.dbfs)}`;
   fill.style.width = `${100 - meterPositionPercent(reading.dbfs)}%`;
   peak.style.left = `${meterPositionPercent(reading.peakDbfs)}%`;
   value.textContent = `${reading.dbfs.toFixed(1)} dBFS`;
 }
 
+const METER_FILL = 'absolute inset-y-0 right-0 bg-black/60';
+
 function meterPanel(id: 'input' | 'output', title: string, reading: InputMeterSnapshot, hint: string): string {
   const clip = id === 'output' ? `
-    <div class="clip-controls">
-      <span id="clip-indicator" class="clip-indicator" role="status" aria-hidden="true">CLIP</span>
-      <button id="clear-clip" type="button" class="secondary compact" disabled>Clear CLIP</button>
+    <div class="flex flex-none items-center gap-2">
+      <span id="clip-indicator" class="${clipIndicatorClass(false)}" role="status" aria-hidden="true">CLIP</span>
+      <button id="clear-clip" type="button" class="${COMPACT_SECONDARY_BUTTON}" disabled>Clear CLIP</button>
     </div>` : '';
-  return `<section class="panel" aria-labelledby="${id}-meter-title">
-    <div class="panel-heading">
-      <h2 id="${id}-meter-title">${title}</h2>
-      <span id="${id}-meter-value">${reading.dbfs.toFixed(1)} dBFS</span>
+  return `<section class="${PANEL}" aria-labelledby="${id}-meter-title">
+    <div class="${PANEL_HEADING}">
+      <h2 id="${id}-meter-title" class="${PANEL_TITLE}">${title}</h2>
+      <span id="${id}-meter-value" class="text-muted text-[.85rem]">${reading.dbfs.toFixed(1)} dBFS</span>
     </div>
-    <div id="${id}-meter" class="meter" aria-label="${id === 'input' ? 'Input' : 'Output'} level" aria-valuemin="-60" aria-valuemax="0" aria-valuenow="${reading.dbfs}" role="progressbar">
-      <div id="${id}-meter-fill" class="meter-fill ${meterRegion(reading.dbfs)}" style="width: ${100 - meterPositionPercent(reading.dbfs)}%"></div>
-      <div id="${id}-meter-peak" class="peak" style="left: ${meterPositionPercent(reading.peakDbfs)}%"></div>
+    <div id="${id}-meter" class="relative h-[1.3rem] overflow-hidden rounded-[.2rem] bg-[linear-gradient(90deg,#2b9b53_0_80%,#d4bb45_80%_95%,#df5252_95%)]" aria-label="${id === 'input' ? 'Input' : 'Output'} level" aria-valuemin="-60" aria-valuemax="0" aria-valuenow="${reading.dbfs}" role="progressbar">
+      <div id="${id}-meter-fill" class="${METER_FILL} ${meterRegion(reading.dbfs)}" style="width: ${100 - meterPositionPercent(reading.dbfs)}%"></div>
+      <div id="${id}-meter-peak" class="absolute top-0 bottom-0 w-[2px] bg-white" style="left: ${meterPositionPercent(reading.peakDbfs)}%"></div>
     </div>
-    <div class="meter-scale" aria-hidden="true"><span>−60</span><span>−12</span><span>−3</span><span>0 dBFS</span></div>
-    <div class="meter-footer"><p class="hint">${hint}</p>${clip}</div>
+    <div class="flex justify-between gap-4 items-center text-muted text-xs mt-1" aria-hidden="true"><span>−60</span><span>−12</span><span>−3</span><span>0 dBFS</span></div>
+    <div class="flex justify-between gap-4 items-end mt-3 max-[34rem]:items-start max-[34rem]:flex-col max-[34rem]:gap-2"><p class="text-muted text-[.9rem]">${hint}</p>${clip}</div>
   </section>`;
 }
 
 function dbControl(id: string, label: string, value: number, definition: ContinuousControlDefinition): string {
-  return `<div class="continuous-control">
-    <label for="${id}-slider">${label}</label>
-    <input id="${id}-slider" aria-label="${label} slider" type="range" min="${definition.minimum}" max="${definition.maximum}" step="${definition.step}" value="${value}">
-    <div class="numeric-control">
-      <input id="${id}-value" aria-label="${label} value" type="number" inputmode="decimal" min="${definition.minimum}" max="${definition.maximum}" step="${definition.step}" value="${value.toFixed(definition.fractionDigits)}">
+  return `<div class="grid grid-cols-[1fr_auto] max-[34rem]:grid-cols-1 gap-x-4 gap-y-[.6rem] items-center">
+    <label for="${id}-slider" class="col-span-2 max-[34rem]:col-span-1 font-bold">${label}</label>
+    <input id="${id}-slider" aria-label="${label} slider" type="range" class="w-full accent-accent" min="${definition.minimum}" max="${definition.maximum}" step="${definition.step}" value="${value}">
+    <div class="flex items-center gap-[.35rem] max-[34rem]:justify-end">
+      <input id="${id}-value" aria-label="${label} value" type="number" inputmode="decimal" class="${NUMERIC_INPUT}" min="${definition.minimum}" max="${definition.maximum}" step="${definition.step}" value="${value.toFixed(definition.fractionDigits)}">
       <span aria-hidden="true">dB</span>
     </div>
   </div>`;
 }
 
+const NUMERIC_INPUT = 'w-[6.5rem] py-[.45rem] px-[.55rem] rounded-[.35rem] border border-input-border bg-input-bg text-inherit text-right';
+
 function percentControl(id: string, label: string, value: number, definition: ContinuousControlDefinition): string {
-  return `<div class="continuous-control">
-    <label for="${id}-slider">${label}</label>
-    <input id="${id}-slider" aria-label="${label} slider" type="range" min="${definition.minimum}" max="${definition.maximum}" step="${definition.step}" value="${value}">
-    <div class="numeric-control">
-      <input id="${id}-value" aria-label="${label} value" type="number" inputmode="numeric" min="${definition.minimum}" max="${definition.maximum}" step="${definition.step}" value="${value.toFixed(definition.fractionDigits)}">
+  return `<div class="grid grid-cols-[1fr_auto] max-[34rem]:grid-cols-1 gap-x-4 gap-y-[.6rem] items-center">
+    <label for="${id}-slider" class="col-span-2 max-[34rem]:col-span-1 font-bold">${label}</label>
+    <input id="${id}-slider" aria-label="${label} slider" type="range" class="w-full accent-accent" min="${definition.minimum}" max="${definition.maximum}" step="${definition.step}" value="${value}">
+    <div class="flex items-center gap-[.35rem] max-[34rem]:justify-end">
+      <input id="${id}-value" aria-label="${label} value" type="number" inputmode="numeric" class="${NUMERIC_INPUT}" min="${definition.minimum}" max="${definition.maximum}" step="${definition.step}" value="${value.toFixed(definition.fractionDigits)}">
       <span aria-hidden="true">%</span>
     </div>
   </div>`;
@@ -366,19 +392,19 @@ function routingDescription(current: AudioSnapshot): string {
 function deviceSelector(current: AudioSnapshot): string {
   const selectedUnavailable = unavailableDeviceOption(current.selectedInputDeviceId, current.devices, 'input');
   const options = current.devices.map((device) => `<option value="${escapeHtml(device.id)}" ${device.id === current.selectedInputDeviceId ? 'selected' : ''}>${escapeHtml(device.label)}</option>`).join('');
-  return `<label class="field" for="input-device">Input device</label><select id="input-device" aria-describedby="device-help"><option value="">System default</option>${selectedUnavailable}${options}</select><span id="device-help" class="field-help">Choose a device to reconnect to it explicitly.</span>`;
+  return `<label class="${FIELD}" for="input-device">Input device</label><select id="input-device" aria-describedby="device-help"><option value="">System default</option>${selectedUnavailable}${options}</select><span id="device-help" class="${FIELD_HELP}">Choose a device to reconnect to it explicitly.</span>`;
 }
 
 function channelSelector(current: AudioSnapshot): string {
   const options = Array.from({ length: current.inputChannelCount }, (_, channel) => `<option value="${channel}" ${channel === current.inputChannel ? 'selected' : ''}>Channel ${channel + 1}</option>`).join('');
-  return `<label class="field" for="input-channel">Input Channel</label><select id="input-channel">${options}</select>`;
+  return `<label class="${FIELD}" for="input-channel">Input Channel</label><select id="input-channel">${options}</select>`;
 }
 
 function outputSelector(current: AudioSnapshot, connected: boolean): string {
   if (!connected || current.outputRouting.mode !== 'selectable') return '';
   const selectedUnavailable = unavailableDeviceOption(current.outputRouting.selectedDeviceId, current.outputRouting.devices, 'output');
   const options = current.outputRouting.devices.map((device) => `<option value="${escapeHtml(device.id)}" ${device.id === current.outputRouting.selectedDeviceId ? 'selected' : ''}>${escapeHtml(device.label)}</option>`).join('');
-  return `<label class="field" for="output-device">Output device</label><select id="output-device"><option value="">System default</option>${selectedUnavailable}${options}</select>`;
+  return `<label class="${FIELD}" for="output-device">Output device</label><select id="output-device"><option value="">System default</option>${selectedUnavailable}${options}</select>`;
 }
 
 function unavailableDeviceOption(
@@ -392,12 +418,12 @@ function unavailableDeviceOption(
 }
 
 function hardwareGuidance(): string {
-  return `<aside class="guidance" aria-labelledby="guidance-title">
-    <h3 id="guidance-title">Before you monitor</h3>
-    <p>Disable Hardware Direct Monitoring on your audio interface so you hear the processed path, and use headphones.</p>
-    <div class="actions">
-      <button id="confirm-monitoring" type="button">Checked — Enable Monitoring</button>
-      <button id="dismiss-guidance" type="button" class="secondary">Dismiss reminder</button>
+  return `<aside class="mt-4 p-4 border border-guidance-border rounded-lg bg-guidance" aria-labelledby="guidance-title">
+    <h3 id="guidance-title" class="text-base mb-3">Before you monitor</h3>
+    <p class="mb-3">Disable Hardware Direct Monitoring on your audio interface so you hear the processed path, and use headphones.</p>
+    <div class="${ACTIONS}">
+      <button id="confirm-monitoring" type="button" class="${ACTION_BUTTON}">Checked — Enable Monitoring</button>
+      <button id="dismiss-guidance" type="button" class="${SECONDARY_ACTION_BUTTON}">Dismiss reminder</button>
     </div>
   </aside>`;
 }

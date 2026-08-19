@@ -261,7 +261,7 @@ The gate milestone must add deterministic offline tests for opening, closing, hy
 - Vite.
 - TypeScript with strict checking.
 - Plain DOM APIs.
-- Ordinary CSS.
+- Tailwind CSS.
 - No UI framework.
 - No third-party DSP library.
 
