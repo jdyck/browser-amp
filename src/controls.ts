@@ -1,4 +1,26 @@
+export const AMP_MODELS = {
+  'clean-voice': {
+    label: 'Clean Voice',
+    description: 'Transparent gain without intentional saturation.',
+  },
+  'clean-tube': {
+    label: 'Clean Tube',
+    description: 'Tube-inspired warmth and a softer high end. Raise Clean Gain for gentle breakup; use Master for listening volume.',
+  },
+  'clean-tube-warm': {
+    label: 'Clean Tube Warm',
+    description: 'Fuller low mids, darker highs, and earlier tube-inspired breakup. Raise Clean Gain for more saturation; use Master for listening volume.',
+  },
+} as const;
+
+export type AmpModel = keyof typeof AMP_MODELS;
+
+export function isAmpModel(value: unknown): value is AmpModel {
+  return typeof value === 'string' && Object.hasOwn(AMP_MODELS, value);
+}
+
 export interface AmpControlSettings {
+  readonly ampModel: AmpModel;
   readonly cleanGainDb: number;
   readonly bassDb: number;
   readonly middleDb: number;
@@ -12,6 +34,7 @@ export interface AmpControlSettings {
 }
 
 export const DEFAULT_AMP_CONTROLS: AmpControlSettings = {
+  ampModel: 'clean-voice',
   cleanGainDb: 0,
   bassDb: 0,
   middleDb: 0,
@@ -73,6 +96,7 @@ export function normalizeAmpControlSettings(
   const masterVolumeDb = finiteNumber(controls.masterVolumeDb);
 
   return {
+    ampModel: isAmpModel(controls.ampModel) ? controls.ampModel : fallback.ampModel,
     cleanGainDb: cleanGainDb === undefined ? fallback.cleanGainDb : normalizeContinuousControl(cleanGainDb, AMP_CONTROL_DEFINITIONS.cleanGainDb),
     bassDb: bassDb === undefined ? fallback.bassDb : normalizeContinuousControl(bassDb, AMP_CONTROL_DEFINITIONS.bassDb),
     middleDb: middleDb === undefined ? fallback.middleDb : normalizeContinuousControl(middleDb, AMP_CONTROL_DEFINITIONS.middleDb),

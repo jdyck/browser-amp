@@ -56,6 +56,7 @@ describe('Saved Control Settings', () => {
     expect(new WorkbenchPreferencesStore(storage).load()).toEqual({
       version: 1,
       controls: {
+        ampModel: 'clean-voice',
         cleanGainDb: 24,
         bassDb: -12,
         middleDb: 3.3,
@@ -105,10 +106,29 @@ describe('Saved Control Settings', () => {
     expect(() => store.save(DEFAULT_STORED_WORKBENCH_PREFERENCES)).not.toThrow();
   });
 
+  it('persists the selected amp model and falls back for unknown saved models', () => {
+    const storage = new MemoryStorage();
+    const store = new WorkbenchPreferencesStore(storage);
+    for (const ampModel of ['clean-tube', 'clean-tube-warm'] as const) {
+      store.save({
+        ...DEFAULT_STORED_WORKBENCH_PREFERENCES,
+        controls: { ...DEFAULT_AMP_CONTROLS, ampModel },
+      });
+      expect(store.load().controls.ampModel).toBe(ampModel);
+    }
+
+    storage.setItem(SAVED_CONTROL_SETTINGS_STORAGE_KEY, JSON.stringify({
+      version: 1,
+      controls: { ampModel: 'future-model', cleanGainDb: 6 },
+    }));
+    expect(store.load().controls).toEqual({ ...DEFAULT_AMP_CONTROLS, cleanGainDb: 6 });
+  });
+
   it('resets every sound control while preserving dismissed guidance', () => {
     const reset = resetControls({
       version: 1,
       controls: {
+        ampModel: 'clean-tube',
         cleanGainDb: 12,
         bassDb: -4,
         middleDb: 5,

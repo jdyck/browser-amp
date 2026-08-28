@@ -1,23 +1,12 @@
 import { browserAudio, type BrowserAudio } from './browserAudio';
 import { DEFAULT_AMP_CONTROLS, normalizeAmpControlSettings, normalizePercentAmount } from '../controls';
-import { dbToLinearGain, GAIN_SMOOTHING_SECONDS, smoothGainToDb, smoothGainToValue } from './gain';
+import { dbToLinearGain, smoothGainToDb, smoothGainToValue } from './gain';
 import { meterReadingFromSamples, METER_FLOOR_DBFS, nextPeakHold, type PeakHold } from './meter';
-import { createPlateImpulse } from './reverb';
+import { ReverbStage } from './reverb';
+import { AmpModelStage } from './ampModel';
 import type { AmpControlSettings, AudioEngine as AudioEngineContract, AudioRecoverySnapshot, AudioSnapshot, InputDevice, InputSettings, LatencySnapshot, OutputDevice } from './types';
 
 const initialSettings: InputSettings = { selectedInputDeviceId: undefined, inputChannel: 0 };
-// Bound full-scale Amount to a strong but usable wet return (about -20 dB).
-const REVERB_MAX_WET_GAIN = 0.0975;
-
-interface ReverbPath {
-  readonly convolver: ConvolverNode;
-  readonly wetGain: GainNode;
-}
-
-interface RetiredReverbPath extends ReverbPath {
-  readonly timer: ReturnType<typeof setTimeout>;
-}
-
 export interface CompressionSettings {
   readonly thresholdDb: number;
   readonly ratio: number;
@@ -135,17 +124,14 @@ export class AudioEngine implements AudioEngineContract {
   #splitter: ChannelSplitterNode | undefined;
   #inputAnalyser: AnalyserNode | undefined;
   #cleanGain: GainNode | undefined;
+  #ampModel: AmpModelStage | undefined;
   #bassEq: BiquadFilterNode | undefined;
   #middleEq: BiquadFilterNode | undefined;
   #trebleEq: BiquadFilterNode | undefined;
   #compressor: DynamicsCompressorNode | undefined;
   #compressionDryGain: GainNode | undefined;
   #compressionWetGain: GainNode | undefined;
-  #reverbInput: GainNode | undefined;
-  #reverbDryGain: GainNode | undefined;
-  #reverbPath: ReverbPath | undefined;
-  #reverbInputConnected = false;
-  #retiredReverbPaths = new Set<RetiredReverbPath>();
+  #reverb: ReverbStage | undefined;
   #masterGain: GainNode | undefined;
   #outputAnalyser: AnalyserNode | undefined;
   #monitorGain: GainNode | undefined;
@@ -215,12 +201,11 @@ export class AudioEngine implements AudioEngineContract {
       this.#compressor = this.#context.createDynamicsCompressor();
       this.#compressionDryGain = this.#context.createGain();
       this.#compressionWetGain = this.#context.createGain();
-      this.#reverbInput = this.#context.createGain();
-      this.#reverbDryGain = this.#context.createGain();
       this.#masterGain = this.#context.createGain();
       this.#outputAnalyser = this.#context.createAnalyser();
       this.#outputAnalyser.fftSize = 2048;
       this.#monitorGain = this.#context.createGain();
+      this.#ampModel = new AmpModelStage(this.#context, this.#snapshot.controls.ampModel);
       this.#cleanGain.gain.value = dbToLinearGain(this.#snapshot.controls.cleanGainDb);
       this.#bassEq.type = 'lowshelf';
       this.#bassEq.frequency.value = 120;
@@ -240,10 +225,11 @@ export class AudioEngine implements AudioEngineContract {
       this.#compressor.knee.value = compression.kneeDb;
       this.#compressionDryGain.gain.value = this.#snapshot.controls.compressionBypassed ? 1 : 0;
       this.#compressionWetGain.gain.value = this.#snapshot.controls.compressionBypassed ? 0 : 1;
-      this.#reverbDryGain.gain.value = 1;
-      this.#reverbPath = this.#createReverbPath(this.#snapshot.controls.reverbBypassed
-        ? 0
-        : this.#snapshot.controls.reverbAmount / 100 * REVERB_MAX_WET_GAIN);
+      this.#reverb = new ReverbStage(
+        this.#context,
+        this.#snapshot.controls.reverbAmount,
+        this.#snapshot.controls.reverbBypassed,
+      );
       this.#masterGain.gain.value = dbToLinearGain(this.#snapshot.controls.masterVolumeDb);
       this.#monitorGain.gain.value = 0;
       const channelCount = Math.max(1, settings.channelCount ?? 1);
@@ -256,20 +242,16 @@ export class AudioEngine implements AudioEngineContract {
         this.#source.connect(this.#inputAnalyser);
       }
       this.#inputAnalyser.connect(this.#cleanGain);
-      this.#cleanGain.connect(this.#bassEq);
+      this.#cleanGain.connect(this.#ampModel.input);
+      this.#ampModel.output.connect(this.#bassEq);
       this.#bassEq.connect(this.#middleEq);
       this.#middleEq.connect(this.#trebleEq);
       this.#trebleEq.connect(this.#compressionDryGain);
       this.#trebleEq.connect(this.#compressor);
       this.#compressor.connect(this.#compressionWetGain);
-      this.#compressionDryGain.connect(this.#reverbInput);
-      this.#compressionWetGain.connect(this.#reverbInput);
-      this.#reverbInput.connect(this.#reverbDryGain);
-      this.#reverbDryGain.connect(this.#masterGain);
-      if (!this.#snapshot.controls.reverbBypassed) {
-        this.#reverbInput.connect(this.#reverbPath.convolver);
-        this.#reverbInputConnected = true;
-      }
+      this.#compressionDryGain.connect(this.#reverb.input);
+      this.#compressionWetGain.connect(this.#reverb.input);
+      this.#reverb.output.connect(this.#masterGain);
       this.#masterGain.connect(this.#outputAnalyser);
       this.#outputAnalyser.connect(this.#monitorGain);
       this.#monitorGain.connect(this.#context.destination);
@@ -355,6 +337,7 @@ export class AudioEngine implements AudioEngineContract {
     const previousControls = this.#snapshot.controls;
     const controls = normalizeAmpControlSettings(settings, previousControls);
     if (this.#context !== undefined) {
+      this.#ampModel?.setModel(controls.ampModel);
       if (this.#cleanGain !== undefined) smoothGainToDb(this.#cleanGain.gain, controls.cleanGainDb, this.#context.currentTime);
       // Zero-gain shelves and peaking filters pass the signal unchanged while preserving the saved band settings.
       if (this.#bassEq !== undefined) smoothGainToValue(this.#bassEq.gain, controls.eqBypassed ? 0 : controls.bassDb, this.#context.currentTime);
@@ -376,23 +359,7 @@ export class AudioEngine implements AudioEngineContract {
           smoothGainToValue(this.#compressionWetGain.gain, controls.compressionBypassed ? 0 : 1, this.#context.currentTime);
         }
       }
-      if (this.#reverbPath !== undefined
-        && (controls.reverbAmount !== previousControls.reverbAmount || controls.reverbBypassed !== previousControls.reverbBypassed)) {
-        const wetGain = controls.reverbBypassed ? 0 : controls.reverbAmount / 100 * REVERB_MAX_WET_GAIN;
-        smoothGainToValue(this.#reverbPath.wetGain.gain, wetGain, this.#context.currentTime);
-      }
-      if (controls.reverbBypassed !== previousControls.reverbBypassed
-        && this.#reverbInput !== undefined
-        && this.#reverbPath !== undefined) {
-        if (controls.reverbBypassed && this.#reverbInputConnected) {
-          this.#reverbInput.disconnect(this.#reverbPath.convolver);
-          this.#reverbInputConnected = false;
-          this.#replaceReverbPathAfterBypass();
-        } else if (!controls.reverbBypassed && !this.#reverbInputConnected) {
-          this.#reverbInput.connect(this.#reverbPath.convolver);
-          this.#reverbInputConnected = true;
-        }
-      }
+      this.#reverb?.setControls(controls.reverbAmount, controls.reverbBypassed);
       if (this.#masterGain !== undefined) smoothGainToDb(this.#masterGain.gain, controls.masterVolumeDb, this.#context.currentTime);
     }
     this.#update({ controls });
@@ -548,38 +515,6 @@ export class AudioEngine implements AudioEngineContract {
     });
   }
 
-  #createReverbPath(wetGainValue: number): ReverbPath {
-    if (this.#context === undefined || this.#masterGain === undefined) {
-      throw new Error('Cannot create Reverb without an active audio graph.');
-    }
-    const convolver = this.#context.createConvolver();
-    convolver.normalize = false;
-    convolver.buffer = createPlateImpulse(this.#context);
-    const wetGain = this.#context.createGain();
-    wetGain.gain.value = wetGainValue;
-    convolver.connect(wetGain);
-    wetGain.connect(this.#masterGain);
-    return { convolver, wetGain };
-  }
-
-  #replaceReverbPathAfterBypass(): void {
-    if (this.#reverbPath === undefined) return;
-
-    const retiredConvolver = this.#reverbPath.convolver;
-    const retiredWetGain = this.#reverbPath.wetGain;
-    const retiredPath = {
-      convolver: retiredConvolver,
-      wetGain: retiredWetGain,
-      timer: setTimeout(() => {
-        retiredConvolver.disconnect();
-        retiredWetGain.disconnect();
-        this.#retiredReverbPaths.delete(retiredPath);
-      }, GAIN_SMOOTHING_SECONDS * 1_000 + 5),
-    } satisfies RetiredReverbPath;
-    this.#retiredReverbPaths.add(retiredPath);
-    this.#reverbPath = this.#createReverbPath(0);
-  }
-
   async #stopCapture(): Promise<void> {
     if (this.#frame !== undefined) this.#environment.cancelAnimationFrame(this.#frame);
     this.#frame = undefined;
@@ -587,22 +522,14 @@ export class AudioEngine implements AudioEngineContract {
     this.#splitter?.disconnect();
     this.#inputAnalyser?.disconnect();
     this.#cleanGain?.disconnect();
+    this.#ampModel?.disconnect();
     this.#bassEq?.disconnect();
     this.#middleEq?.disconnect();
     this.#trebleEq?.disconnect();
     this.#compressor?.disconnect();
     this.#compressionDryGain?.disconnect();
     this.#compressionWetGain?.disconnect();
-    this.#reverbInput?.disconnect();
-    this.#reverbDryGain?.disconnect();
-    this.#reverbPath?.convolver.disconnect();
-    this.#reverbPath?.wetGain.disconnect();
-    this.#retiredReverbPaths.forEach((path) => {
-      clearTimeout(path.timer);
-      path.convolver.disconnect();
-      path.wetGain.disconnect();
-    });
-    this.#retiredReverbPaths.clear();
+    this.#reverb?.disconnect();
     this.#masterGain?.disconnect();
     this.#outputAnalyser?.disconnect();
     this.#monitorGain?.disconnect();
@@ -618,16 +545,14 @@ export class AudioEngine implements AudioEngineContract {
     this.#splitter = undefined;
     this.#inputAnalyser = undefined;
     this.#cleanGain = undefined;
+    this.#ampModel = undefined;
     this.#bassEq = undefined;
     this.#middleEq = undefined;
     this.#trebleEq = undefined;
     this.#compressor = undefined;
     this.#compressionDryGain = undefined;
     this.#compressionWetGain = undefined;
-    this.#reverbInput = undefined;
-    this.#reverbDryGain = undefined;
-    this.#reverbPath = undefined;
-    this.#reverbInputConnected = false;
+    this.#reverb = undefined;
     this.#masterGain = undefined;
     this.#outputAnalyser = undefined;
     this.#monitorGain = undefined;

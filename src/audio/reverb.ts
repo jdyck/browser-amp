@@ -1,7 +1,76 @@
+import { smoothGainToValue } from './gain';
+import { StageSwitcher, type StagePath } from './stageSwitcher';
+
 const IMPULSE_DURATION_SECONDS = 1.5;
 const IMPULSE_GAIN = 0.22;
 const LOW_PASS_MEMORY = 0.72;
 const PRE_DELAY_SECONDS = 0.012;
+// Bound full-scale Amount to the existing calibrated wet return (about -20 dB).
+const REVERB_MAX_WET_GAIN = 0.0975;
+
+/** Constant dry path plus a lazily constructed, switchable wet effect. */
+export class ReverbStage {
+  readonly input: GainNode;
+  readonly output: GainNode;
+  readonly #context: BaseAudioContext;
+  readonly #wetGain: GainNode;
+  readonly #switcher: StageSwitcher<'off' | 'plate'>;
+  #impulse: AudioBuffer | undefined;
+  #amount: number;
+
+  constructor(context: BaseAudioContext, amount: number, bypassed: boolean) {
+    this.#context = context;
+    this.#amount = amount;
+    this.input = context.createGain();
+    this.output = context.createGain();
+    this.#wetGain = context.createGain();
+    this.#wetGain.gain.value = amount / 100 * REVERB_MAX_WET_GAIN;
+    this.#switcher = new StageSwitcher(context, bypassed ? 'off' : 'plate', (model) => this.#createPath(model));
+    this.input.connect(this.output);
+    this.input.connect(this.#switcher.input);
+    this.#switcher.output.connect(this.#wetGain);
+    this.#wetGain.connect(this.output);
+  }
+
+  setControls(amount: number, bypassed: boolean): void {
+    if (amount !== this.#amount) {
+      this.#amount = amount;
+      smoothGainToValue(this.#wetGain.gain, amount / 100 * REVERB_MAX_WET_GAIN, this.#context.currentTime);
+    }
+    this.#switcher.select(bypassed ? 'off' : 'plate');
+  }
+
+  disconnect(): void {
+    this.#switcher.dispose();
+    this.input.disconnect();
+    this.#wetGain.disconnect();
+    this.output.disconnect();
+    this.#impulse = undefined;
+  }
+
+  #createPath(model: 'off' | 'plate'): StagePath {
+    if (model === 'off') {
+      const silent = this.#context.createGain();
+      silent.gain.value = 0;
+      return { input: silent, output: silent, dispose: () => silent.disconnect() };
+    }
+    // Cache the data, never the convolver's history. Re-enabling starts a fresh
+    // tail, and bypass never constructs a replacement processor to leave idle.
+    this.#impulse ??= createPlateImpulse(this.#context);
+    const convolver = this.#context.createConvolver();
+    convolver.normalize = false;
+    convolver.buffer = this.#impulse;
+    return {
+      input: convolver,
+      output: convolver,
+      stopInputOnSwitch: true,
+      dispose: () => {
+        convolver.disconnect();
+        convolver.buffer = null;
+      },
+    };
+  }
+}
 
 function randomNoise(seed: number): () => number {
   let state = seed >>> 0;

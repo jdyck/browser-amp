@@ -13,7 +13,7 @@ The sparkling, high-headroom tonal identity that guides the initial amp chain an
 _Avoid_: Fender clone, Silverface clone, Blackface clone
 
 **Amp Chain**:
-The fixed first-release sequence Clean Gain, Three-Band EQ, Compression, Reverb, and Master Volume that transforms the Live Guitar Input before Processed Monitoring; Noise Gate is reserved ahead of Clean Gain for a later release.
+The fixed sequence Clean Gain, selected Amp Model, Three-Band EQ, Compression, Reverb, and Master Volume that transforms the Live Guitar Input before Processed Monitoring; Noise Gate is reserved ahead of Clean Gain for a later release.
 _Avoid_: Pedalboard, arbitrary graph
 
 **Live Guitar Input**:
@@ -57,8 +57,12 @@ A planned Amp Chain stage, positioned before Clean Gain, that attenuates the sig
 _Avoid_: Noise suppression, microphone cleanup
 
 **Clean Gain**:
-The first-release Gain stage, which changes signal level without intentionally adding saturation or distortion.
+The linear Gain stage that changes signal level before the selected Amp Model; raising it also drives either Clean Tube model harder when selected.
 _Avoid_: Overdrive, distortion, saturation
+
+**Amp Model**:
+The selectable voicing after Clean Gain and before Three-Band EQ. Clean Voice leaves the signal unchanged; Clean Tube adds original tube-inspired filtering and gentle saturation; Clean Tube Warm adds fuller low mids, darker highs, and earlier breakup. Only the selected model remains active after its switching transition. Selection does not change the other controls or monitoring state.
+_Avoid_: Preset, named amp replica, circuit-accurate simulation
 
 **Three-Band EQ**:
 The fixed bass, middle, and treble tone-shaping stage in the Amp Chain.

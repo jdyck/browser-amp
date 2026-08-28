@@ -1,6 +1,6 @@
 import { AudioEngine } from './audio/AudioEngine';
 import type { AudioSnapshot, InputMeterSnapshot } from './audio/types';
-import { AMP_CONTROL_DEFINITIONS, type AmpControlSettings, type ContinuousControlDefinition } from './controls';
+import { AMP_CONTROL_DEFINITIONS, AMP_MODELS, isAmpModel, type AmpControlSettings, type ContinuousControlDefinition } from './controls';
 import { WorkbenchPreferencesStore, resetControls, type StoredWorkbenchPreferences } from './settings';
 import './style.css';
 
@@ -114,6 +114,13 @@ function renderStructure(current: AudioSnapshot): void {
       ${meterPanel('output', 'Output Level Meter', current.outputMeter, 'Post-Master signal before browser output.')}
 
       <section class="${PANEL}" aria-label="Clean Gain">
+        <div class="mb-3">
+          <label for="amp-model" class="block mb-[.35rem] font-medium text-sm">Amp Model</label>
+          <select id="amp-model" aria-describedby="amp-model-help">
+            ${Object.entries(AMP_MODELS).map(([id, model]) => `<option value="${id}" ${id === current.controls.ampModel ? 'selected' : ''}>${model.label}</option>`).join('')}
+          </select>
+          <span id="amp-model-help" class="${FIELD_HELP}">${AMP_MODELS[current.controls.ampModel].description}</span>
+        </div>
         ${dbControl('clean-gain', 'Clean Gain', current.controls.cleanGainDb, AMP_CONTROL_DEFINITIONS.cleanGainDb)}
       </section>
 
@@ -179,6 +186,10 @@ function bindStructureEvents(): void {
     void engine.selectOutput(snapshot.outputRouting.selectedDeviceId);
   });
   bindContinuousControl('clean-gain', (cleanGainDb) => engine.applyControls({ ...snapshot.controls, cleanGainDb }));
+  root.querySelector<HTMLSelectElement>('#amp-model')?.addEventListener('change', (event) => {
+    const ampModel = (event.currentTarget as HTMLSelectElement).value;
+    if (isAmpModel(ampModel)) engine.applyControls({ ...snapshot.controls, ampModel });
+  });
   root.querySelector<HTMLInputElement>('#eq-enabled')?.addEventListener('change', (event) => {
     engine.applyControls({ ...snapshot.controls, eqBypassed: !(event.currentTarget as HTMLInputElement).checked });
   });
@@ -228,6 +239,11 @@ function bindContinuousControl(id: string, apply: (value: number) => void): void
 }
 
 function renderControls(controls: AmpControlSettings): void {
+  const ampModel = root.querySelector<HTMLSelectElement>('#amp-model');
+  if (ampModel !== null && ampModel.value !== controls.ampModel) ampModel.value = controls.ampModel;
+  const ampModelHelp = root.querySelector<HTMLElement>('#amp-model-help');
+  const modelDescription = AMP_MODELS[controls.ampModel].description;
+  if (ampModelHelp !== null && ampModelHelp.textContent !== modelDescription) ampModelHelp.textContent = modelDescription;
   setControlValue('clean-gain', controls.cleanGainDb, AMP_CONTROL_DEFINITIONS.cleanGainDb);
   const eqEnabled = root.querySelector<HTMLInputElement>('#eq-enabled');
   if (eqEnabled !== null) eqEnabled.checked = !controls.eqBypassed;

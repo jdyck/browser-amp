@@ -2,6 +2,19 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_AMP_CONTROLS, normalizeAmpControlSettings } from './controls';
 
 describe('Amp Control Settings', () => {
+  it('accepts known amp models and safely defaults old or unknown selections', () => {
+    expect(normalizeAmpControlSettings({ ampModel: 'clean-tube' }).ampModel).toBe('clean-tube');
+    expect(normalizeAmpControlSettings({ ampModel: 'clean-tube-warm' }).ampModel).toBe('clean-tube-warm');
+    expect(normalizeAmpControlSettings({}).ampModel).toBe('clean-voice');
+    for (const ampModel of ['unknown', 'constructor', '__proto__', null, 1]) {
+      expect(normalizeAmpControlSettings({ ampModel }).ampModel).toBe('clean-voice');
+    }
+    expect(normalizeAmpControlSettings(
+      { ampModel: 'unknown' },
+      { ...DEFAULT_AMP_CONTROLS, ampModel: 'clean-tube' },
+    ).ampModel).toBe('clean-tube');
+  });
+
   it('normalizes EQ bypass and keeps older settings enabled', () => {
     expect(normalizeAmpControlSettings({ eqBypassed: true }).eqBypassed).toBe(true);
     expect(normalizeAmpControlSettings({ eqBypassed: false }).eqBypassed).toBe(false);

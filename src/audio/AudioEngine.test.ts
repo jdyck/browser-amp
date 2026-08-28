@@ -22,6 +22,8 @@ function audioContext(overrides: Record<string, unknown> = {}): AudioContext {
       Q: { value: 0 },
       gain: { value: 0, cancelScheduledValues: vi.fn(), setValueAtTime: vi.fn(), linearRampToValueAtTime: vi.fn() },
     })),
+    createWaveShaper: vi.fn(() => audioNode({ curve: null, oversample: 'none' })),
+    createConstantSource: vi.fn(() => audioNode({ offset: { value: 1 }, start: vi.fn(), stop: vi.fn(), onended: null })),
     createDynamicsCompressor: vi.fn(() => audioNode({
       threshold: { value: -24, cancelScheduledValues: vi.fn(), setValueAtTime: vi.fn(), linearRampToValueAtTime: vi.fn() },
       ratio: { value: 12, cancelScheduledValues: vi.fn(), setValueAtTime: vi.fn(), linearRampToValueAtTime: vi.fn() },
@@ -91,6 +93,82 @@ describe('AudioEngine', () => {
     expect(environment.createAudioContext).not.toHaveBeenCalled();
   });
 
+  it('keeps at most two amp paths live and disposes unselected shapers without recapturing', async () => {
+    let now = 0;
+    const context = audioContext();
+    Object.defineProperty(context, 'currentTime', { get: () => now });
+    const environment = browser({ createAudioContext: () => context });
+    const engine = new AudioEngine(environment);
+    const finish = () => {
+      const clock = vi.mocked(context.createConstantSource).mock.results.at(-1)!.value;
+      now = vi.mocked(clock.stop).mock.calls[0][0]!;
+      clock.onended?.call(clock, new Event('ended'));
+    };
+    await engine.connectInput();
+    expect(context.createWaveShaper).not.toHaveBeenCalled();
+    expect(context.createConvolver).not.toHaveBeenCalled();
+    engine.applyControls({ ...engine.snapshot.controls, ampModel: 'clean-tube' });
+    engine.applyControls({ ...engine.snapshot.controls, ampModel: 'clean-tube-warm' });
+    expect(context.createWaveShaper).toHaveBeenCalledTimes(2);
+    finish();
+    expect(context.createWaveShaper).toHaveBeenCalledTimes(4);
+    finish();
+    const shapers = vi.mocked(context.createWaveShaper).mock.results.map(({ value }) => value);
+    for (const shaper of shapers.slice(0, 2)) expect(shaper.disconnect).toHaveBeenCalledOnce();
+    for (const shaper of shapers.slice(2)) expect(shaper.disconnect).not.toHaveBeenCalled();
+    engine.applyControls({ ...engine.snapshot.controls, ampModel: 'clean-voice' });
+    finish();
+    for (const shaper of shapers) expect(shaper.disconnect).toHaveBeenCalledOnce();
+    expect(environment.mediaDevices.getUserMedia).toHaveBeenCalledOnce();
+    expect(engine.snapshot.monitoring).toBe(false);
+    await engine.disconnectInput();
+  });
+
+  it('creates reverb only when enabled, caches its impulse, and never revives retired tails', async () => {
+    let now = 0;
+    const context = audioContext();
+    Object.defineProperty(context, 'currentTime', { get: () => now });
+    const engine = new AudioEngine(browser({ createAudioContext: () => context }));
+    const finish = () => {
+      const clock = vi.mocked(context.createConstantSource).mock.results.at(-1)!.value;
+      now = vi.mocked(clock.stop).mock.calls[0][0]!;
+      clock.onended?.call(clock, new Event('ended'));
+    };
+    await engine.connectInput();
+    engine.applyControls({ ...engine.snapshot.controls, reverbAmount: 80 });
+    expect(context.createConvolver).not.toHaveBeenCalled();
+    expect(context.createBuffer).not.toHaveBeenCalled();
+    engine.applyControls({ ...engine.snapshot.controls, reverbBypassed: false });
+    finish();
+    const first = vi.mocked(context.createConvolver).mock.results[0].value;
+    const impulse = first.buffer;
+    engine.applyControls({ ...engine.snapshot.controls, reverbBypassed: true });
+    engine.applyControls({ ...engine.snapshot.controls, reverbBypassed: false });
+    expect(context.createConvolver).toHaveBeenCalledOnce();
+    finish();
+    expect(first.disconnect).toHaveBeenCalled();
+    expect(first.buffer).toBeNull();
+    expect(context.createConvolver).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(context.createConvolver).mock.results[1].value.buffer).toBe(impulse);
+    expect(context.createBuffer).toHaveBeenCalledOnce();
+    expect(engine.snapshot.controls.reverbAmount).toBe(80);
+    finish();
+    engine.applyControls({ ...engine.snapshot.controls, reverbBypassed: true });
+    finish();
+    expect(context.createConvolver).toHaveBeenCalledTimes(2);
+    for (const { value } of vi.mocked(context.createConvolver).mock.results) expect(value.buffer).toBeNull();
+    engine.applyControls({ ...engine.snapshot.controls, reverbBypassed: false });
+    // Disconnect during a pending fade cancels its clock and both live paths.
+    const clocks = vi.mocked(context.createConstantSource).mock.results.map(({ value }) => value);
+    await engine.disconnectInput();
+    for (const clock of clocks) expect(clock.onended).toBeNull();
+    for (const { value } of vi.mocked(context.createConvolver).mock.results) {
+      expect(value.buffer).toBeNull();
+      expect(value.disconnect).toHaveBeenCalled();
+    }
+    expect(context.close).toHaveBeenCalledOnce();
+  });
+
   it('requests raw capture, enumerates devices after permission, and exposes an input channel', async () => {
     const environment = browser();
     const engine = new AudioEngine(environment);
@@ -121,9 +199,10 @@ describe('AudioEngine', () => {
     expect(engine.snapshot).toMatchObject({ lifecycle: 'connected-muted', monitoring: false });
   });
 
-  it('clamps exact controls and preserves settings when monitoring stops', async () => {
+  it.each(['clean-tube', 'clean-tube-warm'] as const)('clamps exact controls and preserves %s settings when monitoring stops', async (ampModel) => {
     const engine = new AudioEngine(browser());
     expect(engine.snapshot.controls).toEqual({
+      ampModel: 'clean-voice',
       cleanGainDb: 0,
       bassDb: 0,
       middleDb: 0,
@@ -137,6 +216,7 @@ describe('AudioEngine', () => {
     });
 
     engine.applyControls({
+      ampModel,
       cleanGainDb: 30,
       bassDb: -20,
       middleDb: 3.26,
@@ -153,6 +233,7 @@ describe('AudioEngine', () => {
     await engine.setMonitoring(false);
 
     expect(engine.snapshot.controls).toEqual({
+      ampModel,
       cleanGainDb: 24,
       bassDb: -12,
       middleDb: 3.3,

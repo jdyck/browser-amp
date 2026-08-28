@@ -94,6 +94,8 @@ async function installAudioBrowser(page: Page, options: {
         const gain = { value: 0, cancelScheduledValues: () => gain, setValueAtTime: (value: number) => { gain.value = value; return gain; }, linearRampToValueAtTime: (value: number) => { gain.value = value; return gain; } };
         return node({ type: 'peaking', frequency: { value: 0 }, Q: { value: 0 }, gain });
       }
+      createWaveShaper() { return node({ curve: null, oversample: 'none' }); }
+      createConstantSource() { return node({ offset: { value: 1 }, start: () => undefined, stop: () => undefined, onended: null }); }
       createDynamicsCompressor() {
         const parameter = (value: number) => ({ value, cancelScheduledValues: () => undefined, setValueAtTime: () => undefined, linearRampToValueAtTime: () => undefined });
         return node({ threshold: parameter(-24), ratio: parameter(12), attack: parameter(0.003), release: parameter(0.25), knee: parameter(30) });
@@ -150,6 +152,50 @@ test('places monitoring below input settings and output metering below input met
 
   await expect(page.locator('[aria-labelledby="input-title"] + section')).toHaveAttribute('aria-labelledby', 'monitoring-title');
   await expect(page.locator('[aria-labelledby="input-meter-title"] + section')).toHaveAttribute('aria-labelledby', 'output-meter-title');
+});
+
+test('selects, saves, and resets the amp model above Clean Gain without enabling monitoring', async ({ page }) => {
+  await installAudioBrowser(page);
+  await page.goto('./');
+
+  const cleanGainSection = page.getByRole('region', { name: 'Clean Gain', exact: true });
+  const ampModel = cleanGainSection.getByRole('combobox', { name: 'Amp Model' });
+  await expect(ampModel).toBeEnabled();
+  await expect(ampModel).toHaveValue('clean-voice');
+  await expect(ampModel.locator('option')).toHaveText(['Clean Voice', 'Clean Tube', 'Clean Tube Warm']);
+
+  const modelBounds = await ampModel.boundingBox();
+  const gainBounds = await cleanGainSection.getByLabel('Clean Gain slider').boundingBox();
+  expect(modelBounds).not.toBeNull();
+  expect(gainBounds).not.toBeNull();
+  expect(modelBounds!.y + modelBounds!.height).toBeLessThan(gainBounds!.y);
+
+  await cleanGainSection.getByLabel('Clean Gain value').fill('7');
+  await ampModel.selectOption('clean-tube');
+  await expect(ampModel).toHaveValue('clean-tube');
+  await expect(page.locator('#amp-model-help')).toContainText('Raise Clean Gain for gentle breakup');
+  await ampModel.selectOption('clean-tube-warm');
+  await expect(ampModel).toHaveValue('clean-tube-warm');
+  await expect(page.locator('#amp-model-help')).toContainText('Fuller low mids, darker highs');
+  await expect(cleanGainSection.getByLabel('Clean Gain value')).toHaveValue('7.0');
+  await expect(page.getByRole('button', { name: 'Enable Monitoring' })).toBeDisabled();
+
+  await page.reload();
+  await expect(ampModel).toHaveValue('clean-tube-warm');
+  await page.getByRole('button', { name: 'Connect Input', exact: true }).click();
+  await expect(page.locator('#monitoring-state')).toHaveText('Off');
+  await expect(ampModel).toHaveValue('clean-tube-warm');
+  await page.getByRole('button', { name: 'Enable Monitoring', exact: true }).click();
+  await page.getByRole('button', { name: 'Checked — Enable Monitoring' }).click();
+  await ampModel.selectOption('clean-voice');
+  await expect(page.locator('#monitoring-state')).toHaveText('On');
+  await expect(cleanGainSection.getByLabel('Clean Gain value')).toHaveValue('7.0');
+  await ampModel.selectOption('clean-tube');
+  await ampModel.selectOption('clean-tube-warm');
+  await expect.poll(() => page.evaluate(() => (window as Window & { captureRequests?: number }).captureRequests)).toBe(1);
+  await page.getByRole('button', { name: 'Reset Controls' }).click();
+  await expect(ampModel).toHaveValue('clean-voice');
+  await expect(page.locator('#monitoring-state')).toHaveText('On');
 });
 
 test('synchronizes, clamps, and restores controls without restoring Processed Monitoring', async ({ page }) => {
@@ -301,6 +347,7 @@ test('Reset Controls restores sound defaults without changing connection, monito
   expect(saved).toEqual({
     version: 1,
     controls: {
+      ampModel: 'clean-voice',
       cleanGainDb: 0,
       bassDb: 0,
       middleDb: 0,
