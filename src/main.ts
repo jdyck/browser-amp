@@ -1,7 +1,8 @@
 import { AudioEngine } from './audio/AudioEngine';
 import type { AudioSnapshot, InputMeterSnapshot } from './audio/types';
-import { AMP_CONTROL_DEFINITIONS, AMP_MODELS, isAmpModel, type AmpControlSettings, type ContinuousControlDefinition } from './controls';
+import { AMP_CONTROL_DEFINITIONS, AMP_MODELS, REVERB_PROFILES, isAmpModel, isReverbProfile, type AmpControlSettings, type ContinuousControlDefinition } from './controls';
 import { WorkbenchPreferencesStore, resetControls, type StoredWorkbenchPreferences } from './settings';
+import { DEFAULT_REVERB_SETTINGS, reverbControlEntries, reverbParameters, type ReverbControlDefinition } from './reverbSettings';
 import './style.css';
 
 // `panel`, `connection-state`, and the `#monitoring-state`/`#clip-indicator` ids below are kept as literal
@@ -32,6 +33,7 @@ const root = app;
 let snapshot = engine.snapshot;
 let guidanceOpen = false;
 let guidanceDismissed = workbenchPreferences.hardwareDirectMonitoringGuidanceDismissed;
+const reverbAccordionOpen = { main: true, advanced: false };
 
 function meterRegion(dbfs: number): string {
   if (dbfs > -3) return 'red';
@@ -53,7 +55,7 @@ function render(next: AudioSnapshot): void {
 }
 
 function structureChanged(previous: AudioSnapshot, next: AudioSnapshot): boolean {
-  return (root.querySelector('#input-device') === null && root.querySelector('.workbench') === null)
+  return root.querySelector('#connect') === null
     || previous.lifecycle !== next.lifecycle
     || previous.monitoring !== next.monitoring
     || previous.devices !== next.devices
@@ -145,11 +147,21 @@ function renderStructure(current: AudioSnapshot): void {
       </section>
 
       <section class="${PANEL}" aria-label="Reverb">
+        <div class="mb-3">
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-[.35rem]">
+            <label for="reverb-profile" class="font-medium text-sm">Reverb Module</label>
+            <button id="reset-reverb" type="button" class="${COMPACT_SECONDARY_BUTTON}" title="Restore only this module's Main and Advanced settings. Amount and Enable Reverb stay unchanged.">Reset This Reverb</button>
+          </div>
+          <select id="reverb-profile" aria-describedby="reverb-profile-help">
+            ${Object.entries(REVERB_PROFILES).map(([id, profile]) => `<option value="${id}" ${id === current.controls.reverbProfile ? 'selected' : ''}>${profile.label}</option>`).join('')}
+          </select>
+          <span id="reverb-profile-help" class="${FIELD_HELP}">${REVERB_PROFILES[current.controls.reverbProfile].description}</span>
+        </div>
         <label class="${STAGE_TOGGLE}" for="reverb-enabled">
           <input id="reverb-enabled" type="checkbox" class="${STAGE_TOGGLE_CHECKBOX}" ${current.controls.reverbBypassed ? '' : 'checked'}>
           Enable Reverb
         </label>
-        ${percentControl('reverb-amount', 'Reverb', current.controls.reverbAmount, AMP_CONTROL_DEFINITIONS.reverbAmount)}
+        <div id="reverb-settings" data-profile="${current.controls.reverbProfile}">${reverbAccordions(current.controls)}</div>
       </section>
 
       <section class="${PANEL}" aria-label="Master Volume">
@@ -200,7 +212,18 @@ function bindStructureEvents(): void {
   root.querySelector<HTMLInputElement>('#compression-enabled')?.addEventListener('change', (event) => {
     engine.applyControls({ ...snapshot.controls, compressionBypassed: !(event.currentTarget as HTMLInputElement).checked });
   });
-  bindContinuousControl('reverb-amount', (reverbAmount) => engine.applyControls({ ...snapshot.controls, reverbAmount }));
+  bindReverbControls();
+  root.querySelector<HTMLSelectElement>('#reverb-profile')?.addEventListener('change', (event) => {
+    const reverbProfile = (event.currentTarget as HTMLSelectElement).value;
+    if (isReverbProfile(reverbProfile)) engine.applyControls({ ...snapshot.controls, reverbProfile });
+  });
+  root.querySelector<HTMLButtonElement>('#reset-reverb')?.addEventListener('click', () => {
+    const controls = snapshot.controls;
+    engine.applyControls({ ...controls, reverbSettings: {
+      ...controls.reverbSettings,
+      [controls.reverbProfile]: { ...DEFAULT_REVERB_SETTINGS[controls.reverbProfile] },
+    } });
+  });
   root.querySelector<HTMLInputElement>('#reverb-enabled')?.addEventListener('change', (event) => {
     engine.applyControls({ ...snapshot.controls, reverbBypassed: !(event.currentTarget as HTMLInputElement).checked });
   });
@@ -238,6 +261,51 @@ function bindContinuousControl(id: string, apply: (value: number) => void): void
   });
 }
 
+function reverbAccordions(controls: AmpControlSettings): string {
+  const parameters = reverbParameters(controls.reverbProfile, controls.reverbSettings);
+  return (['main', 'advanced'] as const).map((section) => `
+    <details id="reverb-${section}" class="border-t border-border py-2" ${reverbAccordionOpen[section] ? 'open' : ''}>
+      <summary class="cursor-pointer rounded-md py-2 text-sm font-medium">${section === 'main' ? 'Main Controls' : 'Advanced Controls'}</summary>
+      <div class="grid gap-4 pt-2 pb-3">
+        ${section === 'main' ? percentControl('reverb-amount', 'Reverb', controls.reverbAmount, AMP_CONTROL_DEFINITIONS.reverbAmount) : ''}
+        ${reverbControlEntries(controls.reverbProfile, section).map(([key, definition]) => reverbParameterControl(`reverb-${key}`, parameters[key], definition)).join('')}
+      </div>
+    </details>`).join('');
+}
+
+function reverbParameterControl(id: string, value: number, definition: ReverbControlDefinition): string {
+  return `<div>
+    <div class="grid grid-cols-[1fr_auto] max-[34rem]:grid-cols-1 gap-x-4 items-center">
+      <label for="${id}-slider" class="col-span-2 max-[34rem]:col-span-1 font-medium text-sm">${definition.label}</label>
+      <input id="${id}-slider" aria-label="${definition.label} slider" aria-describedby="${id}-help" type="range" class="w-full accent-primary" min="${definition.minimum}" max="${definition.maximum}" step="${definition.step}" value="${value}">
+      <div class="flex items-center gap-[.35rem] max-[34rem]:justify-end">
+        <input id="${id}-value" aria-label="${definition.label} value" aria-describedby="${id}-help" type="number" inputmode="decimal" class="w-20 rounded-md border border-input bg-input-fill text-foreground text-right text-sm" min="${definition.minimum}" max="${definition.maximum}" step="${definition.step}" value="${value.toFixed(definition.fractionDigits)}">
+        <span aria-hidden="true">${definition.unit}</span>
+      </div>
+    </div>
+    <span id="${id}-help" class="${FIELD_HELP}">${definition.help} (${definition.unit})</span>
+  </div>`;
+}
+
+function bindReverbControls(): void {
+  bindContinuousControl('reverb-amount', (reverbAmount) => engine.applyControls({ ...snapshot.controls, reverbAmount }));
+  for (const section of ['main', 'advanced'] as const) {
+    const details = root.querySelector<HTMLDetailsElement>(`#reverb-${section}`);
+    details?.addEventListener('toggle', () => {
+      if (details.isConnected) reverbAccordionOpen[section] = details.open;
+    });
+  }
+  for (const [key] of reverbControlEntries(snapshot.controls.reverbProfile)) {
+    bindContinuousControl(`reverb-${key}`, (value) => {
+      const controls = snapshot.controls;
+      engine.applyControls({ ...controls, reverbSettings: {
+        ...controls.reverbSettings,
+        [controls.reverbProfile]: { ...controls.reverbSettings[controls.reverbProfile], [key]: value },
+      } });
+    });
+  }
+}
+
 function renderControls(controls: AmpControlSettings): void {
   const ampModel = root.querySelector<HTMLSelectElement>('#amp-model');
   if (ampModel !== null && ampModel.value !== controls.ampModel) ampModel.value = controls.ampModel;
@@ -253,6 +321,27 @@ function renderControls(controls: AmpControlSettings): void {
   setControlValue('compression-amount', controls.compressionAmount, AMP_CONTROL_DEFINITIONS.compressionAmount);
   const compressionEnabled = root.querySelector<HTMLInputElement>('#compression-enabled');
   if (compressionEnabled !== null) compressionEnabled.checked = !controls.compressionBypassed;
+  const reverbProfile = root.querySelector<HTMLSelectElement>('#reverb-profile');
+  if (reverbProfile !== null && reverbProfile.value !== controls.reverbProfile) reverbProfile.value = controls.reverbProfile;
+  const reverbProfileHelp = root.querySelector<HTMLElement>('#reverb-profile-help');
+  const reverbDescription = REVERB_PROFILES[controls.reverbProfile].description;
+  if (reverbProfileHelp !== null && reverbProfileHelp.textContent !== reverbDescription) reverbProfileHelp.textContent = reverbDescription;
+  const reverbSettings = root.querySelector<HTMLElement>('#reverb-settings');
+  if (reverbSettings !== null && reverbSettings.dataset.profile !== controls.reverbProfile) {
+    // Replace only the module's controls, keeping the selector, focus, meters,
+    // and capture UI mounted while preserving the accordion state.
+    for (const section of ['main', 'advanced'] as const) {
+      const details = root.querySelector<HTMLDetailsElement>(`#reverb-${section}`);
+      if (details !== null) reverbAccordionOpen[section] = details.open;
+    }
+    reverbSettings.innerHTML = reverbAccordions(controls);
+    reverbSettings.dataset.profile = controls.reverbProfile;
+    bindReverbControls();
+  }
+  const parameters = reverbParameters(controls.reverbProfile, controls.reverbSettings);
+  for (const [key, definition] of reverbControlEntries(controls.reverbProfile)) {
+    setControlValue(`reverb-${key}`, parameters[key], definition);
+  }
   setControlValue('reverb-amount', controls.reverbAmount, AMP_CONTROL_DEFINITIONS.reverbAmount);
   const reverbEnabled = root.querySelector<HTMLInputElement>('#reverb-enabled');
   if (reverbEnabled !== null) reverbEnabled.checked = !controls.reverbBypassed;

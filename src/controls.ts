@@ -1,3 +1,5 @@
+import { DEFAULT_REVERB_SETTINGS, normalizeReverbSettings, type ReverbSettings } from './reverbSettings';
+
 export const AMP_MODELS = {
   'clean-voice': {
     label: 'Clean Voice',
@@ -19,6 +21,43 @@ export function isAmpModel(value: unknown): value is AmpModel {
   return typeof value === 'string' && Object.hasOwn(AMP_MODELS, value);
 }
 
+export const REVERB_PROFILES = {
+  'jazz-room': {
+    label: 'Jazz Room',
+    description: 'Short, dark ambience with distinct early reflections.',
+  },
+  'studio-chamber': {
+    label: 'Studio Chamber',
+    description: 'Warm studio space with early reflections and a dense tail.',
+  },
+  'studio-plate': {
+    label: 'Studio Plate',
+    description: 'Smooth, diffuse stereo sustain. The original Browser Amp reverb.',
+  },
+  'fender-spring': {
+    label: 'Fender Spring',
+    description: 'Bright, splashy spring-inspired response. A synthetic voice, not a measured Fender tank.',
+  },
+  'polytone-spring': {
+    label: 'Polytone Spring',
+    description: 'Darker, restrained spring-inspired response. A synthetic voice, not a measured Polytone tank.',
+  },
+  'digital-room': {
+    label: 'Digital Room',
+    description: 'Compact, diffuse room with adjustable size and echo density.',
+  },
+  'digital-hall': {
+    label: 'Digital Hall',
+    description: 'Spacious digital decay with adjustable damping and optional stereo modulation.',
+  },
+} as const;
+
+export type ReverbProfile = keyof typeof REVERB_PROFILES;
+
+export function isReverbProfile(value: unknown): value is ReverbProfile {
+  return typeof value === 'string' && Object.hasOwn(REVERB_PROFILES, value);
+}
+
 export interface AmpControlSettings {
   readonly ampModel: AmpModel;
   readonly cleanGainDb: number;
@@ -28,6 +67,8 @@ export interface AmpControlSettings {
   readonly eqBypassed: boolean;
   readonly compressionAmount: number;
   readonly compressionBypassed: boolean;
+  readonly reverbProfile: ReverbProfile;
+  readonly reverbSettings: ReverbSettings;
   readonly reverbAmount: number;
   readonly reverbBypassed: boolean;
   readonly masterVolumeDb: number;
@@ -42,6 +83,8 @@ export const DEFAULT_AMP_CONTROLS: AmpControlSettings = {
   eqBypassed: false,
   compressionAmount: 25,
   compressionBypassed: true,
+  reverbProfile: 'studio-plate',
+  reverbSettings: DEFAULT_REVERB_SETTINGS,
   reverbAmount: 20,
   reverbBypassed: true,
   masterVolumeDb: -18,
@@ -108,6 +151,8 @@ export function normalizeAmpControlSettings(
     compressionBypassed: typeof controls.compressionBypassed === 'boolean'
       ? controls.compressionBypassed
       : fallback.compressionBypassed,
+    reverbProfile: isReverbProfile(controls.reverbProfile) ? controls.reverbProfile : fallback.reverbProfile,
+    reverbSettings: normalizeReverbSettings(controls.reverbSettings, fallback.reverbSettings),
     reverbAmount: reverbAmount === undefined
       ? fallback.reverbAmount
       : normalizeContinuousControl(reverbAmount, AMP_CONTROL_DEFINITIONS.reverbAmount),

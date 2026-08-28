@@ -1,6 +1,8 @@
+import { DEFAULT_REVERB_SETTINGS } from '../reverbSettings';
 import { describe, expect, it, vi } from 'vitest';
 import { AudioEngine } from './AudioEngine';
 import type { BrowserAudio } from './browserAudio';
+import { REVERB_PROFILES, type ReverbProfile } from '../controls';
 
 function audioNode(properties: Record<string, unknown> = {}): AudioNode {
   return { connect: vi.fn(), disconnect: vi.fn(), ...properties } as unknown as AudioNode;
@@ -14,6 +16,9 @@ function audioContext(overrides: Record<string, unknown> = {}): AudioContext {
     state: 'running',
     createMediaStreamSource: vi.fn(() => audioNode()),
     createChannelSplitter: vi.fn(() => audioNode()),
+    createChannelMerger: vi.fn(() => audioNode()),
+    createDelay: vi.fn(() => audioNode({ delayTime: { value: 0 } })),
+    createOscillator: vi.fn(() => audioNode({ frequency: { value: 0 }, start: vi.fn(), stop: vi.fn() })),
     createAnalyser: vi.fn(() => audioNode({ fftSize: 2048, getFloatTimeDomainData: vi.fn() })),
     createGain: vi.fn(() => audioNode({ gain: { value: 1, cancelScheduledValues: vi.fn(), setValueAtTime: vi.fn(), linearRampToValueAtTime: vi.fn() } })),
     createBiquadFilter: vi.fn(() => audioNode({
@@ -169,6 +174,139 @@ describe('AudioEngine', () => {
     expect(context.close).toHaveBeenCalledOnce();
   });
 
+  it('switches every reverb module lazily with bounded overlap, cached data, and fresh history', async () => {
+    let now = 0;
+    const context = audioContext();
+    Object.defineProperty(context, 'currentTime', { get: () => now });
+    const environment = browser({ createAudioContext: () => context });
+    const engine = new AudioEngine(environment);
+    const finish = () => {
+      const clock = vi.mocked(context.createConstantSource).mock.results.at(-1)!.value;
+      now = vi.mocked(clock.stop).mock.calls[0][0]!;
+      clock.onended?.call(clock, new Event('ended'));
+    };
+    const convolvers = () => vi.mocked(context.createConvolver).mock.results.map(({ value }) => value);
+    const live = () => convolvers().filter((convolver) => convolver.buffer !== null);
+    const profiles = Object.keys(REVERB_PROFILES) as ReverbProfile[];
+    engine.applyControls({ ...engine.snapshot.controls, reverbProfile: 'digital-hall' });
+    await engine.connectInput();
+    for (const reverbProfile of profiles) engine.applyControls({ ...engine.snapshot.controls, reverbProfile });
+    expect(context.createBuffer).not.toHaveBeenCalled();
+    expect(context.createConvolver).not.toHaveBeenCalled();
+
+    engine.applyControls({ ...engine.snapshot.controls, reverbBypassed: false, reverbAmount: 63 });
+    finish();
+    await engine.setMonitoring(true);
+    const buffers = new Map<ReverbProfile, AudioBuffer>();
+    buffers.set('digital-hall', live()[0].buffer!);
+    for (const reverbProfile of profiles) {
+      const previous = live()[0];
+      engine.applyControls({ ...engine.snapshot.controls, reverbProfile });
+      expect(live()).toHaveLength(2);
+      finish();
+      expect(previous.buffer).toBeNull();
+      expect(previous.disconnect).toHaveBeenCalled();
+      expect(live()).toHaveLength(1);
+      const current = live()[0];
+      expect(current.normalize).toBe(false);
+      if (buffers.has(reverbProfile)) expect(current.buffer).toBe(buffers.get(reverbProfile));
+      else buffers.set(reverbProfile, current.buffer!);
+      engine.applyControls({ ...engine.snapshot.controls, reverbAmount: 64 });
+      expect(live()).toEqual([current]);
+    }
+    expect(context.createBuffer).toHaveBeenCalledTimes(7);
+    expect(new Set(buffers.values()).size).toBe(7);
+
+    // Only the latest queued choice is built; returning to the outgoing model
+    // must never revive its history, even when its impulse data is cached.
+    const outgoing = live()[0];
+    engine.applyControls({ ...engine.snapshot.controls, reverbProfile: 'jazz-room' });
+    engine.applyControls({ ...engine.snapshot.controls, reverbProfile: 'studio-chamber' });
+    engine.applyControls({ ...engine.snapshot.controls, reverbProfile: 'digital-hall' });
+    expect(live()).toHaveLength(2);
+    finish();
+    expect(outgoing.buffer).toBeNull();
+    expect(live()).toHaveLength(2);
+    finish();
+    expect(live()).toHaveLength(1);
+    expect(live()[0]).not.toBe(outgoing);
+    expect(live()[0].buffer).toBe(buffers.get('digital-hall'));
+    expect(context.createBuffer).toHaveBeenCalledTimes(7);
+    expect(environment.mediaDevices.getUserMedia).toHaveBeenCalledOnce();
+    expect(engine.snapshot.monitoring).toBe(true);
+    expect(engine.snapshot.controls.reverbAmount).toBe(64);
+
+    engine.applyControls({ ...engine.snapshot.controls, reverbProfile: 'fender-spring' });
+    engine.applyControls({ ...engine.snapshot.controls, reverbProfile: 'polytone-spring' });
+    await engine.disconnectInput();
+    expect(live()).toHaveLength(0);
+    for (const { value } of vi.mocked(context.createConstantSource).mock.results) expect(value.onended).toBeNull();
+    await engine.connectInput();
+    expect(live()).toHaveLength(1);
+    expect(live()[0].buffer).not.toBe(buffers.get('polytone-spring'));
+    expect(engine.snapshot.controls.reverbProfile).toBe('polytone-spring');
+    expect(engine.snapshot.monitoring).toBe(false);
+    await engine.disconnectInput();
+  });
+
+  it('coalesces parameter edits, reuses impulses for live effects, and disposes modulation and drive', async () => {
+    let now = 0;
+    const context = audioContext();
+    Object.defineProperty(context, 'currentTime', { get: () => now });
+    const engine = new AudioEngine(browser({ createAudioContext: () => context }));
+    const finish = () => {
+      const clock = vi.mocked(context.createConstantSource).mock.results.at(-1)!.value;
+      now = vi.mocked(clock.stop).mock.calls[0][0]!;
+      clock.onended?.call(clock, new Event('ended'));
+    };
+    const changeHall = (values: Partial<typeof DEFAULT_REVERB_SETTINGS['digital-hall']>) => engine.applyControls({
+      ...engine.snapshot.controls,
+      reverbSettings: { ...engine.snapshot.controls.reverbSettings,
+        'digital-hall': { ...engine.snapshot.controls.reverbSettings['digital-hall'], ...values },
+      },
+    });
+    engine.applyControls({ ...engine.snapshot.controls, reverbProfile: 'digital-hall' });
+    await engine.connectInput();
+    changeHall({ modulationDepth: 60 });
+    expect(context.createBuffer).not.toHaveBeenCalled();
+    expect(context.createOscillator).not.toHaveBeenCalled();
+    engine.applyControls({ ...engine.snapshot.controls, reverbBypassed: false });
+    finish();
+    const oscillator = vi.mocked(context.createOscillator).mock.results[0].value;
+    expect(oscillator.start).toHaveBeenCalledOnce();
+    expect(context.createDelay).toHaveBeenCalledTimes(2);
+    const impulse = vi.mocked(context.createConvolver).mock.results[0].value.buffer;
+    changeHall({ modulationRateHz: 0.7 });
+    finish();
+    expect(context.createBuffer).toHaveBeenCalledOnce();
+    expect(vi.mocked(context.createConvolver).mock.results.at(-1)!.value.buffer).toBe(impulse);
+    expect(oscillator.stop).toHaveBeenCalledOnce();
+    expect(oscillator.disconnect).toHaveBeenCalled();
+    changeHall({ decaySeconds: 1 });
+    changeHall({ decaySeconds: 2 });
+    changeHall({ decaySeconds: 3 });
+    expect(context.createBuffer).toHaveBeenCalledTimes(2);
+    finish();
+    expect(context.createBuffer).toHaveBeenCalledTimes(3);
+    finish();
+    expect(vi.mocked(context.createConvolver).mock.results.filter(({ value }) => value.buffer !== null)).toHaveLength(1);
+    changeHall({ modulationDepth: 0 });
+    finish();
+    for (const { value } of vi.mocked(context.createOscillator).mock.results) expect(value.stop).toHaveBeenCalledOnce();
+    engine.applyControls({ ...engine.snapshot.controls, reverbProfile: 'fender-spring', reverbSettings: {
+      ...engine.snapshot.controls.reverbSettings,
+      'fender-spring': { ...DEFAULT_REVERB_SETTINGS['fender-spring'], dwell: 90 },
+    } });
+    finish();
+    const shaper = vi.mocked(context.createWaveShaper).mock.results[0].value;
+    expect(shaper.curve).not.toBeNull();
+    expect(shaper.oversample).toBe('4x');
+    await engine.disconnectInput();
+    expect(shaper.curve).toBeNull();
+    expect(shaper.disconnect).toHaveBeenCalled();
+    for (const { value } of vi.mocked(context.createDelay).mock.results) expect(value.disconnect).toHaveBeenCalled();
+  });
+
   it('requests raw capture, enumerates devices after permission, and exposes an input channel', async () => {
     const environment = browser();
     const engine = new AudioEngine(environment);
@@ -210,6 +348,8 @@ describe('AudioEngine', () => {
       eqBypassed: false,
       compressionAmount: 25,
       compressionBypassed: true,
+      reverbProfile: 'studio-plate',
+      reverbSettings: DEFAULT_REVERB_SETTINGS,
       reverbAmount: 20,
       reverbBypassed: true,
       masterVolumeDb: -18,
@@ -224,6 +364,8 @@ describe('AudioEngine', () => {
       eqBypassed: true,
       compressionAmount: 74.6,
       compressionBypassed: false,
+      reverbProfile: 'jazz-room',
+      reverbSettings: DEFAULT_REVERB_SETTINGS,
       reverbAmount: 101,
       reverbBypassed: false,
       masterVolumeDb: -12.26,
@@ -241,6 +383,8 @@ describe('AudioEngine', () => {
       eqBypassed: true,
       compressionAmount: 75,
       compressionBypassed: false,
+      reverbProfile: 'jazz-room',
+      reverbSettings: DEFAULT_REVERB_SETTINGS,
       reverbAmount: 100,
       reverbBypassed: false,
       masterVolumeDb: -12.3,

@@ -1,7 +1,45 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_AMP_CONTROLS, normalizeAmpControlSettings } from './controls';
+import { DEFAULT_AMP_CONTROLS, REVERB_PROFILES, normalizeAmpControlSettings } from './controls';
+import { DEFAULT_REVERB_SETTINGS, reverbControlEntries, type ReverbParameters } from './reverbSettings';
 
 describe('Amp Control Settings', () => {
+  it('normalizes every module parameter without keeping unsupported fields', () => {
+    for (const profile of Object.keys(DEFAULT_REVERB_SETTINGS) as (keyof typeof DEFAULT_REVERB_SETTINGS)[]) {
+      for (const [key, definition] of reverbControlEntries(profile)) {
+        const parameter = (raw: unknown) => (normalizeAmpControlSettings({
+          reverbSettings: { [profile]: { [key]: raw, unsupported: 7 } },
+        }).reverbSettings[profile] as Partial<ReverbParameters>)[key];
+        expect(parameter(-1000)).toBe(definition.minimum);
+        expect(parameter(1000)).toBe(definition.maximum);
+        for (const raw of [NaN, Infinity, '5', null, undefined]) expect(parameter(raw)).toBe(definition.defaultValue);
+      }
+    }
+    const settings = normalizeAmpControlSettings({ reverbSettings: {
+      'studio-plate': { decaySeconds: 2.345, toneDb: 3.26, dwell: 80 },
+      'digital-hall': { modulationRateHz: 1.237 },
+      unknown: { decaySeconds: 8 },
+    } }).reverbSettings;
+    expect(settings['studio-plate']).toEqual({ ...DEFAULT_REVERB_SETTINGS['studio-plate'], decaySeconds: 2.35, toneDb: 3.3 });
+    expect(settings['digital-hall'].modulationRateHz).toBe(1.24);
+    expect(settings['jazz-room']).toEqual(DEFAULT_REVERB_SETTINGS['jazz-room']);
+    expect(settings).not.toHaveProperty('unknown');
+    expect(normalizeAmpControlSettings({ reverbSettings: [] }).reverbSettings).toEqual(DEFAULT_REVERB_SETTINGS);
+    expect(normalizeAmpControlSettings({}, { ...DEFAULT_AMP_CONTROLS, reverbSettings: settings }).reverbSettings).toEqual(settings);
+  });
+
+  it('accepts every reverb profile and preserves the plate for old or malformed settings', () => {
+    for (const reverbProfile of Object.keys(REVERB_PROFILES)) {
+      expect(normalizeAmpControlSettings({ reverbProfile }).reverbProfile).toBe(reverbProfile);
+    }
+    for (const reverbProfile of [undefined, 'unknown', 'constructor', '__proto__', null, 1]) {
+      expect(normalizeAmpControlSettings({ reverbProfile }).reverbProfile).toBe('studio-plate');
+    }
+    expect(normalizeAmpControlSettings(
+      { reverbProfile: 'unknown' },
+      { ...DEFAULT_AMP_CONTROLS, reverbProfile: 'jazz-room' },
+    ).reverbProfile).toBe('jazz-room');
+  });
+
   it('accepts known amp models and safely defaults old or unknown selections', () => {
     expect(normalizeAmpControlSettings({ ampModel: 'clean-tube' }).ampModel).toBe('clean-tube');
     expect(normalizeAmpControlSettings({ ampModel: 'clean-tube-warm' }).ampModel).toBe('clean-tube-warm');

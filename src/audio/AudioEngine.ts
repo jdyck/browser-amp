@@ -3,6 +3,7 @@ import { DEFAULT_AMP_CONTROLS, normalizeAmpControlSettings, normalizePercentAmou
 import { dbToLinearGain, smoothGainToDb, smoothGainToValue } from './gain';
 import { meterReadingFromSamples, METER_FLOOR_DBFS, nextPeakHold, type PeakHold } from './meter';
 import { ReverbStage } from './reverb';
+import { reverbParameters } from '../reverbSettings';
 import { AmpModelStage } from './ampModel';
 import type { AmpControlSettings, AudioEngine as AudioEngineContract, AudioRecoverySnapshot, AudioSnapshot, InputDevice, InputSettings, LatencySnapshot, OutputDevice } from './types';
 
@@ -229,6 +230,8 @@ export class AudioEngine implements AudioEngineContract {
         this.#context,
         this.#snapshot.controls.reverbAmount,
         this.#snapshot.controls.reverbBypassed,
+        this.#snapshot.controls.reverbProfile,
+        reverbParameters(this.#snapshot.controls.reverbProfile, this.#snapshot.controls.reverbSettings),
       );
       this.#masterGain.gain.value = dbToLinearGain(this.#snapshot.controls.masterVolumeDb);
       this.#monitorGain.gain.value = 0;
@@ -359,7 +362,8 @@ export class AudioEngine implements AudioEngineContract {
           smoothGainToValue(this.#compressionWetGain.gain, controls.compressionBypassed ? 0 : 1, this.#context.currentTime);
         }
       }
-      this.#reverb?.setControls(controls.reverbAmount, controls.reverbBypassed);
+      this.#reverb?.setControls(controls.reverbAmount, controls.reverbBypassed, controls.reverbProfile,
+        reverbParameters(controls.reverbProfile, controls.reverbSettings));
       if (this.#masterGain !== undefined) smoothGainToDb(this.#masterGain.gain, controls.masterVolumeDb, this.#context.currentTime);
     }
     this.#update({ controls });

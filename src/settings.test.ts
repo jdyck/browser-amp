@@ -1,5 +1,6 @@
+import { DEFAULT_REVERB_SETTINGS } from './reverbSettings';
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_AMP_CONTROLS } from './controls';
+import { DEFAULT_AMP_CONTROLS, REVERB_PROFILES, type ReverbProfile } from './controls';
 import {
   DEFAULT_STORED_WORKBENCH_PREFERENCES,
   LEGACY_CONTROLS_STORAGE_KEY,
@@ -64,6 +65,8 @@ describe('Saved Control Settings', () => {
         eqBypassed: false,
         compressionAmount: 100,
         compressionBypassed: true,
+        reverbProfile: 'studio-plate',
+        reverbSettings: DEFAULT_REVERB_SETTINGS,
         reverbAmount: 0,
         reverbBypassed: false,
         masterVolumeDb: -18,
@@ -124,6 +127,25 @@ describe('Saved Control Settings', () => {
     expect(store.load().controls).toEqual({ ...DEFAULT_AMP_CONTROLS, cleanGainDb: 6 });
   });
 
+  it('round-trips all reverb selections and preserves other fields in older saved controls', () => {
+    const storage = new MemoryStorage();
+    const store = new WorkbenchPreferencesStore(storage);
+    for (const reverbProfile of Object.keys(REVERB_PROFILES) as ReverbProfile[]) {
+      const preferences = {
+        ...DEFAULT_STORED_WORKBENCH_PREFERENCES,
+        controls: { ...DEFAULT_AMP_CONTROLS, reverbProfile, reverbAmount: 67, reverbBypassed: false },
+      };
+      store.save(preferences);
+      expect(store.load()).toEqual(preferences);
+    }
+    for (const reverbProfile of [undefined, 'future-reverb']) {
+      storage.setItem(SAVED_CONTROL_SETTINGS_STORAGE_KEY, JSON.stringify({
+        version: 1, controls: { reverbProfile, reverbAmount: 67, reverbBypassed: false },
+      }));
+      expect(store.load().controls).toEqual({ ...DEFAULT_AMP_CONTROLS, reverbAmount: 67, reverbBypassed: false });
+    }
+  });
+
   it('resets every sound control while preserving dismissed guidance', () => {
     const reset = resetControls({
       version: 1,
@@ -136,6 +158,8 @@ describe('Saved Control Settings', () => {
         eqBypassed: true,
         compressionAmount: 80,
         compressionBypassed: false,
+        reverbProfile: 'digital-hall',
+        reverbSettings: { ...DEFAULT_REVERB_SETTINGS, 'digital-hall': { ...DEFAULT_REVERB_SETTINGS['digital-hall'], modulationDepth: 75, decaySeconds: 4 } },
         reverbAmount: 60,
         reverbBypassed: false,
         masterVolumeDb: -3,
@@ -148,5 +172,20 @@ describe('Saved Control Settings', () => {
       controls: DEFAULT_AMP_CONTROLS,
       hardwareDirectMonitoringGuidanceDismissed: true,
     });
+  });
+
+  it('remembers independent module parameters even when another module is selected and bypassed', () => {
+    const store = new WorkbenchPreferencesStore(new MemoryStorage());
+    const reverbSettings = {
+      ...DEFAULT_REVERB_SETTINGS,
+      'studio-plate': { ...DEFAULT_REVERB_SETTINGS['studio-plate'], decaySeconds: 2.4, damping: 80 },
+      'fender-spring': { ...DEFAULT_REVERB_SETTINGS['fender-spring'], dwell: 70, toneDb: -4 },
+      'digital-hall': { ...DEFAULT_REVERB_SETTINGS['digital-hall'], modulationDepth: 65, modulationRateHz: 0.7 },
+    };
+    store.save({ ...DEFAULT_STORED_WORKBENCH_PREFERENCES,
+      controls: { ...DEFAULT_AMP_CONTROLS, reverbProfile: 'jazz-room', reverbSettings },
+    });
+    expect(store.load().controls.reverbSettings).toEqual(reverbSettings);
+    expect(store.load().controls.reverbBypassed).toBe(true);
   });
 });

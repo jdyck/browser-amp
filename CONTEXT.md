@@ -73,8 +73,12 @@ A bypassable Amp Chain stage whose single Amount control moves from effectively 
 _Avoid_: Limiter, individual compressor parameters
 
 **Reverb**:
-A bypassable Amp Chain stage that proves a simple spatial tail through a single Amount control without promising an authentic hardware model.
-_Avoid_: Authentic plate model, configurable reverb
+A bypassable Amp Chain stage with seven switchable modules and a shared Amount control for the wet return. The dry signal stays unchanged, and switching fades and retires the old tail. Studio Plate preserves the original sound; the other modules are original synthetic voices, not authentic hardware models.
+_Avoid_: Circuit-accurate reverb, measured tank response
+
+**Reverb Module**:
+The selected reverb voice: Jazz Room, Studio Chamber, Studio Plate, Fender Spring, Polytone Spring, Digital Room, or Digital Hall. Each has its own saved parameters in Main Controls and Advanced Controls accordions. Selection and parameters remain saved while bypassed and do not change Amount, input capture, or monitoring. Only the selected module remains active after its switching transition.
+_Avoid_: Amp Model, full-rig preset
 
 **Master Volume**:
 The final player-controlled Amp Chain stage that can attenuate, but not boost, the level sent into Processed Monitoring.

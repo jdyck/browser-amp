@@ -24,7 +24,7 @@ interface Transition<Key> {
 }
 
 /** One active path; at most one incoming path and one latest queued selection. */
-export class StageSwitcher<Key extends string> {
+export class StageSwitcher<Key> {
   readonly input: GainNode;
   readonly output: GainNode;
   readonly #context: BaseAudioContext;
