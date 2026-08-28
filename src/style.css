@@ -39,7 +39,7 @@
   }
 
   button {
-    @apply cursor-pointer rounded-md border-0 px-4 h-9 text-sm font-medium text-primary-foreground bg-primary transition-colors;
+    @apply cursor-pointer rounded-md border-0 px-4 text-sm font-medium text-primary-foreground bg-primary transition-colors;
   }
 
   button:disabled {
@@ -47,7 +47,7 @@
   }
 
   select {
-    @apply w-full h-9 px-3 rounded-md border border-input bg-input-fill text-foreground text-sm;
+    @apply w-full px-3 rounded-md border border-input bg-input-fill text-foreground text-sm;
   }
 
   button:focus-visible,

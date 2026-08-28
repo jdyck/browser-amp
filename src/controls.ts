@@ -3,6 +3,7 @@ export interface AmpControlSettings {
   readonly bassDb: number;
   readonly middleDb: number;
   readonly trebleDb: number;
+  readonly eqBypassed: boolean;
   readonly compressionAmount: number;
   readonly compressionBypassed: boolean;
   readonly reverbAmount: number;
@@ -15,6 +16,7 @@ export const DEFAULT_AMP_CONTROLS: AmpControlSettings = {
   bassDb: 0,
   middleDb: 0,
   trebleDb: 0,
+  eqBypassed: false,
   compressionAmount: 25,
   compressionBypassed: true,
   reverbAmount: 20,
@@ -75,6 +77,7 @@ export function normalizeAmpControlSettings(
     bassDb: bassDb === undefined ? fallback.bassDb : normalizeContinuousControl(bassDb, AMP_CONTROL_DEFINITIONS.bassDb),
     middleDb: middleDb === undefined ? fallback.middleDb : normalizeContinuousControl(middleDb, AMP_CONTROL_DEFINITIONS.middleDb),
     trebleDb: trebleDb === undefined ? fallback.trebleDb : normalizeContinuousControl(trebleDb, AMP_CONTROL_DEFINITIONS.trebleDb),
+    eqBypassed: typeof controls.eqBypassed === 'boolean' ? controls.eqBypassed : fallback.eqBypassed,
     compressionAmount: compressionAmount === undefined
       ? fallback.compressionAmount
       : normalizePercentAmount(compressionAmount),

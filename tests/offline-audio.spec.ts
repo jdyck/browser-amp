@@ -212,6 +212,65 @@ test('shapes Bass and Treble with shelves near 120 Hz and 3.2 kHz', async ({ pag
   expect(cutTreble / flatTreble).toBeLessThan(0.35);
 });
 
+for (const frequency of [40, 800, 10_000]) {
+  test(`bypasses and restores the whole EQ at ${frequency} Hz while retaining band settings`, async ({ page }) => {
+    await page.goto('./');
+
+    const levels = await page.evaluate(async (frequency) => {
+      const harnessPath = './tests/offlineAudioHarness.ts';
+      const { connectOfflineEngine, rms } = await import(harnessPath) as typeof import('./offlineAudioHarness');
+      const sampleRate = 48_000;
+      const context = new OfflineAudioContext(1, sampleRate, sampleRate);
+      const resumeRendering = context.resume.bind(context);
+      const source = context.createOscillator();
+      const inputGain = context.createGain();
+      source.frequency.value = frequency;
+      inputGain.gain.value = 0.1;
+      source.connect(inputGain);
+      const engine = await connectOfflineEngine(context, inputGain, {
+        bassDb: 6, middleDb: 6, trebleDb: 6, eqBypassed: true, masterVolumeDb: 0,
+      });
+
+      const enabled = context.suspend(0.2);
+      const bypassed = context.suspend(0.4);
+      const edited = context.suspend(0.6);
+      const reenabled = context.suspend(0.8);
+      source.start();
+      const rendering = context.startRendering();
+      await enabled;
+      engine.applyControls({ ...engine.snapshot.controls, eqBypassed: false });
+      await resumeRendering();
+      await bypassed;
+      engine.applyControls({ ...engine.snapshot.controls, eqBypassed: true });
+      const retainedSettings = engine.snapshot.controls;
+      await resumeRendering();
+      await edited;
+      engine.applyControls({ ...engine.snapshot.controls, bassDb: 12, middleDb: 12, trebleDb: 12 });
+      await resumeRendering();
+      await reenabled;
+      engine.applyControls({ ...engine.snapshot.controls, eqBypassed: false });
+      await resumeRendering();
+
+      const samples = (await rendering).getChannelData(0);
+      return {
+        retainedSettings,
+        initial: rms(samples, sampleRate, 0.1, 0.18),
+        enabled: rms(samples, sampleRate, 0.3, 0.38),
+        bypassed: rms(samples, sampleRate, 0.5, 0.58),
+        editedWhileBypassed: rms(samples, sampleRate, 0.7, 0.78),
+        reenabled: rms(samples, sampleRate, 0.9, 0.98),
+      };
+    }, frequency);
+
+    expect(levels.retainedSettings).toMatchObject({ bassDb: 6, middleDb: 6, trebleDb: 6, eqBypassed: true });
+    expect(levels.initial).toBeCloseTo(0.1 / Math.sqrt(2), 2);
+    expect(levels.enabled).toBeGreaterThan(levels.initial * 1.7);
+    expect(levels.bypassed).toBeCloseTo(levels.initial, 4);
+    expect(levels.editedWhileBypassed).toBeCloseTo(levels.initial, 4);
+    expect(levels.reenabled).toBeGreaterThan(levels.enabled * 1.7);
+  });
+}
+
 test('bypasses Compression without losing Amount and maps Amount toward firm compression', async ({ page }) => {
   await page.goto('./');
 

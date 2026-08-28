@@ -6,10 +6,10 @@ import './style.css';
 
 // `panel`, `connection-state`, and the `#monitoring-state`/`#clip-indicator` ids below are kept as literal
 // hooks (unstyled by CSS) because tests/app.spec.ts selects elements by these exact class/id strings.
-const PANEL = 'panel p-6 my-4 bg-card text-card-foreground border border-border rounded-lg';
-const PANEL_HEADING = 'flex justify-between gap-4 items-center mb-3 max-[34rem]:items-start max-[34rem]:flex-col max-[34rem]:gap-2';
+const PANEL = 'panel p-2 my-4 bg-card text-card-foreground border border-border rounded-lg';
+const PANEL_HEADING = 'flex justify-between gap-2 items-center mb-3 max-[34rem]:items-start max-[34rem]:flex-col max-[34rem]:gap-2';
 const PANEL_TITLE = 'text-sm font-medium mb-0';
-const ACTIONS = 'flex justify-between gap-4 items-center max-[34rem]:items-start max-[34rem]:flex-col max-[34rem]:gap-2';
+const ACTIONS = 'flex justify-between gap-2 items-center max-[34rem]:items-start max-[34rem]:flex-col max-[34rem]:gap-2';
 const ACTION_BUTTON = 'max-[34rem]:w-full';
 const SECONDARY_BUTTON = 'bg-secondary text-secondary-foreground';
 const SECONDARY_ACTION_BUTTON = `${SECONDARY_BUTTON} ${ACTION_BUTTON}`;
@@ -95,45 +95,10 @@ function renderStructure(current: AudioSnapshot): void {
         ${recovery.inputMessage === undefined ? '' : `<p class="text-destructive font-medium text-sm" role="alert">${escapeHtml(recovery.inputMessage)}</p>`}
       </section>
 
-      ${meterPanel('input', 'Input Level Meter', current.meter, 'Live Guitar Input before Clean Gain. Connecting and metering remain silent until Processed Monitoring is enabled.')}
-
-      <section class="${PANEL}" aria-label="Clean Gain">
-        ${dbControl('clean-gain', 'Clean Gain', current.controls.cleanGainDb, AMP_CONTROL_DEFINITIONS.cleanGainDb)}
-      </section>
-
-      <section class="${PANEL}" aria-label="Three-Band EQ">
-        <div class="grid gap-5">
-          ${dbControl('bass', 'Bass', current.controls.bassDb, AMP_CONTROL_DEFINITIONS.bassDb)}
-          ${dbControl('middle', 'Middle', current.controls.middleDb, AMP_CONTROL_DEFINITIONS.middleDb)}
-          ${dbControl('treble', 'Treble', current.controls.trebleDb, AMP_CONTROL_DEFINITIONS.trebleDb)}
-        </div>
-      </section>
-
-      <section class="${PANEL}" aria-label="Compression">
-        <label class="${STAGE_TOGGLE}" for="compression-bypass">
-          <input id="compression-bypass" type="checkbox" class="${STAGE_TOGGLE_CHECKBOX}" ${current.controls.compressionBypassed ? 'checked' : ''}>
-          Compression Stage Bypass
-        </label>
-        ${percentControl('compression-amount', 'Compression', current.controls.compressionAmount, AMP_CONTROL_DEFINITIONS.compressionAmount)}
-      </section>
-
-      <section class="${PANEL}" aria-label="Reverb">
-        <label class="${STAGE_TOGGLE}" for="reverb-bypass">
-          <input id="reverb-bypass" type="checkbox" class="${STAGE_TOGGLE_CHECKBOX}" ${current.controls.reverbBypassed ? 'checked' : ''}>
-          Reverb Stage Bypass
-        </label>
-        ${percentControl('reverb-amount', 'Reverb', current.controls.reverbAmount, AMP_CONTROL_DEFINITIONS.reverbAmount)}
-      </section>
-
-      <section class="${PANEL}" aria-label="Master Volume">
-        ${dbControl('master-volume', 'Master', current.controls.masterVolumeDb, AMP_CONTROL_DEFINITIONS.masterVolumeDb)}
-      </section>
-
-      ${meterPanel('output', 'Output Level Meter', current.outputMeter, 'Post-Master signal before browser output.')}
-
       <section class="${PANEL}" aria-labelledby="monitoring-title">
         <div class="${PANEL_HEADING}"><h2 id="monitoring-title" class="${PANEL_TITLE}">Processed Monitoring</h2><strong id="monitoring-state" class="${STATE_VALUE}">${current.monitoring ? 'On' : 'Off'}</strong></div>
         <p>${routingDescription(current)}</p>
+        <p id="latency-value" class="text-muted-foreground text-xs" ${current.latency === undefined ? 'hidden' : ''}>${latencyDescription(current.latency)}</p>
         ${outputSelector(current, connected)}
         ${current.outputRouting.error === undefined ? '' : `<p class="text-destructive font-medium text-sm" role="alert">${escapeHtml(current.outputRouting.error)}</p>`}
         ${recovery.monitoringMessage === undefined ? '' : `<p class="text-destructive font-medium text-sm" role="alert">${escapeHtml(recovery.monitoringMessage)}</p>`}
@@ -142,6 +107,46 @@ function renderStructure(current: AudioSnapshot): void {
           <button id="monitoring-toggle" type="button" class="${ACTION_BUTTON}" ${recovery.monitoringDisabled ? 'disabled' : ''}>${recovery.monitoringButtonLabel}</button>
         </div>
         ${guidanceOpen ? hardwareGuidance() : ''}
+      </section>
+
+      ${meterPanel('input', 'Input Level Meter', current.meter, 'Live Guitar Input before Clean Gain. Connecting and metering remain silent until Processed Monitoring is enabled.')}
+
+      ${meterPanel('output', 'Output Level Meter', current.outputMeter, 'Post-Master signal before browser output.')}
+
+      <section class="${PANEL}" aria-label="Clean Gain">
+        ${dbControl('clean-gain', 'Clean Gain', current.controls.cleanGainDb, AMP_CONTROL_DEFINITIONS.cleanGainDb)}
+      </section>
+
+      <section class="${PANEL}" aria-label="Three-Band EQ">
+        <label class="${STAGE_TOGGLE}" for="eq-enabled">
+          <input id="eq-enabled" type="checkbox" class="${STAGE_TOGGLE_CHECKBOX}" ${current.controls.eqBypassed ? '' : 'checked'}>
+          Enable EQ
+        </label>
+        <div class="grid gap-2">
+          ${dbControl('bass', 'Bass', current.controls.bassDb, AMP_CONTROL_DEFINITIONS.bassDb)}
+          ${dbControl('middle', 'Middle', current.controls.middleDb, AMP_CONTROL_DEFINITIONS.middleDb)}
+          ${dbControl('treble', 'Treble', current.controls.trebleDb, AMP_CONTROL_DEFINITIONS.trebleDb)}
+        </div>
+      </section>
+
+      <section class="${PANEL}" aria-label="Compression">
+        <label class="${STAGE_TOGGLE}" for="compression-enabled">
+          <input id="compression-enabled" type="checkbox" class="${STAGE_TOGGLE_CHECKBOX}" ${current.controls.compressionBypassed ? '' : 'checked'}>
+          Enable Compression
+        </label>
+        ${percentControl('compression-amount', 'Compression', current.controls.compressionAmount, AMP_CONTROL_DEFINITIONS.compressionAmount)}
+      </section>
+
+      <section class="${PANEL}" aria-label="Reverb">
+        <label class="${STAGE_TOGGLE}" for="reverb-enabled">
+          <input id="reverb-enabled" type="checkbox" class="${STAGE_TOGGLE_CHECKBOX}" ${current.controls.reverbBypassed ? '' : 'checked'}>
+          Enable Reverb
+        </label>
+        ${percentControl('reverb-amount', 'Reverb', current.controls.reverbAmount, AMP_CONTROL_DEFINITIONS.reverbAmount)}
+      </section>
+
+      <section class="${PANEL}" aria-label="Master Volume">
+        ${dbControl('master-volume', 'Master', current.controls.masterVolumeDb, AMP_CONTROL_DEFINITIONS.masterVolumeDb)}
       </section>
     </section>`;
 
@@ -174,16 +179,19 @@ function bindStructureEvents(): void {
     void engine.selectOutput(snapshot.outputRouting.selectedDeviceId);
   });
   bindContinuousControl('clean-gain', (cleanGainDb) => engine.applyControls({ ...snapshot.controls, cleanGainDb }));
+  root.querySelector<HTMLInputElement>('#eq-enabled')?.addEventListener('change', (event) => {
+    engine.applyControls({ ...snapshot.controls, eqBypassed: !(event.currentTarget as HTMLInputElement).checked });
+  });
   bindContinuousControl('bass', (bassDb) => engine.applyControls({ ...snapshot.controls, bassDb }));
   bindContinuousControl('middle', (middleDb) => engine.applyControls({ ...snapshot.controls, middleDb }));
   bindContinuousControl('treble', (trebleDb) => engine.applyControls({ ...snapshot.controls, trebleDb }));
   bindContinuousControl('compression-amount', (compressionAmount) => engine.applyControls({ ...snapshot.controls, compressionAmount }));
-  root.querySelector<HTMLInputElement>('#compression-bypass')?.addEventListener('change', (event) => {
-    engine.applyControls({ ...snapshot.controls, compressionBypassed: (event.currentTarget as HTMLInputElement).checked });
+  root.querySelector<HTMLInputElement>('#compression-enabled')?.addEventListener('change', (event) => {
+    engine.applyControls({ ...snapshot.controls, compressionBypassed: !(event.currentTarget as HTMLInputElement).checked });
   });
   bindContinuousControl('reverb-amount', (reverbAmount) => engine.applyControls({ ...snapshot.controls, reverbAmount }));
-  root.querySelector<HTMLInputElement>('#reverb-bypass')?.addEventListener('change', (event) => {
-    engine.applyControls({ ...snapshot.controls, reverbBypassed: (event.currentTarget as HTMLInputElement).checked });
+  root.querySelector<HTMLInputElement>('#reverb-enabled')?.addEventListener('change', (event) => {
+    engine.applyControls({ ...snapshot.controls, reverbBypassed: !(event.currentTarget as HTMLInputElement).checked });
   });
   bindContinuousControl('master-volume', (masterVolumeDb) => engine.applyControls({ ...snapshot.controls, masterVolumeDb }));
   root.querySelector<HTMLButtonElement>('#monitoring-toggle')?.addEventListener('click', () => {
@@ -221,15 +229,17 @@ function bindContinuousControl(id: string, apply: (value: number) => void): void
 
 function renderControls(controls: AmpControlSettings): void {
   setControlValue('clean-gain', controls.cleanGainDb, AMP_CONTROL_DEFINITIONS.cleanGainDb);
+  const eqEnabled = root.querySelector<HTMLInputElement>('#eq-enabled');
+  if (eqEnabled !== null) eqEnabled.checked = !controls.eqBypassed;
   setControlValue('bass', controls.bassDb, AMP_CONTROL_DEFINITIONS.bassDb);
   setControlValue('middle', controls.middleDb, AMP_CONTROL_DEFINITIONS.middleDb);
   setControlValue('treble', controls.trebleDb, AMP_CONTROL_DEFINITIONS.trebleDb);
   setControlValue('compression-amount', controls.compressionAmount, AMP_CONTROL_DEFINITIONS.compressionAmount);
-  const compressionBypass = root.querySelector<HTMLInputElement>('#compression-bypass');
-  if (compressionBypass !== null) compressionBypass.checked = controls.compressionBypassed;
+  const compressionEnabled = root.querySelector<HTMLInputElement>('#compression-enabled');
+  if (compressionEnabled !== null) compressionEnabled.checked = !controls.compressionBypassed;
   setControlValue('reverb-amount', controls.reverbAmount, AMP_CONTROL_DEFINITIONS.reverbAmount);
-  const reverbBypass = root.querySelector<HTMLInputElement>('#reverb-bypass');
-  if (reverbBypass !== null) reverbBypass.checked = controls.reverbBypassed;
+  const reverbEnabled = root.querySelector<HTMLInputElement>('#reverb-enabled');
+  if (reverbEnabled !== null) reverbEnabled.checked = !controls.reverbBypassed;
   setControlValue('master-volume', controls.masterVolumeDb, AMP_CONTROL_DEFINITIONS.masterVolumeDb);
 }
 
@@ -251,6 +261,19 @@ function renderMeters(current: AudioSnapshot): void {
     indicator.setAttribute('aria-hidden', String(!current.clipLatched));
   }
   if (clear !== null) clear.disabled = !current.clipLatched;
+  const latency = root.querySelector<HTMLElement>('#latency-value');
+  if (latency !== null) {
+    latency.hidden = current.latency === undefined;
+    latency.textContent = latencyDescription(current.latency);
+  }
+}
+
+function latencyDescription(latency: AudioSnapshot['latency']): string {
+  if (latency === undefined) return '';
+  const baseMs = latency.baseSeconds * 1_000;
+  if (latency.outputSeconds === undefined) return `Browser output latency: ~${baseMs.toFixed(1)} ms processing buffer (device output latency not reported by this browser). Input capture latency is not measurable and adds to the total.`;
+  const outputMs = latency.outputSeconds * 1_000;
+  return `Browser output latency: ~${(baseMs + outputMs).toFixed(1)} ms (${baseMs.toFixed(1)} ms processing buffer + ${outputMs.toFixed(1)} ms device output). Input capture latency is not measurable and adds to the total.`;
 }
 
 function clipIndicatorClass(active: boolean): string {
@@ -285,7 +308,7 @@ function meterPanel(id: 'input' | 'output', title: string, reading: InputMeterSn
       <h2 id="${id}-meter-title" class="${PANEL_TITLE}">${title}</h2>
       <span id="${id}-meter-value" class="text-muted-foreground text-xs">${reading.dbfs.toFixed(1)} dBFS</span>
     </div>
-    <div id="${id}-meter" class="relative h-[1.3rem] overflow-hidden rounded-[.2rem] bg-[linear-gradient(90deg,#2b9b53_0_80%,#d4bb45_80%_95%,#df5252_95%)]" aria-label="${id === 'input' ? 'Input' : 'Output'} level" aria-valuemin="-60" aria-valuemax="0" aria-valuenow="${reading.dbfs}" role="progressbar">
+    <div id="${id}-meter" class="relative h-2 overflow-hidden rounded-[.2rem] bg-[linear-gradient(90deg,#2b9b53_0_80%,#d4bb45_80%_95%,#df5252_95%)]" aria-label="${id === 'input' ? 'Input' : 'Output'} level" aria-valuemin="-60" aria-valuemax="0" aria-valuenow="${reading.dbfs}" role="progressbar">
       <div id="${id}-meter-fill" class="${METER_FILL} ${meterRegion(reading.dbfs)}" style="width: ${100 - meterPositionPercent(reading.dbfs)}%"></div>
       <div id="${id}-meter-peak" class="absolute top-0 bottom-0 w-[2px] bg-white" style="left: ${meterPositionPercent(reading.peakDbfs)}%"></div>
     </div>
@@ -295,7 +318,7 @@ function meterPanel(id: 'input' | 'output', title: string, reading: InputMeterSn
 }
 
 function dbControl(id: string, label: string, value: number, definition: ContinuousControlDefinition): string {
-  return `<div class="grid grid-cols-[1fr_auto] max-[34rem]:grid-cols-1 gap-x-4 gap-y-[.6rem] items-center">
+  return `<div class="grid grid-cols-[1fr_auto] max-[34rem]:grid-cols-1 gap-x-4 items-center">
     <label for="${id}-slider" class="col-span-2 max-[34rem]:col-span-1 font-medium text-sm">${label}</label>
     <input id="${id}-slider" aria-label="${label} slider" type="range" class="w-full accent-primary" min="${definition.minimum}" max="${definition.maximum}" step="${definition.step}" value="${value}">
     <div class="flex items-center gap-[.35rem] max-[34rem]:justify-end">
@@ -305,10 +328,10 @@ function dbControl(id: string, label: string, value: number, definition: Continu
   </div>`;
 }
 
-const NUMERIC_INPUT = 'w-20 h-9 px-2 rounded-md border border-input bg-input-fill text-foreground text-right text-sm';
+const NUMERIC_INPUT = 'w-14 rounded-md border border-input bg-input-fill text-foreground text-right text-sm';
 
 function percentControl(id: string, label: string, value: number, definition: ContinuousControlDefinition): string {
-  return `<div class="grid grid-cols-[1fr_auto] max-[34rem]:grid-cols-1 gap-x-4 gap-y-[.6rem] items-center">
+  return `<div class="grid grid-cols-[1fr_auto] max-[34rem]:grid-cols-1 gap-x-4 items-center">
     <label for="${id}-slider" class="col-span-2 max-[34rem]:col-span-1 font-medium text-sm">${label}</label>
     <input id="${id}-slider" aria-label="${label} slider" type="range" class="w-full accent-primary" min="${definition.minimum}" max="${definition.maximum}" step="${definition.step}" value="${value}">
     <div class="flex items-center gap-[.35rem] max-[34rem]:justify-end">

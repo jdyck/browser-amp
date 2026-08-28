@@ -2,6 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_AMP_CONTROLS, normalizeAmpControlSettings } from './controls';
 
 describe('Amp Control Settings', () => {
+  it('normalizes EQ bypass and keeps older settings enabled', () => {
+    expect(normalizeAmpControlSettings({ eqBypassed: true }).eqBypassed).toBe(true);
+    expect(normalizeAmpControlSettings({ eqBypassed: false }).eqBypassed).toBe(false);
+    expect(normalizeAmpControlSettings({ eqBypassed: 'true' }).eqBypassed).toBe(false);
+    expect(normalizeAmpControlSettings({ bassDb: 6 }).eqBypassed).toBe(false);
+  });
+
   it('normalizes values to their documented ranges and precision', () => {
     expect(normalizeAmpControlSettings({
       ...DEFAULT_AMP_CONTROLS,

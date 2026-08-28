@@ -3,7 +3,7 @@ import { DEFAULT_AMP_CONTROLS, normalizeAmpControlSettings, normalizePercentAmou
 import { dbToLinearGain, GAIN_SMOOTHING_SECONDS, smoothGainToDb, smoothGainToValue } from './gain';
 import { meterReadingFromSamples, METER_FLOOR_DBFS, nextPeakHold, type PeakHold } from './meter';
 import { createPlateImpulse } from './reverb';
-import type { AmpControlSettings, AudioEngine as AudioEngineContract, AudioRecoverySnapshot, AudioSnapshot, InputDevice, InputSettings, OutputDevice } from './types';
+import type { AmpControlSettings, AudioEngine as AudioEngineContract, AudioRecoverySnapshot, AudioSnapshot, InputDevice, InputSettings, LatencySnapshot, OutputDevice } from './types';
 
 const initialSettings: InputSettings = { selectedInputDeviceId: undefined, inputChannel: 0 };
 // Bound full-scale Amount to a strong but usable wet return (about -20 dB).
@@ -51,6 +51,7 @@ function initialSnapshot(): AudioSnapshot {
     meter: { dbfs: METER_FLOOR_DBFS, peakDbfs: METER_FLOOR_DBFS },
     outputMeter: { dbfs: METER_FLOOR_DBFS, peakDbfs: METER_FLOOR_DBFS },
     clipLatched: false,
+    latency: undefined,
     error: undefined,
     recovery: undefined,
   };
@@ -180,6 +181,7 @@ export class AudioEngine implements AudioEngineContract {
       rawCaptureWarnings: [],
       meter: { dbfs: METER_FLOOR_DBFS, peakDbfs: METER_FLOOR_DBFS },
       outputMeter: { dbfs: METER_FLOOR_DBFS, peakDbfs: METER_FLOOR_DBFS },
+      latency: undefined,
       outputRouting: { mode: 'pending', devices: [], selectedDeviceId: preservedOutputDeviceId, error: undefined },
     });
     const audio: MediaTrackConstraints = {
@@ -222,14 +224,14 @@ export class AudioEngine implements AudioEngineContract {
       this.#cleanGain.gain.value = dbToLinearGain(this.#snapshot.controls.cleanGainDb);
       this.#bassEq.type = 'lowshelf';
       this.#bassEq.frequency.value = 120;
-      this.#bassEq.gain.value = this.#snapshot.controls.bassDb;
+      this.#bassEq.gain.value = this.#snapshot.controls.eqBypassed ? 0 : this.#snapshot.controls.bassDb;
       this.#middleEq.type = 'peaking';
       this.#middleEq.frequency.value = 800;
       this.#middleEq.Q.value = 0.8;
-      this.#middleEq.gain.value = this.#snapshot.controls.middleDb;
+      this.#middleEq.gain.value = this.#snapshot.controls.eqBypassed ? 0 : this.#snapshot.controls.middleDb;
       this.#trebleEq.type = 'highshelf';
       this.#trebleEq.frequency.value = 3_200;
-      this.#trebleEq.gain.value = this.#snapshot.controls.trebleDb;
+      this.#trebleEq.gain.value = this.#snapshot.controls.eqBypassed ? 0 : this.#snapshot.controls.trebleDb;
       const compression = compressionSettings(this.#snapshot.controls.compressionAmount);
       this.#compressor.threshold.value = compression.thresholdDb;
       this.#compressor.ratio.value = compression.ratio;
@@ -301,6 +303,7 @@ export class AudioEngine implements AudioEngineContract {
         inputChannelCount: channelCount,
         inputChannel: selectedChannel,
         rawCaptureWarnings: rawCaptureWarnings(settings),
+        latency: this.#latency(),
         outputRouting,
         error: outputRecovery?.message,
         recovery: outputRecovery,
@@ -353,9 +356,10 @@ export class AudioEngine implements AudioEngineContract {
     const controls = normalizeAmpControlSettings(settings, previousControls);
     if (this.#context !== undefined) {
       if (this.#cleanGain !== undefined) smoothGainToDb(this.#cleanGain.gain, controls.cleanGainDb, this.#context.currentTime);
-      if (this.#bassEq !== undefined) smoothGainToValue(this.#bassEq.gain, controls.bassDb, this.#context.currentTime);
-      if (this.#middleEq !== undefined) smoothGainToValue(this.#middleEq.gain, controls.middleDb, this.#context.currentTime);
-      if (this.#trebleEq !== undefined) smoothGainToValue(this.#trebleEq.gain, controls.trebleDb, this.#context.currentTime);
+      // Zero-gain shelves and peaking filters pass the signal unchanged while preserving the saved band settings.
+      if (this.#bassEq !== undefined) smoothGainToValue(this.#bassEq.gain, controls.eqBypassed ? 0 : controls.bassDb, this.#context.currentTime);
+      if (this.#middleEq !== undefined) smoothGainToValue(this.#middleEq.gain, controls.eqBypassed ? 0 : controls.middleDb, this.#context.currentTime);
+      if (this.#trebleEq !== undefined) smoothGainToValue(this.#trebleEq.gain, controls.eqBypassed ? 0 : controls.trebleDb, this.#context.currentTime);
       if (this.#compressor !== undefined && controls.compressionAmount !== previousControls.compressionAmount) {
         const compression = compressionSettings(controls.compressionAmount);
         smoothGainToValue(this.#compressor.threshold, compression.thresholdDb, this.#context.currentTime);
@@ -502,6 +506,19 @@ export class AudioEngine implements AudioEngineContract {
     };
   }
 
+  // outputLatency settles after playback starts and can change with the routed device,
+  // so this is re-read on every meter frame. The previous snapshot is reused when the
+  // values are unchanged to keep renders cheap.
+  #latency(): LatencySnapshot | undefined {
+    if (this.#context === undefined) return undefined;
+    const baseSeconds = this.#context.baseLatency;
+    const outputSeconds = 'outputLatency' in this.#context ? this.#context.outputLatency : undefined;
+    const previous = this.#snapshot.latency;
+    return previous !== undefined && previous.baseSeconds === baseSeconds && previous.outputSeconds === outputSeconds
+      ? previous
+      : { baseSeconds, outputSeconds };
+  }
+
   #sinkContext(): (AudioContext & { setSinkId(deviceId: string): Promise<void> }) | undefined {
     const context = this.#context as (AudioContext & { setSinkId?: (deviceId: string) => Promise<void> }) | undefined;
     return context !== undefined && typeof context.setSinkId === 'function'
@@ -525,6 +542,7 @@ export class AudioEngine implements AudioEngineContract {
         meter: { dbfs: input.dbfs, peakDbfs: this.#inputPeak.dbfs },
         outputMeter: { dbfs: output.dbfs, peakDbfs: this.#outputPeak.dbfs },
         clipLatched: this.#snapshot.clipLatched || output.clipped,
+        latency: this.#latency(),
       });
       this.#scheduleMeter();
     });

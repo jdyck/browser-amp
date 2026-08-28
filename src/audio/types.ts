@@ -51,6 +51,11 @@ export interface InputMeterSnapshot {
   readonly peakDbfs: number;
 }
 
+export interface LatencySnapshot {
+  readonly baseSeconds: number;
+  readonly outputSeconds: number | undefined;
+}
+
 export interface AudioSnapshot extends InputSettings {
   readonly lifecycle: ConnectionLifecycle;
   readonly monitoring: boolean;
@@ -62,6 +67,7 @@ export interface AudioSnapshot extends InputSettings {
   readonly meter: InputMeterSnapshot;
   readonly outputMeter: InputMeterSnapshot;
   readonly clipLatched: boolean;
+  readonly latency: LatencySnapshot | undefined;
   readonly error: string | undefined;
   readonly recovery: AudioRecoverySnapshot | undefined;
 }

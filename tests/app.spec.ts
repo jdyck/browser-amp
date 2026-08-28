@@ -145,6 +145,13 @@ test('starts disconnected with monitoring unavailable', async ({ page }) => {
   await expect(page.getByRole('progressbar', { name: 'Input level' })).toHaveAttribute('aria-valuenow', '-60');
 });
 
+test('places monitoring below input settings and output metering below input metering', async ({ page }) => {
+  await page.goto('./');
+
+  await expect(page.locator('[aria-labelledby="input-title"] + section')).toHaveAttribute('aria-labelledby', 'monitoring-title');
+  await expect(page.locator('[aria-labelledby="input-meter-title"] + section')).toHaveAttribute('aria-labelledby', 'output-meter-title');
+});
+
 test('synchronizes, clamps, and restores controls without restoring Processed Monitoring', async ({ page }) => {
   await page.goto('./');
 
@@ -154,22 +161,24 @@ test('synchronizes, clamps, and restores controls without restoring Processed Mo
   const bassSlider = page.getByLabel('Bass slider');
   const middle = page.getByLabel('Middle value');
   const treble = page.getByLabel('Treble value');
+  const eqEnabled = page.getByLabel('Enable EQ');
   const compressionAmount = page.getByLabel('Compression value');
   const compressionAmountSlider = page.getByLabel('Compression slider');
-  const compressionBypass = page.getByLabel('Compression Stage Bypass');
+  const compressionEnabled = page.getByLabel('Enable Compression');
   const reverbAmount = page.getByLabel('Reverb value');
   const reverbAmountSlider = page.getByLabel('Reverb slider');
-  const reverbBypass = page.getByLabel('Reverb Stage Bypass');
+  const reverbEnabled = page.getByLabel('Enable Reverb');
   const masterVolume = page.getByLabel('Master value');
 
   await expect(cleanGain).toHaveValue('0.0');
   await expect(bass).toHaveValue('0.0');
   await expect(middle).toHaveValue('0.0');
   await expect(treble).toHaveValue('0.0');
+  await expect(eqEnabled).toBeChecked();
   await expect(compressionAmount).toHaveValue('25');
-  await expect(compressionBypass).toBeChecked();
+  await expect(compressionEnabled).not.toBeChecked();
   await expect(reverbAmount).toHaveValue('20');
-  await expect(reverbBypass).toBeChecked();
+  await expect(reverbEnabled).not.toBeChecked();
   await expect(masterVolume).toHaveValue('-18.0');
 
   await cleanGain.fill('30');
@@ -182,10 +191,10 @@ test('synchronizes, clamps, and restores controls without restoring Processed Mo
   await treble.press('Enter');
   await compressionAmount.fill('101');
   await compressionAmount.press('Enter');
-  await compressionBypass.uncheck();
+  await compressionEnabled.check();
   await reverbAmount.fill('-1');
   await reverbAmount.press('Enter');
-  await reverbBypass.uncheck();
+  await reverbEnabled.check();
   await masterVolume.fill('-12.26');
   await masterVolume.press('Enter');
 
@@ -207,11 +216,35 @@ test('synchronizes, clamps, and restores controls without restoring Processed Mo
   await expect(page.getByLabel('Middle value')).toHaveValue('3.3');
   await expect(page.getByLabel('Treble value')).toHaveValue('-12.0');
   await expect(page.getByLabel('Compression value')).toHaveValue('100');
-  await expect(page.getByLabel('Compression Stage Bypass')).not.toBeChecked();
+  await expect(compressionEnabled).toBeChecked();
   await expect(page.getByLabel('Reverb value')).toHaveValue('0');
-  await expect(page.getByLabel('Reverb Stage Bypass')).not.toBeChecked();
+  await expect(reverbEnabled).toBeChecked();
   await expect(page.getByLabel('Master value')).toHaveValue('-12.3');
   await expect(page.getByRole('button', { name: 'Enable Monitoring' })).toBeDisabled();
+
+  const enabledSettings = await page.evaluate(() => JSON.parse(localStorage.getItem('browser-amp.saved-control-settings') ?? 'null'));
+  expect(enabledSettings.controls).toMatchObject({ eqBypassed: false, compressionBypassed: false, reverbBypassed: false });
+
+  await eqEnabled.uncheck();
+  await expect(bass).toHaveValue('12.0');
+  await expect(middle).toHaveValue('3.3');
+  await expect(treble).toHaveValue('-12.0');
+  await compressionEnabled.uncheck();
+  await expect(reverbEnabled).toBeChecked();
+  await reverbEnabled.uncheck();
+  const bypassedSettings = await page.evaluate(() => JSON.parse(localStorage.getItem('browser-amp.saved-control-settings') ?? 'null'));
+  expect(bypassedSettings.controls).toMatchObject({ eqBypassed: true, compressionBypassed: true, reverbBypassed: true });
+
+  await page.reload();
+  await expect(eqEnabled).not.toBeChecked();
+  await expect(compressionEnabled).not.toBeChecked();
+  await expect(reverbEnabled).not.toBeChecked();
+  await eqEnabled.check();
+  await expect(bass).toHaveValue('12.0');
+  await expect(middle).toHaveValue('3.3');
+  await expect(treble).toHaveValue('-12.0');
+  const reenabledSettings = await page.evaluate(() => JSON.parse(localStorage.getItem('browser-amp.saved-control-settings') ?? 'null'));
+  expect(reenabledSettings.controls.eqBypassed).toBe(false);
 });
 
 test('requires a separate monitoring action and remembers dismissed Hardware Direct Monitoring guidance', async ({ page }) => {
@@ -239,9 +272,10 @@ test('Reset Controls restores sound defaults without changing connection, monito
   await page.goto('./');
   await page.getByLabel('Clean Gain value').fill('9');
   await page.getByLabel('Bass value').fill('-4');
-  await page.getByLabel('Compression Stage Bypass').uncheck();
+  await page.getByLabel('Enable EQ').uncheck();
+  await page.getByLabel('Enable Compression').check();
   await page.getByLabel('Reverb value').fill('60');
-  await page.getByLabel('Reverb Stage Bypass').uncheck();
+  await page.getByLabel('Enable Reverb').check();
   await page.getByLabel('Master value').fill('-6');
   await page.getByRole('button', { name: 'Connect Input' }).click();
   await page.getByRole('button', { name: 'Enable Monitoring' }).click();
@@ -253,10 +287,11 @@ test('Reset Controls restores sound defaults without changing connection, monito
   await expect(page.getByLabel('Bass value')).toHaveValue('0.0');
   await expect(page.getByLabel('Middle value')).toHaveValue('0.0');
   await expect(page.getByLabel('Treble value')).toHaveValue('0.0');
+  await expect(page.getByLabel('Enable EQ')).toBeChecked();
   await expect(page.getByLabel('Compression value')).toHaveValue('25');
-  await expect(page.getByLabel('Compression Stage Bypass')).toBeChecked();
+  await expect(page.getByLabel('Enable Compression')).not.toBeChecked();
   await expect(page.getByLabel('Reverb value')).toHaveValue('20');
-  await expect(page.getByLabel('Reverb Stage Bypass')).toBeChecked();
+  await expect(page.getByLabel('Enable Reverb')).not.toBeChecked();
   await expect(page.getByLabel('Master value')).toHaveValue('-18.0');
   await expect(page.locator('.connection-state')).toHaveText('Connected — monitoring');
   await expect(page.getByRole('button', { name: 'Disable Monitoring' })).toBeVisible();
@@ -270,6 +305,7 @@ test('Reset Controls restores sound defaults without changing connection, monito
       bassDb: 0,
       middleDb: 0,
       trebleDb: 0,
+      eqBypassed: false,
       compressionAmount: 25,
       compressionBypassed: true,
       reverbAmount: 20,
