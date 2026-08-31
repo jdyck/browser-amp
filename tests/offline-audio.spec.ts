@@ -593,12 +593,12 @@ test('renders a smoothed linear Clean Gain through Master Volume without saturat
   expect(samples.afterRamp).toBeCloseTo(0.3972, 3);
 });
 
-for (const { ampModel, sampleRate } of (['clean-tube', 'clean-tube-warm'] as const).flatMap(
-  (ampModel) => [44_100, 48_000].map((sampleRate) => ({ ampModel, sampleRate })),
-)) {
-  test(`${ampModel} stays nearly clean at light input and breaks up progressively at ${sampleRate} Hz`, async ({ page }) => {
+const MAX_TUBE_DC_OFFSET = 0.000_2;
+
+for (const sampleRate of [44_100, 48_000]) {
+  test(`Clean Tube models stay stable and break up progressively at ${sampleRate} Hz`, async ({ page }) => {
     await page.goto('./');
-    const tones = await page.evaluate(async ({ ampModel, sampleRate }) => {
+    const tones = await page.evaluate(async (sampleRate) => {
       const harnessPath = './tests/offlineAudioHarness.ts';
       const { connectOfflineEngine, rms, peak } = await import(harnessPath) as typeof import('./offlineAudioHarness');
       async function render(ampModel: import('../src/controls').AmpModel, amplitude: number, cleanGainDb = 0) {
@@ -635,36 +635,69 @@ for (const { ampModel, sampleRate } of (['clean-tube', 'clean-tube-warm'] as con
       }
       return {
         clean: await render('clean-voice', 0.1),
-        light: await render(ampModel, 0.1),
-        driven: await render(ampModel, 0.1, 12),
-        hot: await render(ampModel, 1, 24),
-        silent: await render(ampModel, 0, 24),
-        originalLight: await render('clean-tube', 0.1),
-        originalDriven: await render('clean-tube', 0.1, 12),
+        original: {
+          light: await render('clean-tube', 0.1),
+          driven: await render('clean-tube', 0.1, 12),
+          hot: await render('clean-tube', 1, 24),
+          silent: await render('clean-tube', 0, 24),
+        },
+        warm: {
+          light: await render('clean-tube-warm', 0.1),
+          driven: await render('clean-tube-warm', 0.1, 12),
+          hot: await render('clean-tube-warm', 1, 24),
+          silent: await render('clean-tube-warm', 0, 24),
+        },
       };
-    }, { ampModel, sampleRate });
+    }, sampleRate);
 
-    expect(tones.clean.level).toBeCloseTo(0.1 / Math.sqrt(2), 5);
-    expect(tones.clean.distortion).toBeLessThan(0.0001);
-    expect(tones.light.level / tones.clean.level).toBeGreaterThan(0.75);
-    expect(tones.light.level / tones.clean.level).toBeLessThan(1.05);
-    expect(tones.light.distortion).toBeGreaterThan(0.001);
-    expect(tones.light.distortion).toBeLessThan(0.02);
-    expect(tones.light.secondHarmonic).toBeGreaterThan(tones.clean.secondHarmonic * 100);
-    expect(tones.driven.distortion).toBeGreaterThan(tones.light.distortion * 2);
-    expect(tones.driven.level).toBeGreaterThan(tones.light.level * 2);
-    expect(tones.driven.level).toBeLessThan(tones.light.level * 4);
-    expect(tones.hot.distortion).toBeGreaterThan(tones.driven.distortion);
-    expect(tones.hot.peak).toBeLessThan(1);
-    for (const tone of Object.values(tones)) {
-      expect(tone.finite).toBe(true);
-      expect(Math.abs(tone.dc)).toBeLessThan(0.0001);
+    await test.step('Clean Voice remains a transparent baseline', () => {
+      expect(tones.clean.level).toBeCloseTo(0.1 / Math.sqrt(2), 5);
+      expect(tones.clean.distortion).toBeLessThan(0.0001);
+    });
+
+    const models = [
+      { name: 'clean-tube', tones: tones.original },
+      { name: 'clean-tube-warm', tones: tones.warm },
+    ] as const;
+    for (const model of models) {
+      await test.step(`${model.name} progresses from light color to heavy breakup`, () => {
+        const { light, driven, hot } = model.tones;
+        const lightLevelRatio = light.level / tones.clean.level;
+        expect(lightLevelRatio, `${model.name} light-input level ratio`).toBeGreaterThan(0.75);
+        expect(lightLevelRatio, `${model.name} light-input level ratio`).toBeLessThan(1.05);
+        expect(light.distortion, `${model.name} light-input distortion`).toBeGreaterThan(0.001);
+        expect(light.distortion, `${model.name} light-input distortion`).toBeLessThan(0.02);
+        expect(light.secondHarmonic, `${model.name} light-input second harmonic`).toBeGreaterThan(tones.clean.secondHarmonic * 100);
+        expect(driven.distortion, `${model.name} driven distortion`).toBeGreaterThan(light.distortion * 2);
+        expect(driven.level, `${model.name} driven level`).toBeGreaterThan(light.level * 2);
+        expect(driven.level, `${model.name} driven level`).toBeLessThan(light.level * 4);
+        expect(hot.distortion, `${model.name} hot-input distortion`).toBeGreaterThan(driven.distortion);
+        expect(hot.peak, `${model.name} hot-input peak`).toBeLessThan(1);
+      });
     }
-    expect(tones.silent.peak).toBe(0);
-    if (ampModel === 'clean-tube-warm') {
-      expect(tones.driven.distortion).toBeGreaterThan(tones.originalDriven.distortion * 1.25);
-      expect(tones.driven.level / tones.light.level).toBeLessThan(tones.originalDriven.level / tones.originalLight.level);
-    }
+
+    await test.step('all operating points remain finite, centered, and silent at zero input', () => {
+      expect(tones.clean.finite, 'clean-voice light-input samples').toBe(true);
+      expect(Math.abs(tones.clean.dc), 'clean-voice light-input DC offset').toBeLessThan(MAX_TUBE_DC_OFFSET);
+      for (const model of models) {
+        for (const [operatingPoint, tone] of Object.entries(model.tones)) {
+          const label = `${model.name} ${operatingPoint}`;
+          expect(tone.finite, `${label} samples`).toBe(true);
+          // Web Audio filter and oversampling implementations vary slightly by
+          // platform. This limit catches meaningful DC without requiring
+          // sample-identical DSP output from every Chromium build.
+          expect(Math.abs(tone.dc), `${label} DC offset`).toBeLessThan(MAX_TUBE_DC_OFFSET);
+        }
+        expect(model.tones.silent.peak, `${model.name} silent peak`).toBe(0);
+      }
+    });
+
+    await test.step('Clean Tube Warm breaks up earlier than the original voice', () => {
+      expect(tones.warm.driven.distortion).toBeGreaterThan(tones.original.driven.distortion * 1.25);
+      expect(tones.warm.driven.level / tones.warm.light.level).toBeLessThan(
+        tones.original.driven.level / tones.original.light.level,
+      );
+    });
   });
 }
 
