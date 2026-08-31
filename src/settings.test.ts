@@ -1,6 +1,6 @@
 import { DEFAULT_REVERB_SETTINGS } from './reverbSettings';
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_AMP_CONTROLS, REVERB_PROFILES, type ReverbProfile } from './controls';
+import { CABINET_MODELS, DEFAULT_AMP_CONTROLS, REVERB_PROFILES, type JazzCabinetId, type ReverbProfile } from './controls';
 import {
   DEFAULT_STORED_WORKBENCH_PREFERENCES,
   LEGACY_CONTROLS_STORAGE_KEY,
@@ -132,6 +132,24 @@ describe('Saved Control Settings', () => {
     expect(store.load().controls).toEqual({ ...DEFAULT_AMP_CONTROLS, inputTrimDb: 6 });
   });
 
+  it('round-trips every cabinet selection and replaces unknown saved IDs', () => {
+    const storage = new MemoryStorage();
+    const store = new WorkbenchPreferencesStore(storage);
+    for (const cabinetModel of Object.keys(CABINET_MODELS) as JazzCabinetId[]) {
+      store.save({
+        ...DEFAULT_STORED_WORKBENCH_PREFERENCES,
+        controls: { ...DEFAULT_AMP_CONTROLS, cabinetModel },
+      });
+      expect(store.load().controls.cabinetModel).toBe(cabinetModel);
+    }
+
+    storage.setItem(SAVED_CONTROL_SETTINGS_STORAGE_KEY, JSON.stringify({
+      version: 1,
+      controls: { cabinetModel: 'future-cabinet' },
+    }));
+    expect(store.load().controls).toEqual(DEFAULT_AMP_CONTROLS);
+  });
+
   it('round-trips all reverb selections and preserves other fields in older saved controls', () => {
     const storage = new MemoryStorage();
     const store = new WorkbenchPreferencesStore(storage);
@@ -157,6 +175,7 @@ describe('Saved Control Settings', () => {
       controls: {
         ...DEFAULT_AMP_CONTROLS,
         ampModel: 'amp.small-tweed-combo-v1',
+        cabinetModel: 'cab.open-4x10-v1',
         inputTrimDb: 12,
         ampSettings: {
           ...DEFAULT_AMP_CONTROLS.ampSettings,

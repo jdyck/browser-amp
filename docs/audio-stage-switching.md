@@ -1,6 +1,6 @@
 # Audio stage switching
 
-The shared `StageSwitcher` in `src/audio/stageSwitcher.ts` owns stable input/output nodes and the lifetime of selected processing paths. It is used for amp selection and the reverb wet path (one of seven modules or off). The switcher does not own saved settings, change monitoring, or rebuild input capture. EQ and Compression retain their existing bypass implementation for now.
+The shared `StageSwitcher` in `src/audio/stageSwitcher.ts` owns stable input/output nodes and the lifetime of selected processing paths. It is used for amp selection, cabinet selection, and the reverb wet path (one of seven modules or off). The switcher does not own saved settings, change monitoring, or rebuild input capture. EQ and Compression retain their existing bypass implementation for now.
 
 ## Lifetime contract
 

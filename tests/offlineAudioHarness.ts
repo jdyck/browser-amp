@@ -26,7 +26,13 @@ export async function connectOfflineEngine(
     requestAnimationFrame: () => 1,
     cancelAnimationFrame: () => undefined,
   });
-  engine.applyControls({ ...engine.snapshot.controls, ...controls });
+  // Most callers measure one downstream module in isolation. Keep the test
+  // harness full-range unless a cabinet is explicitly part of the scenario.
+  engine.applyControls({
+    ...engine.snapshot.controls,
+    cabinetModel: 'cab.direct-full-range-v1',
+    ...controls,
+  });
   await engine.connectInput();
   await engine.setMonitoring(true);
   return engine;

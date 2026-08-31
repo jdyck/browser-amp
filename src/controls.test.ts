@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_AMP_CONTROLS, REVERB_PROFILES, normalizeAmpControlSettings } from './controls';
+import { CABINET_MODELS, DEFAULT_AMP_CONTROLS, REVERB_PROFILES, normalizeAmpControlSettings } from './controls';
 import { AMP_MODELS, DEFAULT_JAZZ_AMP_SETTINGS } from './ampModels';
 import { DEFAULT_REVERB_SETTINGS, reverbControlEntries, type ReverbParameters } from './reverbSettings';
 
@@ -54,6 +54,19 @@ describe('Amp Control Settings', () => {
       { ampModel: 'unknown' },
       { ...DEFAULT_AMP_CONTROLS, ampModel: 'amp.british-chime-v1' },
     ).ampModel).toBe('amp.british-chime-v1');
+  });
+
+  it('accepts every cabinet model and safely defaults unknown selections', () => {
+    for (const cabinetModel of Object.keys(CABINET_MODELS)) {
+      expect(normalizeAmpControlSettings({ cabinetModel }).cabinetModel).toBe(cabinetModel);
+    }
+    for (const cabinetModel of [undefined, 'unknown', 'constructor', '__proto__', null, 1]) {
+      expect(normalizeAmpControlSettings({ cabinetModel }).cabinetModel).toBe('cab.compact-jazz-1x12-v1');
+    }
+    expect(normalizeAmpControlSettings(
+      { cabinetModel: 'unknown' },
+      { ...DEFAULT_AMP_CONTROLS, cabinetModel: 'cab.open-4x10-v1' },
+    ).cabinetModel).toBe('cab.open-4x10-v1');
   });
 
   it('normalizes each amp independently and migrates legacy Clean Voice gain exactly', () => {

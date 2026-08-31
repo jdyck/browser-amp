@@ -5,6 +5,7 @@ import { meterReadingFromSamples, METER_FLOOR_DBFS, nextPeakHold, type PeakHold 
 import { ReverbStage } from './reverb';
 import { reverbParameters } from '../reverbSettings';
 import { AmpModelStage } from './ampModel';
+import { CabinetModelStage } from './cabinetModel';
 import type { AmpControlSettings, AudioEngine as AudioEngineContract, AudioRecoverySnapshot, AudioSnapshot, InputDevice, InputSettings, LatencySnapshot, OutputDevice } from './types';
 
 const initialSettings: InputSettings = { selectedInputDeviceId: undefined, inputChannel: 0 };
@@ -126,6 +127,7 @@ export class AudioEngine implements AudioEngineContract {
   #inputAnalyser: AnalyserNode | undefined;
   #inputTrim: GainNode | undefined;
   #ampModel: AmpModelStage | undefined;
+  #cabinetModel: CabinetModelStage | undefined;
   #bassEq: BiquadFilterNode | undefined;
   #middleEq: BiquadFilterNode | undefined;
   #trebleEq: BiquadFilterNode | undefined;
@@ -207,6 +209,7 @@ export class AudioEngine implements AudioEngineContract {
       this.#outputAnalyser.fftSize = 2048;
       this.#monitorGain = this.#context.createGain();
       this.#ampModel = new AmpModelStage(this.#context, this.#snapshot.controls.ampModel, this.#snapshot.controls.ampSettings);
+      this.#cabinetModel = new CabinetModelStage(this.#context, this.#snapshot.controls.cabinetModel);
       this.#inputTrim.gain.value = dbToLinearGain(this.#snapshot.controls.inputTrimDb);
       this.#bassEq.type = 'lowshelf';
       this.#bassEq.frequency.value = 120;
@@ -246,7 +249,8 @@ export class AudioEngine implements AudioEngineContract {
       }
       this.#inputAnalyser.connect(this.#inputTrim);
       this.#inputTrim.connect(this.#ampModel.input);
-      this.#ampModel.output.connect(this.#bassEq);
+      this.#ampModel.output.connect(this.#cabinetModel.input);
+      this.#cabinetModel.output.connect(this.#bassEq);
       this.#bassEq.connect(this.#middleEq);
       this.#middleEq.connect(this.#trebleEq);
       this.#trebleEq.connect(this.#compressionDryGain);
@@ -341,6 +345,7 @@ export class AudioEngine implements AudioEngineContract {
     const controls = normalizeAmpControlSettings(settings, previousControls);
     if (this.#context !== undefined) {
       this.#ampModel?.setControls(controls.ampModel, controls.ampSettings);
+      this.#cabinetModel?.setModel(controls.cabinetModel);
       if (this.#inputTrim !== undefined) smoothGainToDb(this.#inputTrim.gain, controls.inputTrimDb, this.#context.currentTime);
       // Zero-gain shelves and peaking filters pass the signal unchanged while preserving the saved band settings.
       if (this.#bassEq !== undefined) smoothGainToValue(this.#bassEq.gain, controls.eqBypassed ? 0 : controls.bassDb, this.#context.currentTime);
@@ -527,6 +532,7 @@ export class AudioEngine implements AudioEngineContract {
     this.#inputAnalyser?.disconnect();
     this.#inputTrim?.disconnect();
     this.#ampModel?.disconnect();
+    this.#cabinetModel?.disconnect();
     this.#bassEq?.disconnect();
     this.#middleEq?.disconnect();
     this.#trebleEq?.disconnect();
@@ -550,6 +556,7 @@ export class AudioEngine implements AudioEngineContract {
     this.#inputAnalyser = undefined;
     this.#inputTrim = undefined;
     this.#ampModel = undefined;
+    this.#cabinetModel = undefined;
     this.#bassEq = undefined;
     this.#middleEq = undefined;
     this.#trebleEq = undefined;

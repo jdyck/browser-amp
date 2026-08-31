@@ -221,6 +221,42 @@ test('exposes six model-specific control sets, remembers them, and switches with
   await expect(page.locator('#monitoring-state')).toHaveText('On');
 });
 
+test('switches every cabinet voicing, persists the choice, and resets without recapturing', async ({ page }) => {
+  await installAudioBrowser(page);
+  await page.goto('./');
+
+  const cabinet = page.getByRole('combobox', { name: 'Cabinet', exact: true });
+  await expect(cabinet).toHaveValue('cab.compact-jazz-1x12-v1');
+  await expect(cabinet.locator('option')).toHaveText([
+    'Compact 1×12 Jazz',
+    'American 1×12 Open-Back',
+    'American 2×12 Open-Back',
+    '4×10 Open-Back',
+    'Direct / Full Range',
+  ]);
+  await cabinet.selectOption('cab.direct-full-range-v1');
+  await expect(page.getByText('Driven amps may sound unusually bright')).toBeVisible();
+  await page.reload();
+  await expect(cabinet).toHaveValue('cab.direct-full-range-v1');
+
+  await page.getByRole('button', { name: 'Connect Input', exact: true }).click();
+  await page.getByRole('button', { name: 'Enable Monitoring', exact: true }).click();
+  await page.getByRole('button', { name: 'Checked — Enable Monitoring' }).click();
+  for (const id of [
+    'cab.compact-jazz-1x12-v1',
+    'cab.american-open-1x12-v1',
+    'cab.american-open-2x12-v1',
+    'cab.open-4x10-v1',
+    'cab.direct-full-range-v1',
+  ]) await cabinet.selectOption(id);
+  await expect(page.locator('#monitoring-state')).toHaveText('On');
+  await expect.poll(() => page.evaluate(() => (window as Window & { captureRequests?: number }).captureRequests)).toBe(1);
+
+  await page.getByRole('button', { name: 'Reset Controls' }).click();
+  await expect(cabinet).toHaveValue('cab.compact-jazz-1x12-v1');
+  await expect(page.locator('#monitoring-state')).toHaveText('On');
+});
+
 test('switches all reverb modules, remembers bypassed selections, and resets without recapturing', async ({ page }) => {
   await installAudioBrowser(page);
   await page.goto('./');
@@ -695,9 +731,10 @@ test('keeps exact controls keyboard-operable and in Amp Chain order on a narrow 
   await bassSlider.press('ArrowRight');
   await expect(studioEq.getByLabel('Bass value')).toHaveValue('0.1');
 
-  await expect(page.locator('.panel[aria-label]')).toHaveCount(5);
+  await expect(page.locator('.panel[aria-label]')).toHaveCount(6);
   await expect(page.locator('.panel[aria-label]').evaluateAll((panels) => panels.map((panel) => panel.getAttribute('aria-label')))).resolves.toEqual([
     'Amp Model',
+    'Cabinet',
     'Three-Band EQ',
     'Compression',
     'Reverb',

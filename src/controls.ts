@@ -6,9 +6,12 @@ import {
   type AmpModel,
   type JazzAmpSettings,
 } from './ampModels';
+import { DEFAULT_JAZZ_CABINET, isCabinetModel, type JazzCabinetId } from './cabinetModels';
 
 export { AMP_MODELS, isAmpModel } from './ampModels';
 export type { AmpModel, JazzAmpId, JazzAmpSettings } from './ampModels';
+export { CABINET_MODELS, isCabinetModel } from './cabinetModels';
+export type { JazzCabinetId } from './cabinetModels';
 
 export const REVERB_PROFILES = {
   'jazz-room': {
@@ -50,6 +53,7 @@ export function isReverbProfile(value: unknown): value is ReverbProfile {
 export interface AmpControlSettings {
   readonly ampModel: AmpModel;
   readonly ampSettings: JazzAmpSettings;
+  readonly cabinetModel: JazzCabinetId;
   readonly inputTrimDb: number;
   readonly bassDb: number;
   readonly middleDb: number;
@@ -67,6 +71,7 @@ export interface AmpControlSettings {
 export const DEFAULT_AMP_CONTROLS: AmpControlSettings = {
   ampModel: 'amp.studio-clean-v1',
   ampSettings: DEFAULT_JAZZ_AMP_SETTINGS,
+  cabinetModel: DEFAULT_JAZZ_CABINET,
   inputTrimDb: 0,
   bassDb: 0,
   middleDb: 0,
@@ -143,10 +148,12 @@ export function normalizeAmpControlSettings(
     : typeof rawModel === 'string' && Object.hasOwn(LEGACY_AMP_MODELS, rawModel)
       ? LEGACY_AMP_MODELS[rawModel]
       : fallback.ampModel;
+  const cabinetModel = isCabinetModel(controls.cabinetModel) ? controls.cabinetModel : fallback.cabinetModel;
 
   return {
     ampModel,
     ampSettings: normalizeJazzAmpSettings(controls.ampSettings, fallback.ampSettings),
+    cabinetModel,
     inputTrimDb: inputTrimDb === undefined ? fallback.inputTrimDb : normalizeContinuousControl(inputTrimDb, AMP_CONTROL_DEFINITIONS.inputTrimDb),
     bassDb: bassDb === undefined ? fallback.bassDb : normalizeContinuousControl(bassDb, AMP_CONTROL_DEFINITIONS.bassDb),
     middleDb: middleDb === undefined ? fallback.middleDb : normalizeContinuousControl(middleDb, AMP_CONTROL_DEFINITIONS.middleDb),

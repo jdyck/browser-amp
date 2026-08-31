@@ -1,6 +1,6 @@
 import { AudioEngine } from './audio/AudioEngine';
 import type { AudioSnapshot, InputMeterSnapshot } from './audio/types';
-import { AMP_CONTROL_DEFINITIONS, AMP_MODELS, REVERB_PROFILES, isAmpModel, isReverbProfile, type AmpControlSettings, type ContinuousControlDefinition } from './controls';
+import { AMP_CONTROL_DEFINITIONS, AMP_MODELS, CABINET_MODELS, REVERB_PROFILES, isAmpModel, isCabinetModel, isReverbProfile, type AmpControlSettings, type ContinuousControlDefinition } from './controls';
 import { AMP_MODEL_CONTROLS, type AmpChoiceDefinition, type AmpKnobDefinition, type JazzAmpState } from './ampModels';
 import { WorkbenchPreferencesStore, resetControls, type StoredWorkbenchPreferences } from './settings';
 import { DEFAULT_REVERB_SETTINGS, reverbControlEntries, reverbParameters, type ReverbControlDefinition } from './reverbSettings';
@@ -128,6 +128,14 @@ function renderStructure(current: AudioSnapshot): void {
         <div id="amp-model-controls" class="grid gap-3 mt-4" data-model="${current.controls.ampModel}">${ampModelControls(current.controls)}</div>
       </section>
 
+      <section class="${PANEL}" aria-label="Cabinet">
+        <label for="cabinet-model" class="block mb-[.35rem] font-medium text-sm">Cabinet</label>
+        <select id="cabinet-model" aria-describedby="cabinet-model-help">
+          ${Object.entries(CABINET_MODELS).map(([id, model]) => `<option value="${id}" ${id === current.controls.cabinetModel ? 'selected' : ''}>${model.label}</option>`).join('')}
+        </select>
+        <span id="cabinet-model-help" class="${FIELD_HELP}">${CABINET_MODELS[current.controls.cabinetModel].description}</span>
+      </section>
+
       <section class="${PANEL}" aria-label="Three-Band EQ">
         <label class="${STAGE_TOGGLE}" for="eq-enabled">
           <input id="eq-enabled" type="checkbox" class="${STAGE_TOGGLE_CHECKBOX}" ${current.controls.eqBypassed ? '' : 'checked'}>
@@ -205,6 +213,10 @@ function bindStructureEvents(): void {
     if (isAmpModel(ampModel)) engine.applyControls({ ...snapshot.controls, ampModel });
   });
   bindAmpModelControls();
+  root.querySelector<HTMLSelectElement>('#cabinet-model')?.addEventListener('change', (event) => {
+    const cabinetModel = (event.currentTarget as HTMLSelectElement).value;
+    if (isCabinetModel(cabinetModel)) engine.applyControls({ ...snapshot.controls, cabinetModel });
+  });
   root.querySelector<HTMLInputElement>('#eq-enabled')?.addEventListener('change', (event) => {
     engine.applyControls({ ...snapshot.controls, eqBypassed: !(event.currentTarget as HTMLInputElement).checked });
   });
@@ -366,6 +378,11 @@ function renderControls(controls: AmpControlSettings): void {
       if (select !== null && select.value !== ampState[key]) select.value = ampState[key] as string;
     }
   }
+  const cabinetModel = root.querySelector<HTMLSelectElement>('#cabinet-model');
+  if (cabinetModel !== null && cabinetModel.value !== controls.cabinetModel) cabinetModel.value = controls.cabinetModel;
+  const cabinetModelHelp = root.querySelector<HTMLElement>('#cabinet-model-help');
+  const cabinetDescription = CABINET_MODELS[controls.cabinetModel].description;
+  if (cabinetModelHelp !== null && cabinetModelHelp.textContent !== cabinetDescription) cabinetModelHelp.textContent = cabinetDescription;
   const eqEnabled = root.querySelector<HTMLInputElement>('#eq-enabled');
   if (eqEnabled !== null) eqEnabled.checked = !controls.eqBypassed;
   setControlValue('bass', controls.bassDb, AMP_CONTROL_DEFINITIONS.bassDb);

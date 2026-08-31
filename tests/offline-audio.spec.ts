@@ -761,6 +761,152 @@ test('rapid amp model switches crossfade and return to the original clean signal
   expect(transition.monitoring).toBe(true);
 });
 
+for (const sampleRate of [44_100, 48_000]) {
+  test(`cabinet voicings are finite, level-matched, and keep distinct response fingerprints at ${sampleRate} Hz`, async ({ page }) => {
+    await page.goto('./');
+    const results = await page.evaluate(async (sampleRate) => {
+      const modulePath = './src/audio/cabinetModel.ts';
+      const settingsPath = './src/cabinetModels.ts';
+      const harnessPath = './tests/offlineAudioHarness.ts';
+      const { CabinetModelStage } = await import(modulePath) as typeof import('../src/audio/cabinetModel');
+      const { CABINET_MODELS } = await import(settingsPath) as typeof import('../src/cabinetModels');
+      const { rms } = await import(harnessPath) as typeof import('./offlineAudioHarness');
+      type Id = keyof typeof CABINET_MODELS;
+      const ids = Object.keys(CABINET_MODELS) as Id[];
+      const frequencies = [70, 120, 230, 800, 2_500, 6_000, 10_000];
+
+      async function sineLevel(id: Id, frequency: number) {
+        const context = new OfflineAudioContext(1, sampleRate * 0.4, sampleRate);
+        const source = context.createOscillator();
+        const input = context.createGain();
+        const stage = new CabinetModelStage(context, id);
+        source.frequency.value = frequency;
+        input.gain.value = 0.05;
+        source.connect(input).connect(stage.input);
+        stage.output.connect(context.destination);
+        source.start();
+        const samples = (await context.startRendering()).getChannelData(0);
+        stage.disconnect();
+        return { level: rms(samples, sampleRate, 0.25, 0.4), finite: samples.every(Number.isFinite) };
+      }
+
+      async function programLevel(id: Id) {
+        const context = new OfflineAudioContext(1, sampleRate * 0.5, sampleRate);
+        const stage = new CabinetModelStage(context, id);
+        const voices = [[82, 1], [147, 0.9], [330, 0.8], [740, 0.68], [1_660, 0.52], [3_720, 0.34]] as const;
+        for (const [frequency, amplitude] of voices) {
+          const source = context.createOscillator();
+          const gain = context.createGain();
+          source.frequency.value = frequency;
+          gain.gain.value = amplitude * 0.015;
+          source.connect(gain).connect(stage.input);
+          source.start();
+        }
+        stage.output.connect(context.destination);
+        const samples = (await context.startRendering()).getChannelData(0);
+        stage.disconnect();
+        return rms(samples, sampleRate, 0.3, 0.5);
+      }
+
+      const responses = {} as Record<Id, { levels: number[]; finite: boolean; program: number }>;
+      for (const id of ids) {
+        const rendered = [];
+        for (const frequency of frequencies) rendered.push(await sineLevel(id, frequency));
+        responses[id] = {
+          levels: rendered.map(({ level }) => level),
+          finite: rendered.every(({ finite }) => finite),
+          program: await programLevel(id),
+        };
+      }
+      return { frequencies, responses };
+    }, sampleRate);
+
+    const direct = results.responses['cab.direct-full-range-v1'];
+    for (const [id, response] of Object.entries(results.responses)) {
+      expect(response.finite, `${id} is finite`).toBe(true);
+      for (let index = 0; index < results.frequencies.length; index += 1) {
+        const relativeDb = 20 * Math.log10(response.levels[index] / direct.levels[index]);
+        if (id === 'cab.direct-full-range-v1') expect(relativeDb, `Direct at ${results.frequencies[index]} Hz`).toBeCloseTo(0, 5);
+      }
+      const programRatio = response.program / direct.program;
+      expect(programRatio, `${id} representative level`).toBeGreaterThan(0.89);
+      expect(programRatio, `${id} representative level`).toBeLessThan(1.12);
+    }
+
+    const processed = Object.entries(results.responses).filter(([id]) => id !== 'cab.direct-full-range-v1');
+    for (let left = 0; left < processed.length; left += 1) {
+      for (let right = left + 1; right < processed.length; right += 1) {
+        const maximumDifferenceDb = Math.max(...processed[left][1].levels.map((level, index) => Math.abs(
+          20 * Math.log10(level / processed[right][1].levels[index]),
+        )));
+        expect(maximumDifferenceDb, `${processed[left][0]} vs ${processed[right][0]}`).toBeGreaterThan(1);
+      }
+    }
+    const index = (frequency: number) => results.frequencies.indexOf(frequency);
+    const compact = results.responses['cab.compact-jazz-1x12-v1'].levels;
+    const americanOne = results.responses['cab.american-open-1x12-v1'].levels;
+    const americanTwo = results.responses['cab.american-open-2x12-v1'].levels;
+    const fourTen = results.responses['cab.open-4x10-v1'].levels;
+    expect(americanOne[index(2_500)]).toBeGreaterThan(compact[index(2_500)]);
+    expect(americanTwo[index(230)]).toBeGreaterThan(americanOne[index(230)]);
+    const fourTenBassRatio = fourTen[index(70)] / fourTen[index(120)];
+    for (const response of [compact, americanOne, americanTwo]) {
+      expect(fourTenBassRatio).toBeLessThan(response[index(70)] / response[index(120)]);
+    }
+    for (const response of [compact, americanOne, americanTwo, fourTen]) {
+      expect(response[index(10_000)]).toBeLessThan(response[index(800)] * 0.7);
+    }
+  });
+}
+
+test('rapid cabinet switches crossfade without recapturing, silence, or an output click', async ({ page }) => {
+  await page.goto('./');
+  const result = await page.evaluate(async () => {
+    const modulePath = './src/audio/cabinetModel.ts';
+    const harnessPath = './tests/offlineAudioHarness.ts';
+    const { CabinetModelStage } = await import(modulePath) as typeof import('../src/audio/cabinetModel');
+    const { maximumSampleStep, rms } = await import(harnessPath) as typeof import('./offlineAudioHarness');
+    const sampleRate = 48_000;
+    const context = new OfflineAudioContext(1, sampleRate, sampleRate);
+    const resumeRendering = context.resume.bind(context);
+    const source = context.createOscillator();
+    const input = context.createGain();
+    const stage = new CabinetModelStage(context, 'cab.direct-full-range-v1');
+    source.frequency.value = 220;
+    input.gain.value = 0.1;
+    source.connect(input).connect(stage.input);
+    stage.output.connect(context.destination);
+    const switches = [
+      { time: 0.2, model: 'cab.compact-jazz-1x12-v1' },
+      { time: 0.205, model: 'cab.american-open-1x12-v1' },
+      { time: 0.21, model: 'cab.open-4x10-v1' },
+      { time: 0.5, model: 'cab.direct-full-range-v1' },
+    ] as const;
+    const suspensions = switches.map(({ time }) => context.suspend(time));
+    source.start();
+    const rendering = context.startRendering();
+    for (let index = 0; index < switches.length; index += 1) {
+      await suspensions[index];
+      stage.setModel(switches[index].model);
+      await resumeRendering();
+    }
+    const samples = (await rendering).getChannelData(0);
+    stage.disconnect();
+    return {
+      finite: samples.every(Number.isFinite),
+      initial: rms(samples, sampleRate, 0.1, 0.18),
+      switched: rms(samples, sampleRate, 0.3, 0.45),
+      restored: rms(samples, sampleRate, 0.7, 0.9),
+      maximumStep: maximumSampleStep(samples, sampleRate, 0.19, 0.6),
+    };
+  });
+  expect(result.finite).toBe(true);
+  expect(result.initial).toBeCloseTo(0.1 / Math.sqrt(2), 3);
+  expect(result.switched).toBeGreaterThan(0.04);
+  expect(result.restored).toBeCloseTo(result.initial, 3);
+  expect(result.maximumStep).toBeLessThan(0.02);
+});
+
 test('shared switching retires old graphs on audio deadlines without further control changes', async ({ page }) => {
   await page.goto('./');
   const result = await page.evaluate(async () => {
