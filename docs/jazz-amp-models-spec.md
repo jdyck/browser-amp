@@ -158,6 +158,8 @@ Use a separate typed state for each amp. Do not make one large object full of op
 
 Reset selects Studio Clean and restores all six amps to their defaults. Existing `clean-voice` settings should migrate without changing sound. Decide whether the two current tube models remain as legacy choices or migrate with a disclosed sound change.
 
+**Implemented migration:** `clean-voice` becomes Studio Clean and its Clean Gain is preserved exactly as Input Trim. The retired `clean-tube` and `clean-tube-warm` selections become Blackface Combo and Small Tweed Combo respectively; these two mappings are intentional sound changes, while all downstream studio controls and effects are preserved.
+
 ## Done when
 
 - All six models expose only the controls listed above.
@@ -183,4 +185,3 @@ Reset selects Studio Clean and restores all six amps to their defaults. Existing
 - [Amp-modeling research](research/filter-and-waveshaper-amp-modeling.md)
 - [Fender voicing research](research/fender-amp-gain-and-era-voicings.md)
 - [Polytone feasibility](research/polytone-amp-simulator-feasibility.md)
-

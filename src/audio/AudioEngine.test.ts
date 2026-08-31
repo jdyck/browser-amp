@@ -2,7 +2,7 @@ import { DEFAULT_REVERB_SETTINGS } from '../reverbSettings';
 import { describe, expect, it, vi } from 'vitest';
 import { AudioEngine } from './AudioEngine';
 import type { BrowserAudio } from './browserAudio';
-import { REVERB_PROFILES, type ReverbProfile } from '../controls';
+import { DEFAULT_AMP_CONTROLS, REVERB_PROFILES, type ReverbProfile } from '../controls';
 
 function audioNode(properties: Record<string, unknown> = {}): AudioNode {
   return { connect: vi.fn(), disconnect: vi.fn(), ...properties } as unknown as AudioNode;
@@ -112,8 +112,8 @@ describe('AudioEngine', () => {
     await engine.connectInput();
     expect(context.createWaveShaper).not.toHaveBeenCalled();
     expect(context.createConvolver).not.toHaveBeenCalled();
-    engine.applyControls({ ...engine.snapshot.controls, ampModel: 'clean-tube' });
-    engine.applyControls({ ...engine.snapshot.controls, ampModel: 'clean-tube-warm' });
+    engine.applyControls({ ...engine.snapshot.controls, ampModel: 'amp.blackface-combo-v1' });
+    engine.applyControls({ ...engine.snapshot.controls, ampModel: 'amp.small-tweed-combo-v1' });
     expect(context.createWaveShaper).toHaveBeenCalledTimes(2);
     finish();
     expect(context.createWaveShaper).toHaveBeenCalledTimes(4);
@@ -121,7 +121,7 @@ describe('AudioEngine', () => {
     const shapers = vi.mocked(context.createWaveShaper).mock.results.map(({ value }) => value);
     for (const shaper of shapers.slice(0, 2)) expect(shaper.disconnect).toHaveBeenCalledOnce();
     for (const shaper of shapers.slice(2)) expect(shaper.disconnect).not.toHaveBeenCalled();
-    engine.applyControls({ ...engine.snapshot.controls, ampModel: 'clean-voice' });
+    engine.applyControls({ ...engine.snapshot.controls, ampModel: 'amp.studio-clean-v1' });
     finish();
     for (const shaper of shapers) expect(shaper.disconnect).toHaveBeenCalledOnce();
     expect(environment.mediaDevices.getUserMedia).toHaveBeenCalledOnce();
@@ -337,27 +337,17 @@ describe('AudioEngine', () => {
     expect(engine.snapshot).toMatchObject({ lifecycle: 'connected-muted', monitoring: false });
   });
 
-  it.each(['clean-tube', 'clean-tube-warm'] as const)('clamps exact controls and preserves %s settings when monitoring stops', async (ampModel) => {
+  it('clamps model-specific and studio controls while monitoring stops', async () => {
     const engine = new AudioEngine(browser());
-    expect(engine.snapshot.controls).toEqual({
-      ampModel: 'clean-voice',
-      cleanGainDb: 0,
-      bassDb: 0,
-      middleDb: 0,
-      trebleDb: 0,
-      eqBypassed: false,
-      compressionAmount: 25,
-      compressionBypassed: true,
-      reverbProfile: 'studio-plate',
-      reverbSettings: DEFAULT_REVERB_SETTINGS,
-      reverbAmount: 20,
-      reverbBypassed: true,
-      masterVolumeDb: -18,
-    });
+    expect(engine.snapshot.controls).toEqual(DEFAULT_AMP_CONTROLS);
 
     engine.applyControls({
-      ampModel,
-      cleanGainDb: 30,
+      ...engine.snapshot.controls,
+      ampModel: 'amp.small-tweed-combo-v1',
+      ampSettings: {
+        ...engine.snapshot.controls.ampSettings,
+        'amp.small-tweed-combo-v1': { volume: 30, tone: 3.26, input: 'low' },
+      },
       bassDb: -20,
       middleDb: 3.26,
       trebleDb: 20,
@@ -375,8 +365,12 @@ describe('AudioEngine', () => {
     await engine.setMonitoring(false);
 
     expect(engine.snapshot.controls).toEqual({
-      ampModel,
-      cleanGainDb: 24,
+      ...DEFAULT_AMP_CONTROLS,
+      ampModel: 'amp.small-tweed-combo-v1',
+      ampSettings: {
+        ...DEFAULT_AMP_CONTROLS.ampSettings,
+        'amp.small-tweed-combo-v1': { volume: 10, tone: 3.3, input: 'low' },
+      },
       bassDb: -12,
       middleDb: 3.3,
       trebleDb: 12,
@@ -417,7 +411,7 @@ describe('AudioEngine', () => {
   it('mutes a routing failure without changing Master Volume', async () => {
     const setSinkId = vi.fn().mockRejectedValue(new DOMException('Unavailable', 'NotFoundError'));
     const engine = new AudioEngine(browser({ createAudioContext: () => audioContext({ setSinkId }) }));
-    engine.applyControls({ ...engine.snapshot.controls, cleanGainDb: 6, masterVolumeDb: -12 });
+    engine.applyControls({ ...engine.snapshot.controls, bassDb: 6, masterVolumeDb: -12 });
     await engine.connectInput();
     await engine.setMonitoring(true);
 
@@ -426,7 +420,7 @@ describe('AudioEngine', () => {
     expect(engine.snapshot).toMatchObject({
       lifecycle: 'connected-muted',
       monitoring: false,
-      controls: { cleanGainDb: 6, masterVolumeDb: -12 },
+      controls: { bassDb: 6, masterVolumeDb: -12 },
       outputRouting: {
         selectedDeviceId: 'missing-output',
         error: 'The browser could not route audio to that output. Choose an available output, then enable monitoring again.',
@@ -581,7 +575,7 @@ describe('AudioEngine', () => {
       mediaDevices: testMediaDevices({ getUserMedia }),
     });
     const engine = new AudioEngine(environment);
-    engine.applyControls({ ...engine.snapshot.controls, cleanGainDb: 9, masterVolumeDb: -12 });
+    engine.applyControls({ ...engine.snapshot.controls, bassDb: 9, masterVolumeDb: -12 });
     await engine.connectInput({ deviceId: 'guitar-interface' });
     await engine.setMonitoring(true);
 
@@ -590,7 +584,7 @@ describe('AudioEngine', () => {
     expect(engine.snapshot).toMatchObject({
       lifecycle: 'error',
       monitoring: false,
-      controls: { cleanGainDb: 9, masterVolumeDb: -12 },
+      controls: { bassDb: 9, masterVolumeDb: -12 },
       recovery: {
         code: 'input-device-lost',
         action: 'reconnect-input',
@@ -687,7 +681,7 @@ describe('AudioEngine', () => {
       mediaDevices,
       createAudioContext: () => audioContext({ setSinkId }),
     }));
-    engine.applyControls({ ...engine.snapshot.controls, cleanGainDb: 6 });
+    engine.applyControls({ ...engine.snapshot.controls, bassDb: 6 });
     await engine.connectInput({ deviceId: 'guitar-interface' });
     engine.applySettings({ selectedInputDeviceId: 'guitar-interface', inputChannel: 1 });
     await engine.selectOutput('headphones');
@@ -706,7 +700,7 @@ describe('AudioEngine', () => {
       monitoring: true,
       selectedInputDeviceId: 'guitar-interface',
       inputChannel: 1,
-      controls: { cleanGainDb: 6 },
+      controls: { bassDb: 6 },
       outputRouting: { selectedDeviceId: 'headphones' },
     });
     expect(engine.snapshot.outputRouting.devices).toHaveLength(2);

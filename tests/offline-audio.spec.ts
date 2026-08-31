@@ -1,4 +1,6 @@
 import { expect, test } from '@playwright/test';
+import { DEFAULT_JAZZ_AMP_SETTINGS, type JazzAmpId, type JazzAmpSettings } from '../src/ampModels';
+import type { AmpControlSettings } from '../src/controls';
 
 test('every impulse control changes the response in its intended direction and remains finite at its limits', async ({ page }) => {
   await page.goto('./');
@@ -540,6 +542,20 @@ interface RenderOptions {
   readonly controls?: Partial<import('../src/audio/types').AmpControlSettings>;
 }
 
+function modelControls<Id extends JazzAmpId>(
+  ampModel: Id,
+  changes: Partial<JazzAmpSettings[Id]> = {},
+): Partial<AmpControlSettings> {
+  return {
+    ampModel,
+    ampSettings: {
+      ...DEFAULT_JAZZ_AMP_SETTINGS,
+      [ampModel]: { ...DEFAULT_JAZZ_AMP_SETTINGS[ampModel], ...changes },
+    },
+    masterVolumeDb: 0,
+  };
+}
+
 async function renderAmp(page: import('@playwright/test').Page, options: RenderOptions): Promise<number> {
   return page.evaluate(async ({ frequency, amplitude = 0.1, controls = {} }) => {
     const harnessPath = './tests/offlineAudioHarness.ts';
@@ -560,7 +576,7 @@ async function renderAmp(page: import('@playwright/test').Page, options: RenderO
   }, options);
 }
 
-test('renders a smoothed linear Clean Gain through Master Volume without saturation', async ({ page }) => {
+test('renders a smoothed linear Input Trim through Master Volume without saturation', async ({ page }) => {
   await page.goto('./');
 
   const samples = await page.evaluate(async () => {
@@ -593,23 +609,31 @@ test('renders a smoothed linear Clean Gain through Master Volume without saturat
   expect(samples.afterRamp).toBeCloseTo(0.3972, 3);
 });
 
-const MAX_TUBE_DC_OFFSET = 0.000_2;
+const MAX_AMP_DC_OFFSET = 0.000_2;
 
 for (const sampleRate of [44_100, 48_000]) {
-  test(`Clean Tube models stay stable and break up progressively at ${sampleRate} Hz`, async ({ page }) => {
+  test(`six amp models are stable, level-matched, and respond to drive at ${sampleRate} Hz`, async ({ page }) => {
     await page.goto('./');
-    const tones = await page.evaluate(async (sampleRate) => {
+    const results = await page.evaluate(async (sampleRate) => {
       const harnessPath = './tests/offlineAudioHarness.ts';
+      const settingsPath = './src/ampModels.ts';
       const { connectOfflineEngine, rms, peak } = await import(harnessPath) as typeof import('./offlineAudioHarness');
-      async function render(ampModel: import('../src/controls').AmpModel, amplitude: number, cleanGainDb = 0) {
+      const { AMP_MODELS, DEFAULT_JAZZ_AMP_SETTINGS } = await import(settingsPath) as typeof import('../src/ampModels');
+      type Id = keyof typeof AMP_MODELS;
+      async function render(ampModel: Id, amplitude: number, drive?: number, changes: Record<string, number | string> = {}) {
         const context = new OfflineAudioContext(1, sampleRate, sampleRate);
         const source = context.createOscillator();
         const input = context.createGain();
         source.frequency.value = 200;
         input.gain.value = amplitude;
         source.connect(input);
-        const engine = await connectOfflineEngine(context, input, { ampModel, cleanGainDb, masterVolumeDb: 0 });
-        if (!engine.snapshot.monitoring) throw new Error('Offline engine did not connect');
+        const defaults = DEFAULT_JAZZ_AMP_SETTINGS[ampModel] as unknown as Record<string, number | string>;
+        const driveKey = ampModel === 'amp.studio-clean-v1' ? 'gain' : 'volume';
+        const ampSettings = {
+          ...DEFAULT_JAZZ_AMP_SETTINGS,
+          [ampModel]: { ...defaults, ...changes, ...(drive === undefined ? {} : { [driveKey]: drive }) },
+        };
+        await connectOfflineEngine(context, input, { ampModel, ampSettings, masterVolumeDb: 0 });
         source.start();
         const samples = (await context.startRendering()).getChannelData(0);
         const start = Math.round(sampleRate * 0.5);
@@ -625,112 +649,72 @@ for (const sampleRate of [44_100, 48_000]) {
           return 2 * Math.hypot(real, imaginary) / length;
         });
         return {
-          level: rms(samples, sampleRate, 0.5, 1),
-          peak: peak(samples, sampleRate, 0.5, 1),
+          level: rms(samples, sampleRate, 0.5, 1), peak: peak(samples, sampleRate, 0.5, 1),
           distortion: Math.hypot(...harmonics.slice(1)) / (harmonics[0] || 1),
-          secondHarmonic: harmonics[1],
           dc: samples.slice(start).reduce((sum, value) => sum + value, 0) / length,
           finite: samples.every(Number.isFinite),
         };
       }
+      const entries = [];
+      for (const id of Object.keys(AMP_MODELS) as Id[]) entries.push([id, {
+        normal: await render(id, 0.1), driven: await render(id, 0.1, 9), silent: await render(id, 0, 9),
+      }] as const);
       return {
-        clean: await render('clean-voice', 0.1),
-        original: {
-          light: await render('clean-tube', 0.1),
-          driven: await render('clean-tube', 0.1, 12),
-          hot: await render('clean-tube', 1, 24),
-          silent: await render('clean-tube', 0, 24),
+        models: Object.fromEntries(entries) as Record<Id, { normal: Awaited<ReturnType<typeof render>>; driven: Awaited<ReturnType<typeof render>>; silent: Awaited<ReturnType<typeof render>> }>,
+        highHeadroom: {
+          normal: await render('amp.high-headroom-american-v1', 0.7, 8, { headroom: 'normal' }),
+          ultra: await render('amp.high-headroom-american-v1', 0.7, 8, { headroom: 'ultra' }),
         },
-        warm: {
-          light: await render('clean-tube-warm', 0.1),
-          driven: await render('clean-tube-warm', 0.1, 12),
-          hot: await render('clean-tube-warm', 1, 24),
-          silent: await render('clean-tube-warm', 0, 24),
+        studioHeadroom: {
+          high: await render('amp.studio-clean-v1', 0.7, 7, { headroom: 'high' }),
+          maximum: await render('amp.studio-clean-v1', 0.7, 7, { headroom: 'maximum' }),
         },
       };
     }, sampleRate);
 
-    await test.step('Clean Voice remains a transparent baseline', () => {
-      expect(tones.clean.level).toBeCloseTo(0.1 / Math.sqrt(2), 5);
-      expect(tones.clean.distortion).toBeLessThan(0.0001);
-    });
-
-    const models = [
-      { name: 'clean-tube', tones: tones.original },
-      { name: 'clean-tube-warm', tones: tones.warm },
-    ] as const;
-    for (const model of models) {
-      await test.step(`${model.name} progresses from light color to heavy breakup`, () => {
-        const { light, driven, hot } = model.tones;
-        const lightLevelRatio = light.level / tones.clean.level;
-        expect(lightLevelRatio, `${model.name} light-input level ratio`).toBeGreaterThan(0.75);
-        expect(lightLevelRatio, `${model.name} light-input level ratio`).toBeLessThan(1.05);
-        expect(light.distortion, `${model.name} light-input distortion`).toBeGreaterThan(0.001);
-        expect(light.distortion, `${model.name} light-input distortion`).toBeLessThan(0.02);
-        expect(light.secondHarmonic, `${model.name} light-input second harmonic`).toBeGreaterThan(tones.clean.secondHarmonic * 100);
-        expect(driven.distortion, `${model.name} driven distortion`).toBeGreaterThan(light.distortion * 2);
-        expect(driven.level, `${model.name} driven level`).toBeGreaterThan(light.level * 2);
-        expect(driven.level, `${model.name} driven level`).toBeLessThan(light.level * 4);
-        expect(hot.distortion, `${model.name} hot-input distortion`).toBeGreaterThan(driven.distortion);
-        expect(hot.peak, `${model.name} hot-input peak`).toBeLessThan(1);
-      });
-    }
-
-    await test.step('all operating points remain finite, centered, and silent at zero input', () => {
-      expect(tones.clean.finite, 'clean-voice light-input samples').toBe(true);
-      expect(Math.abs(tones.clean.dc), 'clean-voice light-input DC offset').toBeLessThan(MAX_TUBE_DC_OFFSET);
-      for (const model of models) {
-        for (const [operatingPoint, tone] of Object.entries(model.tones)) {
-          const label = `${model.name} ${operatingPoint}`;
-          expect(tone.finite, `${label} samples`).toBe(true);
-          // Web Audio filter and oversampling implementations vary slightly by
-          // platform. This limit catches meaningful DC without requiring
-          // sample-identical DSP output from every Chromium build.
-          expect(Math.abs(tone.dc), `${label} DC offset`).toBeLessThan(MAX_TUBE_DC_OFFSET);
-        }
-        expect(model.tones.silent.peak, `${model.name} silent peak`).toBe(0);
+    const clean = results.models['amp.studio-clean-v1'];
+    expect(clean.normal.level).toBeCloseTo(0.1 / Math.sqrt(2), 5);
+    expect(clean.normal.distortion).toBeLessThan(0.0001);
+    for (const [id, tones] of Object.entries(results.models)) {
+      expect(tones.normal.finite, `${id} normal is finite`).toBe(true);
+      expect(tones.driven.finite, `${id} driven is finite`).toBe(true);
+      expect(Math.abs(tones.normal.dc), `${id} normal DC`).toBeLessThan(MAX_AMP_DC_OFFSET);
+      expect(Math.abs(tones.driven.dc), `${id} driven DC`).toBeLessThan(MAX_AMP_DC_OFFSET);
+      expect(tones.silent.peak, `${id} is silent at zero input`).toBe(0);
+      const ratio = tones.normal.level / clean.normal.level;
+      expect(ratio, `${id} default level`).toBeGreaterThan(0.89);
+      expect(ratio, `${id} default level`).toBeLessThan(1.12);
+      if (id !== 'amp.studio-clean-v1') {
+        expect(tones.driven.distortion, `${id} distortion rises with drive`).toBeGreaterThan(tones.normal.distortion * 1.15);
       }
-    });
-
-    await test.step('Clean Tube Warm breaks up earlier than the original voice', () => {
-      expect(tones.warm.driven.distortion).toBeGreaterThan(tones.original.driven.distortion * 1.25);
-      expect(tones.warm.driven.level / tones.warm.light.level).toBeLessThan(
-        tones.original.driven.level / tones.original.light.level,
-      );
-    });
+    }
+    expect(results.models['amp.small-tweed-combo-v1'].normal.distortion).toBeGreaterThan(results.models['amp.blackface-combo-v1'].normal.distortion * 2);
+    expect(results.models['amp.high-headroom-american-v1'].normal.distortion).toBeLessThan(results.models['amp.blackface-combo-v1'].normal.distortion);
+    expect(results.highHeadroom.normal.distortion).toBeGreaterThan(results.highHeadroom.ultra.distortion * 1.5);
+    expect(results.highHeadroom.normal.level / results.highHeadroom.ultra.level).toBeGreaterThan(0.9);
+    expect(results.studioHeadroom.high.distortion).toBeGreaterThan(results.studioHeadroom.maximum.distortion * 10);
   });
 }
 
-test('Clean Tube Warm has fuller low mids and darker highs than the original tube voice', async ({ page }) => {
+test('model-specific switches and tone controls move sound in their documented directions', async ({ page }) => {
   await page.goto('./');
-  const responses = [];
-  for (const ampModel of ['clean-tube', 'clean-tube-warm'] as const) {
-    const controls = { ampModel, masterVolumeDb: 0 };
-    responses.push({
-      rumble: await renderAmp(page, { frequency: 10, amplitude: 0.01, controls }),
-      bass: await renderAmp(page, { frequency: 80, amplitude: 0.01, controls }),
-      lowMid: await renderAmp(page, { frequency: 400, amplitude: 0.01, controls }),
-      mid: await renderAmp(page, { frequency: 1_000, amplitude: 0.01, controls }),
-      high: await renderAmp(page, { frequency: 6_000, amplitude: 0.01, controls }),
-    });
-  }
-  const [original, warm] = responses;
-  expect(warm.lowMid / warm.mid).toBeGreaterThan(original.lowMid / original.mid * 1.1);
-  expect(warm.high / warm.mid).toBeLessThan(original.high / original.mid * 0.75);
-  expect(warm.rumble).toBeLessThan(warm.bass * 0.05);
-});
+  const warmNormal = modelControls('amp.warm-jazz-combo-v1');
+  const warmLow = modelControls('amp.warm-jazz-combo-v1', { input: 'low' });
+  expect(await renderAmp(page, { frequency: 200, controls: warmLow })).toBeLessThan(await renderAmp(page, { frequency: 200, controls: warmNormal }) * 0.65);
+  expect(await renderAmp(page, { frequency: 6_000, controls: modelControls('amp.warm-jazz-combo-v1', { color: 'dark' }) }))
+    .toBeLessThan(await renderAmp(page, { frequency: 6_000, controls: modelControls('amp.warm-jazz-combo-v1', { color: 'bright' }) }) * 0.65);
 
-test('Clean Tube rolls off rumble and harsh high frequencies without changing Clean Voice', async ({ page }) => {
-  await page.goto('./');
-  const controls = { ampModel: 'clean-tube', masterVolumeDb: 0 } as const;
-  const low = await renderAmp(page, { frequency: 20, controls });
-  const body = await renderAmp(page, { frequency: 200, controls });
-  const high = await renderAmp(page, { frequency: 10_000, controls });
-  const cleanHigh = await renderAmp(page, { frequency: 10_000, controls: { masterVolumeDb: 0 } });
+  const blackfaceBright = modelControls('amp.blackface-combo-v1', { volume: 2, bright: 'on' });
+  const blackfaceOff = modelControls('amp.blackface-combo-v1', { volume: 2, bright: 'off' });
+  expect(await renderAmp(page, { frequency: 6_000, controls: blackfaceBright })).toBeGreaterThan(await renderAmp(page, { frequency: 6_000, controls: blackfaceOff }) * 1.5);
 
-  expect(low).toBeLessThan(body * 0.25);
-  expect(high).toBeLessThan(body * 0.25);
-  expect(cleanHigh).toBeCloseTo(1 / Math.sqrt(2), 4);
+  const tweedLow = modelControls('amp.small-tweed-combo-v1', { input: 'low' });
+  const tweedNormal = modelControls('amp.small-tweed-combo-v1', { input: 'normal' });
+  expect(await renderAmp(page, { frequency: 200, controls: tweedLow })).toBeLessThan(await renderAmp(page, { frequency: 200, controls: tweedNormal }) * 0.65);
+
+  const chimeDark = modelControls('amp.british-chime-v1', { cut: 10 });
+  const chimeOpen = modelControls('amp.british-chime-v1', { cut: 0 });
+  expect(await renderAmp(page, { frequency: 6_000, controls: chimeDark })).toBeLessThan(await renderAmp(page, { frequency: 6_000, controls: chimeOpen }) * 0.5);
 });
 
 test('rapid amp model switches crossfade and return to the original clean signal', async ({ page }) => {
@@ -745,12 +729,12 @@ test('rapid amp model switches crossfade and return to the original clean signal
     source.offset.value = 0.25;
     const engine = await connectOfflineEngine(context, source, { masterVolumeDb: 0 });
     const switches = [
-      { time: 0.2, model: 'clean-tube' },
-      { time: 0.208, model: 'clean-tube-warm' },
-      { time: 0.216, model: 'clean-tube' },
-      { time: 0.224, model: 'clean-voice' },
-      { time: 0.232, model: 'clean-tube-warm' },
-      { time: 0.5, model: 'clean-voice' },
+      { time: 0.2, model: 'amp.blackface-combo-v1' },
+      { time: 0.208, model: 'amp.small-tweed-combo-v1' },
+      { time: 0.216, model: 'amp.blackface-combo-v1' },
+      { time: 0.224, model: 'amp.studio-clean-v1' },
+      { time: 0.232, model: 'amp.small-tweed-combo-v1' },
+      { time: 0.5, model: 'amp.studio-clean-v1' },
     ] as const;
     const suspensions = switches.map(({ time }) => context.suspend(time));
     source.start();
@@ -945,7 +929,7 @@ test('bypasses Compression without losing Amount and maps Amount toward firm com
   expect(firm).toBeLessThan(bypassed * 0.75);
 });
 
-test('renders Clean Gain and EQ before Compression, then Reverb and Master Volume', async ({ page }) => {
+test('renders Input Trim and EQ before Compression, then Reverb and Master Volume', async ({ page }) => {
   await page.goto('./');
 
   const compressed = await renderAmp(page, {
@@ -956,7 +940,7 @@ test('renders Clean Gain and EQ before Compression, then Reverb and Master Volum
   const gainCompensated = await renderAmp(page, {
     frequency: 800,
     amplitude: 0.1,
-    controls: { cleanGainDb: 12, compressionAmount: 100, compressionBypassed: false, reverbAmount: 100, reverbBypassed: false, masterVolumeDb: -12 },
+    controls: { inputTrimDb: 12, compressionAmount: 100, compressionBypassed: false, reverbAmount: 100, reverbBypassed: false, masterVolumeDb: -12 },
   });
   const eqCompensated = await renderAmp(page, {
     frequency: 800,

@@ -1,6 +1,7 @@
 import { AudioEngine } from './audio/AudioEngine';
 import type { AudioSnapshot, InputMeterSnapshot } from './audio/types';
 import { AMP_CONTROL_DEFINITIONS, AMP_MODELS, REVERB_PROFILES, isAmpModel, isReverbProfile, type AmpControlSettings, type ContinuousControlDefinition } from './controls';
+import { AMP_MODEL_CONTROLS, type AmpChoiceDefinition, type AmpKnobDefinition, type JazzAmpState } from './ampModels';
 import { WorkbenchPreferencesStore, resetControls, type StoredWorkbenchPreferences } from './settings';
 import { DEFAULT_REVERB_SETTINGS, reverbControlEntries, reverbParameters, type ReverbControlDefinition } from './reverbSettings';
 import './style.css';
@@ -111,11 +112,12 @@ function renderStructure(current: AudioSnapshot): void {
         ${guidanceOpen ? hardwareGuidance() : ''}
       </section>
 
-      ${meterPanel('input', 'Input Level Meter', current.meter, 'Live Guitar Input before Clean Gain. Connecting and metering remain silent until Processed Monitoring is enabled.')}
+      ${meterPanel('input', 'Input Level Meter', current.meter, 'Live Guitar Input before Input Trim and the amp model. Connecting and metering remain silent until Processed Monitoring is enabled.')}
 
       ${meterPanel('output', 'Output Level Meter', current.outputMeter, 'Post-Master signal before browser output.')}
 
-      <section class="${PANEL}" aria-label="Clean Gain">
+      <section class="${PANEL}" aria-label="Amp Model">
+        ${dbControl('input-trim', 'Input Trim', current.controls.inputTrimDb, AMP_CONTROL_DEFINITIONS.inputTrimDb)}
         <div class="mb-3">
           <label for="amp-model" class="block mb-[.35rem] font-medium text-sm">Amp Model</label>
           <select id="amp-model" aria-describedby="amp-model-help">
@@ -123,7 +125,7 @@ function renderStructure(current: AudioSnapshot): void {
           </select>
           <span id="amp-model-help" class="${FIELD_HELP}">${AMP_MODELS[current.controls.ampModel].description}</span>
         </div>
-        ${dbControl('clean-gain', 'Clean Gain', current.controls.cleanGainDb, AMP_CONTROL_DEFINITIONS.cleanGainDb)}
+        <div id="amp-model-controls" class="grid gap-3 mt-4" data-model="${current.controls.ampModel}">${ampModelControls(current.controls)}</div>
       </section>
 
       <section class="${PANEL}" aria-label="Three-Band EQ">
@@ -197,11 +199,12 @@ function bindStructureEvents(): void {
   root.querySelector<HTMLButtonElement>('#retry-output')?.addEventListener('click', () => {
     void engine.selectOutput(snapshot.outputRouting.selectedDeviceId);
   });
-  bindContinuousControl('clean-gain', (cleanGainDb) => engine.applyControls({ ...snapshot.controls, cleanGainDb }));
+  bindContinuousControl('input-trim', (inputTrimDb) => engine.applyControls({ ...snapshot.controls, inputTrimDb }));
   root.querySelector<HTMLSelectElement>('#amp-model')?.addEventListener('change', (event) => {
     const ampModel = (event.currentTarget as HTMLSelectElement).value;
     if (isAmpModel(ampModel)) engine.applyControls({ ...snapshot.controls, ampModel });
   });
+  bindAmpModelControls();
   root.querySelector<HTMLInputElement>('#eq-enabled')?.addEventListener('change', (event) => {
     engine.applyControls({ ...snapshot.controls, eqBypassed: !(event.currentTarget as HTMLInputElement).checked });
   });
@@ -261,6 +264,41 @@ function bindContinuousControl(id: string, apply: (value: number) => void): void
   });
 }
 
+function ampModelControls(controls: AmpControlSettings): string {
+  const definitions = AMP_MODEL_CONTROLS[controls.ampModel] as Readonly<Record<string, AmpKnobDefinition | AmpChoiceDefinition>>;
+  const state = controls.ampSettings[controls.ampModel] as unknown as Readonly<Record<string, number | string>>;
+  return Object.entries(definitions).map(([key, definition]) => {
+    const id = `amp-control-${key}`;
+    const value = state[key];
+    if (definition.kind === 'knob') return knobControl(id, definition.label, value as number, definition);
+    return `<div>
+      <label for="${id}" class="${FIELD}">${definition.label}</label>
+      <select id="${id}" data-amp-control="${key}">
+        ${definition.options.map(([option, label]) => `<option value="${option}" ${option === value ? 'selected' : ''}>${label}</option>`).join('')}
+      </select>
+    </div>`;
+  }).join('');
+}
+
+function bindAmpModelControls(): void {
+  const definitions = AMP_MODEL_CONTROLS[snapshot.controls.ampModel] as Readonly<Record<string, AmpKnobDefinition | AmpChoiceDefinition>>;
+  for (const [key, definition] of Object.entries(definitions)) {
+    const apply = (value: number | string) => {
+      const controls = snapshot.controls;
+      const selected = controls.ampModel;
+      engine.applyControls({ ...controls, ampSettings: {
+        ...controls.ampSettings,
+        [selected]: { ...controls.ampSettings[selected], [key]: value } as JazzAmpState,
+      } });
+    };
+    if (definition.kind === 'knob') bindContinuousControl(`amp-control-${key}`, apply);
+    else root.querySelector<HTMLSelectElement>(`#amp-control-${key}`)?.addEventListener('change', (event) => {
+      const value = (event.currentTarget as HTMLSelectElement).value;
+      if (definition.options.some(([option]) => option === value)) apply(value);
+    });
+  }
+}
+
 function reverbAccordions(controls: AmpControlSettings): string {
   const parameters = reverbParameters(controls.reverbProfile, controls.reverbSettings);
   return (['main', 'advanced'] as const).map((section) => `
@@ -307,12 +345,27 @@ function bindReverbControls(): void {
 }
 
 function renderControls(controls: AmpControlSettings): void {
+  setControlValue('input-trim', controls.inputTrimDb, AMP_CONTROL_DEFINITIONS.inputTrimDb);
   const ampModel = root.querySelector<HTMLSelectElement>('#amp-model');
   if (ampModel !== null && ampModel.value !== controls.ampModel) ampModel.value = controls.ampModel;
   const ampModelHelp = root.querySelector<HTMLElement>('#amp-model-help');
   const modelDescription = AMP_MODELS[controls.ampModel].description;
   if (ampModelHelp !== null && ampModelHelp.textContent !== modelDescription) ampModelHelp.textContent = modelDescription;
-  setControlValue('clean-gain', controls.cleanGainDb, AMP_CONTROL_DEFINITIONS.cleanGainDb);
+  const ampControls = root.querySelector<HTMLElement>('#amp-model-controls');
+  if (ampControls !== null && ampControls.dataset.model !== controls.ampModel) {
+    ampControls.innerHTML = ampModelControls(controls);
+    ampControls.dataset.model = controls.ampModel;
+    bindAmpModelControls();
+  }
+  const definitions = AMP_MODEL_CONTROLS[controls.ampModel] as Readonly<Record<string, AmpKnobDefinition | AmpChoiceDefinition>>;
+  const ampState = controls.ampSettings[controls.ampModel] as unknown as Readonly<Record<string, number | string>>;
+  for (const [key, definition] of Object.entries(definitions)) {
+    if (definition.kind === 'knob') setControlValue(`amp-control-${key}`, ampState[key] as number, definition);
+    else {
+      const select = root.querySelector<HTMLSelectElement>(`#amp-control-${key}`);
+      if (select !== null && select.value !== ampState[key]) select.value = ampState[key] as string;
+    }
+  }
   const eqEnabled = root.querySelector<HTMLInputElement>('#eq-enabled');
   if (eqEnabled !== null) eqEnabled.checked = !controls.eqBypassed;
   setControlValue('bass', controls.bassDb, AMP_CONTROL_DEFINITIONS.bassDb);
@@ -430,6 +483,14 @@ function dbControl(id: string, label: string, value: number, definition: Continu
       <input id="${id}-value" aria-label="${label} value" type="number" inputmode="decimal" class="${NUMERIC_INPUT}" min="${definition.minimum}" max="${definition.maximum}" step="${definition.step}" value="${value.toFixed(definition.fractionDigits)}">
       <span aria-hidden="true">dB</span>
     </div>
+  </div>`;
+}
+
+function knobControl(id: string, label: string, value: number, definition: AmpKnobDefinition): string {
+  return `<div class="grid grid-cols-[1fr_auto] max-[34rem]:grid-cols-1 gap-x-4 items-center">
+    <label for="${id}-slider" class="col-span-2 max-[34rem]:col-span-1 font-medium text-sm">${label}</label>
+    <input id="${id}-slider" aria-label="${label} slider" type="range" class="w-full accent-primary" min="${definition.minimum}" max="${definition.maximum}" step="${definition.step}" value="${value}">
+    <input id="${id}-value" aria-label="${label} value" type="number" inputmode="decimal" class="${NUMERIC_INPUT}" min="${definition.minimum}" max="${definition.maximum}" step="${definition.step}" value="${value.toFixed(definition.fractionDigits)}">
   </div>`;
 }
 

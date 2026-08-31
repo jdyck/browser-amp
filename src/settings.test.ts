@@ -57,19 +57,13 @@ describe('Saved Control Settings', () => {
     expect(new WorkbenchPreferencesStore(storage).load()).toEqual({
       version: 1,
       controls: {
-        ampModel: 'clean-voice',
-        cleanGainDb: 24,
+        ...DEFAULT_AMP_CONTROLS,
+        inputTrimDb: 24,
         bassDb: -12,
         middleDb: 3.3,
-        trebleDb: 0,
-        eqBypassed: false,
         compressionAmount: 100,
-        compressionBypassed: true,
-        reverbProfile: 'studio-plate',
-        reverbSettings: DEFAULT_REVERB_SETTINGS,
         reverbAmount: 0,
         reverbBypassed: false,
-        masterVolumeDb: -18,
       },
       hardwareDirectMonitoringGuidanceDismissed: true,
     });
@@ -78,8 +72,19 @@ describe('Saved Control Settings', () => {
   it('migrates the existing unversioned controls and guidance without retaining unsafe session state', () => {
     const storage = new MemoryStorage();
     storage.setItem(LEGACY_CONTROLS_STORAGE_KEY, JSON.stringify({
-      ...DEFAULT_AMP_CONTROLS,
+      ampModel: 'clean-voice',
       cleanGainDb: 6,
+      bassDb: 0,
+      middleDb: 0,
+      trebleDb: 0,
+      eqBypassed: false,
+      compressionAmount: 25,
+      compressionBypassed: true,
+      reverbProfile: 'studio-plate',
+      reverbSettings: DEFAULT_REVERB_SETTINGS,
+      reverbAmount: 20,
+      reverbBypassed: true,
+      masterVolumeDb: -18,
       monitoring: true,
       selectedInputDeviceId: 'irig-hd-2',
       inputChannel: 1,
@@ -90,7 +95,7 @@ describe('Saved Control Settings', () => {
 
     expect(migrated).toEqual({
       version: 1,
-      controls: { ...DEFAULT_AMP_CONTROLS, cleanGainDb: 6 },
+      controls: { ...DEFAULT_AMP_CONTROLS, inputTrimDb: 6 },
       hardwareDirectMonitoringGuidanceDismissed: true,
     });
     expect(JSON.parse(storage.values.get(SAVED_CONTROL_SETTINGS_STORAGE_KEY) ?? '')).toEqual(migrated);
@@ -112,7 +117,7 @@ describe('Saved Control Settings', () => {
   it('persists the selected amp model and falls back for unknown saved models', () => {
     const storage = new MemoryStorage();
     const store = new WorkbenchPreferencesStore(storage);
-    for (const ampModel of ['clean-tube', 'clean-tube-warm'] as const) {
+    for (const ampModel of ['amp.warm-jazz-combo-v1', 'amp.british-chime-v1'] as const) {
       store.save({
         ...DEFAULT_STORED_WORKBENCH_PREFERENCES,
         controls: { ...DEFAULT_AMP_CONTROLS, ampModel },
@@ -124,7 +129,7 @@ describe('Saved Control Settings', () => {
       version: 1,
       controls: { ampModel: 'future-model', cleanGainDb: 6 },
     }));
-    expect(store.load().controls).toEqual({ ...DEFAULT_AMP_CONTROLS, cleanGainDb: 6 });
+    expect(store.load().controls).toEqual({ ...DEFAULT_AMP_CONTROLS, inputTrimDb: 6 });
   });
 
   it('round-trips all reverb selections and preserves other fields in older saved controls', () => {
@@ -150,8 +155,13 @@ describe('Saved Control Settings', () => {
     const reset = resetControls({
       version: 1,
       controls: {
-        ampModel: 'clean-tube',
-        cleanGainDb: 12,
+        ...DEFAULT_AMP_CONTROLS,
+        ampModel: 'amp.small-tweed-combo-v1',
+        inputTrimDb: 12,
+        ampSettings: {
+          ...DEFAULT_AMP_CONTROLS.ampSettings,
+          'amp.small-tweed-combo-v1': { volume: 8, tone: 7, input: 'low' },
+        },
         bassDb: -4,
         middleDb: 5,
         trebleDb: 7,

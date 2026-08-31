@@ -160,47 +160,64 @@ test('places monitoring below input settings and output metering below input met
   await expect(page.locator('[aria-labelledby="input-meter-title"] + section')).toHaveAttribute('aria-labelledby', 'output-meter-title');
 });
 
-test('selects, saves, and resets the amp model above Clean Gain without enabling monitoring', async ({ page }) => {
+test('exposes six model-specific control sets, remembers them, and switches without recapturing', async ({ page }) => {
   await installAudioBrowser(page);
   await page.goto('./');
 
-  const cleanGainSection = page.getByRole('region', { name: 'Clean Gain', exact: true });
-  const ampModel = cleanGainSection.getByRole('combobox', { name: 'Amp Model' });
+  const ampSection = page.getByRole('region', { name: 'Amp Model', exact: true });
+  const ampModel = ampSection.getByRole('combobox', { name: 'Amp Model' });
   await expect(ampModel).toBeEnabled();
-  await expect(ampModel).toHaveValue('clean-voice');
-  await expect(ampModel.locator('option')).toHaveText(['Clean Voice', 'Clean Tube', 'Clean Tube Warm']);
+  await expect(ampModel).toHaveValue('amp.studio-clean-v1');
+  await expect(ampModel.locator('option')).toHaveText([
+    'Studio Clean', 'Warm Jazz Combo', 'Blackface Combo', 'High-Headroom American', 'Small Tweed Combo', 'British Chime',
+  ]);
+  await expect(ampSection.getByLabel('Gain value')).toHaveValue('5.0');
+  await expect(ampSection.getByLabel('Headroom')).toHaveValue('maximum');
+  const expectedControls = {
+    'amp.studio-clean-v1': ['Gain', 'Bass', 'Middle', 'Treble', 'Headroom'],
+    'amp.warm-jazz-combo-v1': ['Volume', 'Bass', 'Middle', 'Treble', 'Color', 'Input'],
+    'amp.blackface-combo-v1': ['Volume', 'Bass', 'Treble', 'Bright'],
+    'amp.high-headroom-american-v1': ['Volume', 'Bass', 'Middle', 'Treble', 'Bright', 'Headroom'],
+    'amp.small-tweed-combo-v1': ['Volume', 'Tone', 'Input'],
+    'amp.british-chime-v1': ['Volume', 'Bass', 'Treble', 'Cut', 'Channel'],
+  } as const;
+  for (const [id, labels] of Object.entries(expectedControls)) {
+    await ampModel.selectOption(id);
+    await expect(ampSection.locator('#amp-model-controls label')).toHaveText(labels);
+  }
+  await ampModel.selectOption('amp.studio-clean-v1');
 
-  const modelBounds = await ampModel.boundingBox();
-  const gainBounds = await cleanGainSection.getByLabel('Clean Gain slider').boundingBox();
-  expect(modelBounds).not.toBeNull();
-  expect(gainBounds).not.toBeNull();
-  expect(modelBounds!.y + modelBounds!.height).toBeLessThan(gainBounds!.y);
-
-  await cleanGainSection.getByLabel('Clean Gain value').fill('7');
-  await ampModel.selectOption('clean-tube');
-  await expect(ampModel).toHaveValue('clean-tube');
-  await expect(page.locator('#amp-model-help')).toContainText('Raise Clean Gain for gentle breakup');
-  await ampModel.selectOption('clean-tube-warm');
-  await expect(ampModel).toHaveValue('clean-tube-warm');
-  await expect(page.locator('#amp-model-help')).toContainText('Fuller low mids, darker highs');
-  await expect(cleanGainSection.getByLabel('Clean Gain value')).toHaveValue('7.0');
+  await ampSection.getByLabel('Gain value').fill('7');
+  await ampModel.selectOption('amp.blackface-combo-v1');
+  await expect(ampSection.getByLabel('Volume value')).toHaveValue('4.0');
+  await expect(ampSection.getByLabel('Bright')).toHaveValue('off');
+  await expect(ampSection.getByLabel('Middle value')).toHaveCount(0);
+  await ampModel.selectOption('amp.small-tweed-combo-v1');
+  await expect(ampSection.getByLabel('Volume value')).toHaveValue('3.5');
+  await expect(ampSection.getByLabel('Tone value')).toHaveValue('5.0');
+  await expect(ampSection.getByLabel('Input', { exact: true })).toHaveValue('normal');
+  await ampSection.getByLabel('Volume value').fill('8');
+  await ampModel.selectOption('amp.studio-clean-v1');
+  await expect(ampSection.getByLabel('Gain value')).toHaveValue('7.0');
+  await ampModel.selectOption('amp.small-tweed-combo-v1');
+  await expect(ampSection.getByLabel('Volume value')).toHaveValue('8.0');
   await expect(page.getByRole('button', { name: 'Enable Monitoring' })).toBeDisabled();
 
   await page.reload();
-  await expect(ampModel).toHaveValue('clean-tube-warm');
+  await expect(ampModel).toHaveValue('amp.small-tweed-combo-v1');
   await page.getByRole('button', { name: 'Connect Input', exact: true }).click();
   await expect(page.locator('#monitoring-state')).toHaveText('Off');
-  await expect(ampModel).toHaveValue('clean-tube-warm');
+  await expect(ampModel).toHaveValue('amp.small-tweed-combo-v1');
   await page.getByRole('button', { name: 'Enable Monitoring', exact: true }).click();
   await page.getByRole('button', { name: 'Checked — Enable Monitoring' }).click();
-  await ampModel.selectOption('clean-voice');
+  await ampModel.selectOption('amp.studio-clean-v1');
   await expect(page.locator('#monitoring-state')).toHaveText('On');
-  await expect(cleanGainSection.getByLabel('Clean Gain value')).toHaveValue('7.0');
-  await ampModel.selectOption('clean-tube');
-  await ampModel.selectOption('clean-tube-warm');
+  await expect(ampSection.getByLabel('Gain value')).toHaveValue('7.0');
+  await ampModel.selectOption('amp.blackface-combo-v1');
+  await ampModel.selectOption('amp.small-tweed-combo-v1');
   await expect.poll(() => page.evaluate(() => (window as Window & { captureRequests?: number }).captureRequests)).toBe(1);
   await page.getByRole('button', { name: 'Reset Controls' }).click();
-  await expect(ampModel).toHaveValue('clean-voice');
+  await expect(ampModel).toHaveValue('amp.studio-clean-v1');
   await expect(page.locator('#monitoring-state')).toHaveText('On');
 });
 
@@ -253,7 +270,7 @@ for (const [index, profile] of (Object.keys(REVERB_PROFILES) as ReverbProfile[])
       hardwareDirectMonitoringGuidanceDismissed: true,
       controls: {
         ...DEFAULT_AMP_CONTROLS,
-        ampModel: 'clean-tube', cleanGainDb: 6, bassDb: -3, middleDb: 2, trebleDb: 4,
+        ampModel: 'amp.blackface-combo-v1', inputTrimDb: 6, bassDb: -3, middleDb: 2, trebleDb: 4,
         eqBypassed: true, compressionAmount: 72, compressionBypassed: false, masterVolumeDb: -12,
         reverbProfile: profile, reverbAmount: 63, reverbBypassed: index % 2 === 0,
         reverbSettings: Object.fromEntries((Object.keys(REVERB_PROFILES) as ReverbProfile[]).map((id) => [
@@ -380,12 +397,13 @@ test('shows module-specific accordions, keeps edits focused, and restores every 
 test('synchronizes, clamps, and restores controls without restoring Processed Monitoring', async ({ page }) => {
   await page.goto('./');
 
-  const cleanGain = page.getByLabel('Clean Gain value');
-  const cleanGainSlider = page.getByLabel('Clean Gain slider');
-  const bass = page.getByLabel('Bass value');
-  const bassSlider = page.getByLabel('Bass slider');
-  const middle = page.getByLabel('Middle value');
-  const treble = page.getByLabel('Treble value');
+  const inputTrim = page.getByLabel('Input Trim value');
+  const inputTrimSlider = page.getByLabel('Input Trim slider');
+  const studioEq = page.getByRole('region', { name: 'Three-Band EQ' });
+  const bass = studioEq.getByLabel('Bass value');
+  const bassSlider = studioEq.getByLabel('Bass slider');
+  const middle = studioEq.getByLabel('Middle value');
+  const treble = studioEq.getByLabel('Treble value');
   const eqEnabled = page.getByLabel('Enable EQ');
   const compressionAmount = page.getByLabel('Compression value');
   const compressionAmountSlider = page.getByLabel('Compression slider');
@@ -395,7 +413,7 @@ test('synchronizes, clamps, and restores controls without restoring Processed Mo
   const reverbEnabled = page.getByLabel('Enable Reverb');
   const masterVolume = page.getByLabel('Master value');
 
-  await expect(cleanGain).toHaveValue('0.0');
+  await expect(inputTrim).toHaveValue('0.0');
   await expect(bass).toHaveValue('0.0');
   await expect(middle).toHaveValue('0.0');
   await expect(treble).toHaveValue('0.0');
@@ -406,8 +424,8 @@ test('synchronizes, clamps, and restores controls without restoring Processed Mo
   await expect(reverbEnabled).not.toBeChecked();
   await expect(masterVolume).toHaveValue('-18.0');
 
-  await cleanGain.fill('30');
-  await cleanGain.press('Enter');
+  await inputTrim.fill('30');
+  await inputTrim.press('Enter');
   await bass.fill('20');
   await bass.press('Enter');
   await middle.fill('3.26');
@@ -423,8 +441,8 @@ test('synchronizes, clamps, and restores controls without restoring Processed Mo
   await masterVolume.fill('-12.26');
   await masterVolume.press('Enter');
 
-  await expect(cleanGain).toHaveValue('24.0');
-  await expect(cleanGainSlider).toHaveValue('24');
+  await expect(inputTrim).toHaveValue('24.0');
+  await expect(inputTrimSlider).toHaveValue('24');
   await expect(bass).toHaveValue('12.0');
   await expect(bassSlider).toHaveValue('12');
   await expect(middle).toHaveValue('3.3');
@@ -436,10 +454,10 @@ test('synchronizes, clamps, and restores controls without restoring Processed Mo
   await expect(masterVolume).toHaveValue('-12.3');
 
   await page.reload();
-  await expect(page.getByLabel('Clean Gain value')).toHaveValue('24.0');
-  await expect(page.getByLabel('Bass value')).toHaveValue('12.0');
-  await expect(page.getByLabel('Middle value')).toHaveValue('3.3');
-  await expect(page.getByLabel('Treble value')).toHaveValue('-12.0');
+  await expect(page.getByLabel('Input Trim value')).toHaveValue('24.0');
+  await expect(studioEq.getByLabel('Bass value')).toHaveValue('12.0');
+  await expect(studioEq.getByLabel('Middle value')).toHaveValue('3.3');
+  await expect(studioEq.getByLabel('Treble value')).toHaveValue('-12.0');
   await expect(page.getByLabel('Compression value')).toHaveValue('100');
   await expect(compressionEnabled).toBeChecked();
   await expect(page.getByLabel('Reverb value')).toHaveValue('0');
@@ -495,8 +513,8 @@ test('requires a separate monitoring action and remembers dismissed Hardware Dir
 test('Reset Controls restores sound defaults without changing connection, monitoring, or dismissed guidance', async ({ page }) => {
   await installAudioBrowser(page);
   await page.goto('./');
-  await page.getByLabel('Clean Gain value').fill('9');
-  await page.getByLabel('Bass value').fill('-4');
+  await page.getByLabel('Input Trim value').fill('9');
+  await page.getByRole('region', { name: 'Three-Band EQ' }).getByLabel('Bass value').fill('-4');
   await page.getByLabel('Enable EQ').uncheck();
   await page.getByLabel('Enable Compression').check();
   await page.getByLabel('Reverb value').fill('60');
@@ -508,10 +526,11 @@ test('Reset Controls restores sound defaults without changing connection, monito
 
   await page.getByRole('button', { name: 'Reset Controls' }).click();
 
-  await expect(page.getByLabel('Clean Gain value')).toHaveValue('0.0');
-  await expect(page.getByLabel('Bass value')).toHaveValue('0.0');
-  await expect(page.getByLabel('Middle value')).toHaveValue('0.0');
-  await expect(page.getByLabel('Treble value')).toHaveValue('0.0');
+  await expect(page.getByLabel('Input Trim value')).toHaveValue('0.0');
+  const studioEq = page.getByRole('region', { name: 'Three-Band EQ' });
+  await expect(studioEq.getByLabel('Bass value')).toHaveValue('0.0');
+  await expect(studioEq.getByLabel('Middle value')).toHaveValue('0.0');
+  await expect(studioEq.getByLabel('Treble value')).toHaveValue('0.0');
   await expect(page.getByLabel('Enable EQ')).toBeChecked();
   await expect(page.getByLabel('Compression value')).toHaveValue('25');
   await expect(page.getByLabel('Enable Compression')).not.toBeChecked();
@@ -525,21 +544,7 @@ test('Reset Controls restores sound defaults without changing connection, monito
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('browser-amp.saved-control-settings') ?? 'null'));
   expect(saved).toEqual({
     version: 1,
-    controls: {
-      ampModel: 'clean-voice',
-      cleanGainDb: 0,
-      bassDb: 0,
-      middleDb: 0,
-      trebleDb: 0,
-      eqBypassed: false,
-      compressionAmount: 25,
-      compressionBypassed: true,
-      reverbProfile: 'studio-plate',
-      reverbSettings: DEFAULT_REVERB_SETTINGS,
-      reverbAmount: 20,
-      reverbBypassed: true,
-      masterVolumeDb: -18,
-    },
+    controls: DEFAULT_AMP_CONTROLS,
     hardwareDirectMonitoringGuidanceDismissed: true,
   });
 
@@ -598,7 +603,7 @@ test('offers a keyboard-accessible retry after permission denial on a narrow lay
 test('stays muted through active-input unplug and replug until explicit reconnection', async ({ page }) => {
   await installAudioBrowser(page);
   await page.goto('./');
-  await page.getByLabel('Clean Gain value').fill('7');
+  await page.getByLabel('Input Trim value').fill('7');
   await page.getByRole('button', { name: 'Connect Input' }).click();
   await page.getByRole('button', { name: 'Enable Monitoring' }).click();
   await page.getByRole('button', { name: 'Checked — Enable Monitoring' }).click();
@@ -609,7 +614,7 @@ test('stays muted through active-input unplug and replug until explicit reconnec
   await expect(page.getByRole('alert')).toContainText('active input device was disconnected');
   await expect(page.getByRole('button', { name: 'Reconnect Input' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Enable Monitoring' })).toBeDisabled();
-  await expect(page.getByLabel('Clean Gain value')).toHaveValue('7.0');
+  await expect(page.getByLabel('Input Trim value')).toHaveValue('7.0');
   await expect.poll(() => page.evaluate(() => (window as Window & { captureRequests?: number }).captureRequests)).toBe(1);
 
   await page.evaluate(() => (window as Window & { setInputConnected?: (connected: boolean) => void }).setInputConnected?.(true));
@@ -619,7 +624,7 @@ test('stays muted through active-input unplug and replug until explicit reconnec
 
   await expect(page.getByRole('status')).toContainText('Connected — muted');
   await expect(page.getByRole('button', { name: 'Enable Monitoring' })).toBeEnabled();
-  await expect(page.getByLabel('Clean Gain value')).toHaveValue('7.0');
+  await expect(page.getByLabel('Input Trim value')).toHaveValue('7.0');
   await expect.poll(() => page.evaluate(() => (window as Window & { captureRequests?: number }).captureRequests)).toBe(2);
 });
 
@@ -684,14 +689,15 @@ test('keeps exact controls keyboard-operable and in Amp Chain order on a narrow 
   await page.setViewportSize({ width: 320, height: 900 });
   await page.goto('./');
 
-  const bassSlider = page.getByLabel('Bass slider');
+  const studioEq = page.getByRole('region', { name: 'Three-Band EQ' });
+  const bassSlider = studioEq.getByLabel('Bass slider');
   await bassSlider.focus();
   await bassSlider.press('ArrowRight');
-  await expect(page.getByLabel('Bass value')).toHaveValue('0.1');
+  await expect(studioEq.getByLabel('Bass value')).toHaveValue('0.1');
 
   await expect(page.locator('.panel[aria-label]')).toHaveCount(5);
   await expect(page.locator('.panel[aria-label]').evaluateAll((panels) => panels.map((panel) => panel.getAttribute('aria-label')))).resolves.toEqual([
-    'Clean Gain',
+    'Amp Model',
     'Three-Band EQ',
     'Compression',
     'Reverb',

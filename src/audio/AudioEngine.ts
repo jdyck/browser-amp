@@ -124,7 +124,7 @@ export class AudioEngine implements AudioEngineContract {
   #source: AudioNode | undefined;
   #splitter: ChannelSplitterNode | undefined;
   #inputAnalyser: AnalyserNode | undefined;
-  #cleanGain: GainNode | undefined;
+  #inputTrim: GainNode | undefined;
   #ampModel: AmpModelStage | undefined;
   #bassEq: BiquadFilterNode | undefined;
   #middleEq: BiquadFilterNode | undefined;
@@ -195,7 +195,7 @@ export class AudioEngine implements AudioEngineContract {
       this.#source = this.#context.createMediaStreamSource(stream);
       this.#inputAnalyser = this.#context.createAnalyser();
       this.#inputAnalyser.fftSize = 2048;
-      this.#cleanGain = this.#context.createGain();
+      this.#inputTrim = this.#context.createGain();
       this.#bassEq = this.#context.createBiquadFilter();
       this.#middleEq = this.#context.createBiquadFilter();
       this.#trebleEq = this.#context.createBiquadFilter();
@@ -206,8 +206,8 @@ export class AudioEngine implements AudioEngineContract {
       this.#outputAnalyser = this.#context.createAnalyser();
       this.#outputAnalyser.fftSize = 2048;
       this.#monitorGain = this.#context.createGain();
-      this.#ampModel = new AmpModelStage(this.#context, this.#snapshot.controls.ampModel);
-      this.#cleanGain.gain.value = dbToLinearGain(this.#snapshot.controls.cleanGainDb);
+      this.#ampModel = new AmpModelStage(this.#context, this.#snapshot.controls.ampModel, this.#snapshot.controls.ampSettings);
+      this.#inputTrim.gain.value = dbToLinearGain(this.#snapshot.controls.inputTrimDb);
       this.#bassEq.type = 'lowshelf';
       this.#bassEq.frequency.value = 120;
       this.#bassEq.gain.value = this.#snapshot.controls.eqBypassed ? 0 : this.#snapshot.controls.bassDb;
@@ -244,8 +244,8 @@ export class AudioEngine implements AudioEngineContract {
       } else {
         this.#source.connect(this.#inputAnalyser);
       }
-      this.#inputAnalyser.connect(this.#cleanGain);
-      this.#cleanGain.connect(this.#ampModel.input);
+      this.#inputAnalyser.connect(this.#inputTrim);
+      this.#inputTrim.connect(this.#ampModel.input);
       this.#ampModel.output.connect(this.#bassEq);
       this.#bassEq.connect(this.#middleEq);
       this.#middleEq.connect(this.#trebleEq);
@@ -340,8 +340,8 @@ export class AudioEngine implements AudioEngineContract {
     const previousControls = this.#snapshot.controls;
     const controls = normalizeAmpControlSettings(settings, previousControls);
     if (this.#context !== undefined) {
-      this.#ampModel?.setModel(controls.ampModel);
-      if (this.#cleanGain !== undefined) smoothGainToDb(this.#cleanGain.gain, controls.cleanGainDb, this.#context.currentTime);
+      this.#ampModel?.setControls(controls.ampModel, controls.ampSettings);
+      if (this.#inputTrim !== undefined) smoothGainToDb(this.#inputTrim.gain, controls.inputTrimDb, this.#context.currentTime);
       // Zero-gain shelves and peaking filters pass the signal unchanged while preserving the saved band settings.
       if (this.#bassEq !== undefined) smoothGainToValue(this.#bassEq.gain, controls.eqBypassed ? 0 : controls.bassDb, this.#context.currentTime);
       if (this.#middleEq !== undefined) smoothGainToValue(this.#middleEq.gain, controls.eqBypassed ? 0 : controls.middleDb, this.#context.currentTime);
@@ -525,7 +525,7 @@ export class AudioEngine implements AudioEngineContract {
     this.#source?.disconnect();
     this.#splitter?.disconnect();
     this.#inputAnalyser?.disconnect();
-    this.#cleanGain?.disconnect();
+    this.#inputTrim?.disconnect();
     this.#ampModel?.disconnect();
     this.#bassEq?.disconnect();
     this.#middleEq?.disconnect();
@@ -548,7 +548,7 @@ export class AudioEngine implements AudioEngineContract {
     this.#source = undefined;
     this.#splitter = undefined;
     this.#inputAnalyser = undefined;
-    this.#cleanGain = undefined;
+    this.#inputTrim = undefined;
     this.#ampModel = undefined;
     this.#bassEq = undefined;
     this.#middleEq = undefined;

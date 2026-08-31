@@ -1,25 +1,14 @@
 import { DEFAULT_REVERB_SETTINGS, normalizeReverbSettings, type ReverbSettings } from './reverbSettings';
+import {
+  DEFAULT_JAZZ_AMP_SETTINGS,
+  isAmpModel,
+  normalizeJazzAmpSettings,
+  type AmpModel,
+  type JazzAmpSettings,
+} from './ampModels';
 
-export const AMP_MODELS = {
-  'clean-voice': {
-    label: 'Clean Voice',
-    description: 'Transparent gain without intentional saturation.',
-  },
-  'clean-tube': {
-    label: 'Clean Tube',
-    description: 'Tube-inspired warmth and a softer high end. Raise Clean Gain for gentle breakup; use Master for listening volume.',
-  },
-  'clean-tube-warm': {
-    label: 'Clean Tube Warm',
-    description: 'Fuller low mids, darker highs, and earlier tube-inspired breakup. Raise Clean Gain for more saturation; use Master for listening volume.',
-  },
-} as const;
-
-export type AmpModel = keyof typeof AMP_MODELS;
-
-export function isAmpModel(value: unknown): value is AmpModel {
-  return typeof value === 'string' && Object.hasOwn(AMP_MODELS, value);
-}
+export { AMP_MODELS, isAmpModel } from './ampModels';
+export type { AmpModel, JazzAmpId, JazzAmpSettings } from './ampModels';
 
 export const REVERB_PROFILES = {
   'jazz-room': {
@@ -60,7 +49,8 @@ export function isReverbProfile(value: unknown): value is ReverbProfile {
 
 export interface AmpControlSettings {
   readonly ampModel: AmpModel;
-  readonly cleanGainDb: number;
+  readonly ampSettings: JazzAmpSettings;
+  readonly inputTrimDb: number;
   readonly bassDb: number;
   readonly middleDb: number;
   readonly trebleDb: number;
@@ -75,8 +65,9 @@ export interface AmpControlSettings {
 }
 
 export const DEFAULT_AMP_CONTROLS: AmpControlSettings = {
-  ampModel: 'clean-voice',
-  cleanGainDb: 0,
+  ampModel: 'amp.studio-clean-v1',
+  ampSettings: DEFAULT_JAZZ_AMP_SETTINGS,
+  inputTrimDb: 0,
   bassDb: 0,
   middleDb: 0,
   trebleDb: 0,
@@ -90,6 +81,12 @@ export const DEFAULT_AMP_CONTROLS: AmpControlSettings = {
   masterVolumeDb: -18,
 };
 
+const LEGACY_AMP_MODELS: Readonly<Record<string, AmpModel>> = {
+  'clean-voice': 'amp.studio-clean-v1',
+  'clean-tube': 'amp.blackface-combo-v1',
+  'clean-tube-warm': 'amp.small-tweed-combo-v1',
+};
+
 export interface ContinuousControlDefinition {
   readonly minimum: number;
   readonly maximum: number;
@@ -98,7 +95,7 @@ export interface ContinuousControlDefinition {
 }
 
 export const AMP_CONTROL_DEFINITIONS = {
-  cleanGainDb: { minimum: -12, maximum: 24, step: 0.1, fractionDigits: 1 },
+  inputTrimDb: { minimum: -12, maximum: 24, step: 0.1, fractionDigits: 1 },
   bassDb: { minimum: -12, maximum: 12, step: 0.1, fractionDigits: 1 },
   middleDb: { minimum: -12, maximum: 12, step: 0.1, fractionDigits: 1 },
   trebleDb: { minimum: -12, maximum: 12, step: 0.1, fractionDigits: 1 },
@@ -130,7 +127,7 @@ export function normalizeAmpControlSettings(
   fallback: AmpControlSettings = DEFAULT_AMP_CONTROLS,
 ): AmpControlSettings {
   const controls = isRecord(value) ? value : {};
-  const cleanGainDb = finiteNumber(controls.cleanGainDb);
+  const inputTrimDb = finiteNumber(controls.inputTrimDb) ?? finiteNumber(controls.cleanGainDb);
   const bassDb = finiteNumber(controls.bassDb);
   const middleDb = finiteNumber(controls.middleDb);
   const trebleDb = finiteNumber(controls.trebleDb);
@@ -138,9 +135,19 @@ export function normalizeAmpControlSettings(
   const reverbAmount = finiteNumber(controls.reverbAmount);
   const masterVolumeDb = finiteNumber(controls.masterVolumeDb);
 
+  // Retired tube voices migrate to the closest new intent with a deliberate,
+  // disclosed sound change. Clean Voice maps to the bit-transparent Studio Clean path.
+  const rawModel = controls.ampModel;
+  const ampModel = isAmpModel(rawModel)
+    ? rawModel
+    : typeof rawModel === 'string' && Object.hasOwn(LEGACY_AMP_MODELS, rawModel)
+      ? LEGACY_AMP_MODELS[rawModel]
+      : fallback.ampModel;
+
   return {
-    ampModel: isAmpModel(controls.ampModel) ? controls.ampModel : fallback.ampModel,
-    cleanGainDb: cleanGainDb === undefined ? fallback.cleanGainDb : normalizeContinuousControl(cleanGainDb, AMP_CONTROL_DEFINITIONS.cleanGainDb),
+    ampModel,
+    ampSettings: normalizeJazzAmpSettings(controls.ampSettings, fallback.ampSettings),
+    inputTrimDb: inputTrimDb === undefined ? fallback.inputTrimDb : normalizeContinuousControl(inputTrimDb, AMP_CONTROL_DEFINITIONS.inputTrimDb),
     bassDb: bassDb === undefined ? fallback.bassDb : normalizeContinuousControl(bassDb, AMP_CONTROL_DEFINITIONS.bassDb),
     middleDb: middleDb === undefined ? fallback.middleDb : normalizeContinuousControl(middleDb, AMP_CONTROL_DEFINITIONS.middleDb),
     trebleDb: trebleDb === undefined ? fallback.trebleDb : normalizeContinuousControl(trebleDb, AMP_CONTROL_DEFINITIONS.trebleDb),

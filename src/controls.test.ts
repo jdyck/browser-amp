@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_AMP_CONTROLS, REVERB_PROFILES, normalizeAmpControlSettings } from './controls';
+import { AMP_MODELS, DEFAULT_JAZZ_AMP_SETTINGS } from './ampModels';
 import { DEFAULT_REVERB_SETTINGS, reverbControlEntries, type ReverbParameters } from './reverbSettings';
 
 describe('Amp Control Settings', () => {
@@ -41,16 +42,35 @@ describe('Amp Control Settings', () => {
   });
 
   it('accepts known amp models and safely defaults old or unknown selections', () => {
-    expect(normalizeAmpControlSettings({ ampModel: 'clean-tube' }).ampModel).toBe('clean-tube');
-    expect(normalizeAmpControlSettings({ ampModel: 'clean-tube-warm' }).ampModel).toBe('clean-tube-warm');
-    expect(normalizeAmpControlSettings({}).ampModel).toBe('clean-voice');
+    for (const ampModel of Object.keys(AMP_MODELS)) expect(normalizeAmpControlSettings({ ampModel }).ampModel).toBe(ampModel);
+    expect(normalizeAmpControlSettings({ ampModel: 'clean-voice' }).ampModel).toBe('amp.studio-clean-v1');
+    expect(normalizeAmpControlSettings({ ampModel: 'clean-tube' }).ampModel).toBe('amp.blackface-combo-v1');
+    expect(normalizeAmpControlSettings({ ampModel: 'clean-tube-warm' }).ampModel).toBe('amp.small-tweed-combo-v1');
+    expect(normalizeAmpControlSettings({}).ampModel).toBe('amp.studio-clean-v1');
     for (const ampModel of ['unknown', 'constructor', '__proto__', null, 1]) {
-      expect(normalizeAmpControlSettings({ ampModel }).ampModel).toBe('clean-voice');
+      expect(normalizeAmpControlSettings({ ampModel }).ampModel).toBe('amp.studio-clean-v1');
     }
     expect(normalizeAmpControlSettings(
       { ampModel: 'unknown' },
-      { ...DEFAULT_AMP_CONTROLS, ampModel: 'clean-tube' },
-    ).ampModel).toBe('clean-tube');
+      { ...DEFAULT_AMP_CONTROLS, ampModel: 'amp.british-chime-v1' },
+    ).ampModel).toBe('amp.british-chime-v1');
+  });
+
+  it('normalizes each amp independently and migrates legacy Clean Voice gain exactly', () => {
+    const controls = normalizeAmpControlSettings({
+      ampSettings: {
+        'amp.studio-clean-v1': { gain: 50, bass: -1, middle: 5.26, treble: 'bad', headroom: 'high' },
+        'amp.small-tweed-combo-v1': { volume: 8.88, tone: 2.22, input: 'low', middle: 10 },
+      },
+    });
+    expect(controls.ampSettings['amp.studio-clean-v1']).toEqual({ gain: 10, bass: 0, middle: 5.3, treble: 5, headroom: 'high' });
+    expect(controls.ampSettings['amp.small-tweed-combo-v1']).toEqual({ volume: 8.9, tone: 2.2, input: 'low' });
+    expect(controls.ampSettings['amp.british-chime-v1']).toEqual(DEFAULT_JAZZ_AMP_SETTINGS['amp.british-chime-v1']);
+    expect(normalizeAmpControlSettings({ ampModel: 'clean-voice', cleanGainDb: 12 })).toMatchObject({
+      ampModel: 'amp.studio-clean-v1',
+      inputTrimDb: 12,
+      ampSettings: { 'amp.studio-clean-v1': { gain: 5 } },
+    });
   });
 
   it('normalizes EQ bypass and keeps older settings enabled', () => {
@@ -63,13 +83,13 @@ describe('Amp Control Settings', () => {
   it('normalizes values to their documented ranges and precision', () => {
     expect(normalizeAmpControlSettings({
       ...DEFAULT_AMP_CONTROLS,
-      cleanGainDb: 24.08,
+      inputTrimDb: 24.08,
       bassDb: -72,
       middleDb: 3.26,
       compressionAmount: 73.6,
       masterVolumeDb: -18.26,
     })).toMatchObject({
-      cleanGainDb: 24,
+      inputTrimDb: 24,
       bassDb: -12,
       middleDb: 3.3,
       compressionAmount: 74,
