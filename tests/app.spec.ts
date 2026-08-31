@@ -1,3 +1,6 @@
+import { DEFAULT_AMP_CONTROLS, REVERB_PROFILES, type ReverbProfile } from '../src/controls';
+import { DEFAULT_REVERB_SETTINGS, reverbControlEntries } from '../src/reverbSettings';
+import { SAVED_CONTROL_SETTINGS_STORAGE_KEY } from '../src/settings';
 import { expect, test, type Page } from '@playwright/test';
 
 async function installAudioBrowser(page: Page, options: {
@@ -81,6 +84,9 @@ async function installAudioBrowser(page: Page, options: {
         });
       }
       createChannelSplitter() { return node(); }
+      createChannelMerger() { return node(); }
+      createDelay() { return node({ delayTime: { value: 0 } }); }
+      createOscillator() { return node({ frequency: { value: 0 }, start: () => undefined, stop: () => undefined }); }
       createGain() {
         const gain = {
           value: 1,
@@ -94,6 +100,8 @@ async function installAudioBrowser(page: Page, options: {
         const gain = { value: 0, cancelScheduledValues: () => gain, setValueAtTime: (value: number) => { gain.value = value; return gain; }, linearRampToValueAtTime: (value: number) => { gain.value = value; return gain; } };
         return node({ type: 'peaking', frequency: { value: 0 }, Q: { value: 0 }, gain });
       }
+      createWaveShaper() { return node({ curve: null, oversample: 'none' }); }
+      createConstantSource() { return node({ offset: { value: 1 }, start: () => undefined, stop: () => undefined, onended: null }); }
       createDynamicsCompressor() {
         const parameter = (value: number) => ({ value, cancelScheduledValues: () => undefined, setValueAtTime: () => undefined, linearRampToValueAtTime: () => undefined });
         return node({ threshold: parameter(-24), ratio: parameter(12), attack: parameter(0.003), release: parameter(0.25), knee: parameter(30) });
@@ -150,6 +158,223 @@ test('places monitoring below input settings and output metering below input met
 
   await expect(page.locator('[aria-labelledby="input-title"] + section')).toHaveAttribute('aria-labelledby', 'monitoring-title');
   await expect(page.locator('[aria-labelledby="input-meter-title"] + section')).toHaveAttribute('aria-labelledby', 'output-meter-title');
+});
+
+test('selects, saves, and resets the amp model above Clean Gain without enabling monitoring', async ({ page }) => {
+  await installAudioBrowser(page);
+  await page.goto('./');
+
+  const cleanGainSection = page.getByRole('region', { name: 'Clean Gain', exact: true });
+  const ampModel = cleanGainSection.getByRole('combobox', { name: 'Amp Model' });
+  await expect(ampModel).toBeEnabled();
+  await expect(ampModel).toHaveValue('clean-voice');
+  await expect(ampModel.locator('option')).toHaveText(['Clean Voice', 'Clean Tube', 'Clean Tube Warm']);
+
+  const modelBounds = await ampModel.boundingBox();
+  const gainBounds = await cleanGainSection.getByLabel('Clean Gain slider').boundingBox();
+  expect(modelBounds).not.toBeNull();
+  expect(gainBounds).not.toBeNull();
+  expect(modelBounds!.y + modelBounds!.height).toBeLessThan(gainBounds!.y);
+
+  await cleanGainSection.getByLabel('Clean Gain value').fill('7');
+  await ampModel.selectOption('clean-tube');
+  await expect(ampModel).toHaveValue('clean-tube');
+  await expect(page.locator('#amp-model-help')).toContainText('Raise Clean Gain for gentle breakup');
+  await ampModel.selectOption('clean-tube-warm');
+  await expect(ampModel).toHaveValue('clean-tube-warm');
+  await expect(page.locator('#amp-model-help')).toContainText('Fuller low mids, darker highs');
+  await expect(cleanGainSection.getByLabel('Clean Gain value')).toHaveValue('7.0');
+  await expect(page.getByRole('button', { name: 'Enable Monitoring' })).toBeDisabled();
+
+  await page.reload();
+  await expect(ampModel).toHaveValue('clean-tube-warm');
+  await page.getByRole('button', { name: 'Connect Input', exact: true }).click();
+  await expect(page.locator('#monitoring-state')).toHaveText('Off');
+  await expect(ampModel).toHaveValue('clean-tube-warm');
+  await page.getByRole('button', { name: 'Enable Monitoring', exact: true }).click();
+  await page.getByRole('button', { name: 'Checked — Enable Monitoring' }).click();
+  await ampModel.selectOption('clean-voice');
+  await expect(page.locator('#monitoring-state')).toHaveText('On');
+  await expect(cleanGainSection.getByLabel('Clean Gain value')).toHaveValue('7.0');
+  await ampModel.selectOption('clean-tube');
+  await ampModel.selectOption('clean-tube-warm');
+  await expect.poll(() => page.evaluate(() => (window as Window & { captureRequests?: number }).captureRequests)).toBe(1);
+  await page.getByRole('button', { name: 'Reset Controls' }).click();
+  await expect(ampModel).toHaveValue('clean-voice');
+  await expect(page.locator('#monitoring-state')).toHaveText('On');
+});
+
+test('switches all reverb modules, remembers bypassed selections, and resets without recapturing', async ({ page }) => {
+  await installAudioBrowser(page);
+  await page.goto('./');
+  const module = page.getByRole('combobox', { name: 'Reverb Module' });
+  const enabled = page.getByLabel('Enable Reverb');
+  await expect(module).toHaveValue('studio-plate');
+  await expect(module.locator('option')).toHaveText([
+    'Jazz Room', 'Studio Chamber', 'Studio Plate', 'Fender Spring', 'Polytone Spring', 'Digital Room', 'Digital Hall',
+  ]);
+  await module.selectOption('polytone-spring');
+  await page.getByLabel('Reverb value').fill('63');
+  await expect(enabled).not.toBeChecked();
+  await expect(page.locator('#reverb-profile-help')).toContainText('Darker, restrained');
+  await page.reload();
+  await expect(module).toHaveValue('polytone-spring');
+  await expect(enabled).not.toBeChecked();
+  await page.getByRole('button', { name: 'Connect Input', exact: true }).click();
+  await expect(page.locator('#monitoring-state')).toHaveText('Off');
+  await enabled.check();
+  await page.getByRole('button', { name: 'Enable Monitoring', exact: true }).click();
+  await page.getByRole('button', { name: 'Checked — Enable Monitoring' }).click();
+  for (const id of ['jazz-room', 'studio-chamber', 'studio-plate', 'fender-spring', 'polytone-spring', 'digital-room', 'digital-hall']) {
+    await module.selectOption(id);
+    await expect(module).toHaveValue(id);
+    await expect(enabled).toBeChecked();
+    await expect(page.getByLabel('Reverb value')).toHaveValue('63');
+    await expect(page.locator('#monitoring-state')).toHaveText('On');
+  }
+  await expect.poll(() => page.evaluate(() => (window as Window & { captureRequests?: number }).captureRequests)).toBe(1);
+  await page.reload();
+  await expect(module).toHaveValue('digital-hall');
+  await expect(enabled).toBeChecked();
+  await expect(page.locator('#monitoring-state')).toHaveText('Off');
+  await page.getByRole('button', { name: 'Reset Controls' }).click();
+  await expect(module).toHaveValue('studio-plate');
+  await expect(page.locator('#reverb-profile-help')).toContainText('original Browser Amp reverb');
+  await expect(enabled).not.toBeChecked();
+  await expect(page.getByLabel('Reverb value')).toHaveValue('20');
+});
+
+for (const [index, profile] of (Object.keys(REVERB_PROFILES) as ReverbProfile[]).entries()) {
+  test(`resets only ${profile} while preserving other reverbs and live session state`, async ({ page }) => {
+    await installAudioBrowser(page);
+    await page.setViewportSize({ width: 320, height: 900 });
+    const preferences = {
+      version: 1,
+      hardwareDirectMonitoringGuidanceDismissed: true,
+      controls: {
+        ...DEFAULT_AMP_CONTROLS,
+        ampModel: 'clean-tube', cleanGainDb: 6, bassDb: -3, middleDb: 2, trebleDb: 4,
+        eqBypassed: true, compressionAmount: 72, compressionBypassed: false, masterVolumeDb: -12,
+        reverbProfile: profile, reverbAmount: 63, reverbBypassed: index % 2 === 0,
+        reverbSettings: Object.fromEntries((Object.keys(REVERB_PROFILES) as ReverbProfile[]).map((id) => [
+          id, Object.fromEntries(reverbControlEntries(id).map(([key, definition]) => [key, definition.maximum])),
+        ])),
+      },
+    };
+    // Seed once so reload verifies the app's saved reset rather than reseeding it.
+    await page.goto('./');
+    await page.evaluate(({ key, value }) => localStorage.setItem(key, JSON.stringify(value)), {
+      key: SAVED_CONTROL_SETTINGS_STORAGE_KEY, value: preferences,
+    });
+    await page.reload();
+    const module = page.getByRole('combobox', { name: 'Reverb Module' });
+    // Switching before resetting also verifies the handler uses the current selection.
+    await module.selectOption(profile === 'studio-plate' ? 'jazz-room' : 'studio-plate');
+    await module.selectOption(profile);
+    await page.getByRole('button', { name: 'Connect Input', exact: true }).click();
+    await page.getByRole('button', { name: 'Enable Monitoring', exact: true }).click();
+    await expect(page.locator('#monitoring-state')).toHaveText('On');
+    const reset = page.getByRole('button', { name: 'Reset This Reverb', exact: true });
+    await reset.focus();
+    await reset.press('Enter');
+    await expect(reset).toBeFocused();
+    await expect(module).toHaveValue(profile);
+    await expect(page.getByLabel('Enable Reverb')).toBeChecked({ checked: !preferences.controls.reverbBypassed });
+    await expect(page.getByLabel('Reverb value')).toHaveValue('63');
+    await expect(page.locator('#monitoring-state')).toHaveText('On');
+    await expect.poll(() => page.evaluate(() => (window as Window & { captureRequests?: number }).captureRequests)).toBe(1);
+    await expect(page.locator('body').evaluate((body) => body.scrollWidth)).resolves.toBeLessThanOrEqual(320);
+
+    const expected = {
+      ...preferences,
+      controls: { ...preferences.controls, reverbSettings: {
+        ...preferences.controls.reverbSettings, [profile]: DEFAULT_REVERB_SETTINGS[profile],
+      } },
+    };
+    const savedPreferences = () => page.evaluate((key) => JSON.parse(localStorage.getItem(key) ?? '{}'), SAVED_CONTROL_SETTINGS_STORAGE_KEY);
+    await expect.poll(savedPreferences).toEqual(expected);
+    await expect(page.locator('#reverb-advanced')).not.toHaveAttribute('open');
+    await page.locator('#reverb-advanced summary').click();
+    for (const [key, definition] of reverbControlEntries(profile)) {
+      await expect(page.locator(`#reverb-${key}-value`)).toHaveValue(definition.defaultValue.toFixed(definition.fractionDigits));
+      await expect(page.locator(`#reverb-${key}-slider`)).toHaveValue(String(definition.defaultValue));
+    }
+    await page.reload();
+    await expect(module).toHaveValue(profile);
+    await expect.poll(savedPreferences).toEqual(expected);
+  });
+}
+
+test('shows module-specific accordions, keeps edits focused, and restores every module independently', async ({ page }) => {
+  await installAudioBrowser(page);
+  await page.setViewportSize({ width: 320, height: 900 });
+  await page.goto('./');
+  const module = page.getByRole('combobox', { name: 'Reverb Module' });
+  const main = page.locator('#reverb-main');
+  const advanced = page.locator('#reverb-advanced');
+  await expect(main).toHaveAttribute('open', '');
+  await expect(advanced).not.toHaveAttribute('open');
+  await advanced.locator('summary').focus();
+  await advanced.locator('summary').press('Enter');
+  await expect(advanced).toHaveAttribute('open', '');
+
+  const modules = [
+    { id: 'jazz-room', main: ['Reverb', 'Decay', 'Tone'], advanced: ['Size', 'Early/Late'], edit: 'Size', value: '73' },
+    { id: 'studio-chamber', main: ['Reverb', 'Decay', 'Pre-delay', 'Tone'], advanced: ['Low Cut', 'Diffusion'], edit: 'Low Cut', value: '240' },
+    { id: 'studio-plate', main: ['Reverb', 'Decay', 'Pre-delay', 'Tone'], advanced: ['Damping'], edit: 'Damping', value: '81' },
+    { id: 'fender-spring', main: ['Reverb', 'Tone', 'Dwell'], advanced: ['Decay'], edit: 'Dwell', value: '70' },
+    { id: 'polytone-spring', main: ['Reverb', 'Tone', 'Decay'], advanced: ['Low Cut'], edit: 'Tone', value: '-4.0' },
+    { id: 'digital-room', main: ['Reverb', 'Decay', 'Size', 'Tone'], advanced: ['Pre-delay', 'Diffusion'], edit: 'Diffusion', value: '42' },
+    { id: 'digital-hall', main: ['Reverb', 'Decay', 'Pre-delay', 'Damping'], advanced: ['Size', 'Modulation Depth', 'Modulation Rate'], edit: 'Modulation Depth', value: '63' },
+  ];
+  for (const item of modules) {
+    await module.selectOption(item.id);
+    await expect(main.locator('input[type="number"]')).toHaveCount(item.main.length);
+    await expect(advanced.locator('input[type="number"]')).toHaveCount(item.advanced.length);
+    for (const label of item.main) await expect(main.getByLabel(`${label} value`, { exact: true })).toBeVisible();
+    for (const label of item.advanced) await expect(advanced.getByLabel(`${label} value`, { exact: true })).toBeVisible();
+    const input = page.getByLabel(`${item.edit} value`, { exact: true });
+    await input.fill(item.value);
+    await expect(input).toBeFocused();
+    await expect(page.getByLabel(`${item.edit} slider`, { exact: true })).toHaveValue(String(Number(item.value)));
+    await expect(page.getByLabel('Enable Reverb')).not.toBeChecked();
+  }
+  const rate = page.getByLabel('Modulation Rate value');
+  await rate.fill('100');
+  await expect(rate).toHaveValue('5.00');
+  await rate.fill('');
+  await rate.press('Tab');
+  await expect(rate).toHaveValue('5.00');
+  await page.getByLabel('Modulation Depth slider').focus();
+  await page.getByLabel('Modulation Depth slider').press('ArrowRight');
+  await expect(page.getByLabel('Modulation Depth value')).toHaveValue('64');
+  modules[6].value = '64';
+  await expect(page.locator('body').evaluate((body) => body.scrollWidth)).resolves.toBeLessThanOrEqual(320);
+
+  await page.reload();
+  await expect(module).toHaveValue('digital-hall');
+  await expect(advanced).not.toHaveAttribute('open');
+  await advanced.locator('summary').click();
+  for (const item of modules) {
+    await module.selectOption(item.id);
+    await expect(page.getByLabel(`${item.edit} value`, { exact: true })).toHaveValue(item.value);
+  }
+  await page.getByRole('button', { name: 'Connect Input', exact: true }).click();
+  await expect(advanced).toHaveAttribute('open', '');
+  await page.getByLabel('Enable Reverb').check();
+  await page.getByRole('button', { name: 'Enable Monitoring', exact: true }).click();
+  await page.getByRole('button', { name: 'Checked — Enable Monitoring' }).click();
+  await page.getByLabel('Decay value').fill('4');
+  await expect(page.locator('#monitoring-state')).toHaveText('On');
+  await expect.poll(() => page.evaluate(() => (window as Window & { captureRequests?: number }).captureRequests)).toBe(1);
+  await page.getByRole('button', { name: 'Reset Controls' }).click();
+  await expect(page.getByLabel('Decay value')).toHaveValue('1.50');
+  await module.selectOption('fender-spring');
+  await expect(page.getByLabel('Dwell value')).toHaveValue('0');
+  await module.selectOption('digital-hall');
+  await expect(page.getByLabel('Modulation Depth value')).toHaveValue('0');
+  await expect(page.getByLabel('Modulation Rate value')).toHaveValue('0.30');
+  await expect(page.locator('#monitoring-state')).toHaveText('On');
 });
 
 test('synchronizes, clamps, and restores controls without restoring Processed Monitoring', async ({ page }) => {
@@ -301,6 +526,7 @@ test('Reset Controls restores sound defaults without changing connection, monito
   expect(saved).toEqual({
     version: 1,
     controls: {
+      ampModel: 'clean-voice',
       cleanGainDb: 0,
       bassDb: 0,
       middleDb: 0,
@@ -308,6 +534,8 @@ test('Reset Controls restores sound defaults without changing connection, monito
       eqBypassed: false,
       compressionAmount: 25,
       compressionBypassed: true,
+      reverbProfile: 'studio-plate',
+      reverbSettings: DEFAULT_REVERB_SETTINGS,
       reverbAmount: 20,
       reverbBypassed: true,
       masterVolumeDb: -18,

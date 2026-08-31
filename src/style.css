@@ -51,6 +51,7 @@
   }
 
   button:focus-visible,
+  summary:focus-visible,
   select:focus-visible,
   input:focus-visible {
     @apply outline-none ring-[3px] ring-ring/50;

@@ -13,7 +13,7 @@ The sparkling, high-headroom tonal identity that guides the initial amp chain an
 _Avoid_: Fender clone, Silverface clone, Blackface clone
 
 **Amp Chain**:
-The fixed first-release sequence Clean Gain, Three-Band EQ, Compression, Reverb, and Master Volume that transforms the Live Guitar Input before Processed Monitoring; Noise Gate is reserved ahead of Clean Gain for a later release.
+The fixed sequence Clean Gain, selected Amp Model, Three-Band EQ, Compression, Reverb, and Master Volume that transforms the Live Guitar Input before Processed Monitoring; Noise Gate is reserved ahead of Clean Gain for a later release.
 _Avoid_: Pedalboard, arbitrary graph
 
 **Live Guitar Input**:
@@ -57,8 +57,12 @@ A planned Amp Chain stage, positioned before Clean Gain, that attenuates the sig
 _Avoid_: Noise suppression, microphone cleanup
 
 **Clean Gain**:
-The first-release Gain stage, which changes signal level without intentionally adding saturation or distortion.
+The linear Gain stage that changes signal level before the selected Amp Model; raising it also drives either Clean Tube model harder when selected.
 _Avoid_: Overdrive, distortion, saturation
+
+**Amp Model**:
+The selectable voicing after Clean Gain and before Three-Band EQ. Clean Voice leaves the signal unchanged; Clean Tube adds original tube-inspired filtering and gentle saturation; Clean Tube Warm adds fuller low mids, darker highs, and earlier breakup. Only the selected model remains active after its switching transition. Selection does not change the other controls or monitoring state.
+_Avoid_: Preset, named amp replica, circuit-accurate simulation
 
 **Three-Band EQ**:
 The fixed bass, middle, and treble tone-shaping stage in the Amp Chain.
@@ -69,8 +73,12 @@ A bypassable Amp Chain stage whose single Amount control moves from effectively 
 _Avoid_: Limiter, individual compressor parameters
 
 **Reverb**:
-A bypassable Amp Chain stage that proves a simple spatial tail through a single Amount control without promising an authentic hardware model.
-_Avoid_: Authentic plate model, configurable reverb
+A bypassable Amp Chain stage with seven switchable modules and a shared Amount control for the wet return. The dry signal stays unchanged, and switching fades and retires the old tail. Studio Plate preserves the original sound; the other modules are original synthetic voices, not authentic hardware models.
+_Avoid_: Circuit-accurate reverb, measured tank response
+
+**Reverb Module**:
+The selected reverb voice: Jazz Room, Studio Chamber, Studio Plate, Fender Spring, Polytone Spring, Digital Room, or Digital Hall. Each has its own saved parameters in Main Controls and Advanced Controls accordions. Selection and parameters remain saved while bypassed and do not change Amount, input capture, or monitoring. Only the selected module remains active after its switching transition.
+_Avoid_: Amp Model, full-rig preset
 
 **Master Volume**:
 The final player-controlled Amp Chain stage that can attenuate, but not boost, the level sent into Processed Monitoring.
