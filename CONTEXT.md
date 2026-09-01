@@ -1,6 +1,6 @@
 # Browser Amp
 
-An interactive web-audio experience for exploring a guitar-amp signal path. Its initial identity is a Fender-inspired clean amp, not a general-purpose audio graph editor.
+An interactive web-audio experience for shaping a live guitar signal through a fixed amp and studio chain.
 
 ## Language
 
@@ -8,12 +8,8 @@ An interactive web-audio experience for exploring a guitar-amp signal path. Its 
 The interactive experience for shaping a Live Guitar Input through an intentionally ordered Amp Chain.
 _Avoid_: General Web Audio workbench, patch builder
 
-**Clean Voice**:
-The sparkling, high-headroom tonal identity that guides the initial amp chain and is shaped by the player rather than modeled after a named amplifier.
-_Avoid_: Fender clone, Silverface clone, Blackface clone
-
 **Amp Chain**:
-The fixed sequence Clean Gain, selected Amp Model, Three-Band EQ, Compression, Reverb, and Master Volume that transforms the Live Guitar Input before Processed Monitoring; Noise Gate is reserved ahead of Clean Gain for a later release.
+The fixed sequence Input Trim, Amp Model, Cabinet, Noise Suppression, Studio Compression, Studio EQ, Reverb, and Master that transforms the Live Guitar Input before Processed Monitoring.
 _Avoid_: Pedalboard, arbitrary graph
 
 **Live Guitar Input**:
@@ -49,27 +45,27 @@ Monitoring in which listeners hear the Amp Chain's output rather than a parallel
 _Avoid_: Dry monitoring, dry/wet blend
 
 **Stage Bypass**:
-A control that immediately removes a bypassable Amp Chain stage from Processed Monitoring without changing that stage's settings; the first release exposes it for Compression and Reverb, and bypassing Reverb also ends its existing tail.
+A control that removes Noise Suppression, Studio Compression, Studio EQ, or Reverb without changing its settings. Reverb bypass also ends the existing tail.
 _Avoid_: Per-parameter bypass, dry monitoring
 
-**Noise Gate**:
-A planned Amp Chain stage, positioned before Clean Gain, that attenuates the signal when its level falls beneath a player-controlled threshold.
-_Avoid_: Noise suppression, microphone cleanup
+**Noise Suppression**:
+A gentle downward expander after Cabinet, controlled by the trimmed input. Threshold chooses when it opens, Range limits attenuation, and Release controls how gradually it closes.
+_Avoid_: Browser voice processing, microphone cleanup, Noise Gate
 
-**Clean Gain**:
-The linear Gain stage that changes signal level before the selected Amp Model; raising it also drives either Clean Tube model harder when selected.
+**Input Trim**:
+The global calibration gain before the selected Amp Model. It does not define an amp's drive or listening level.
 _Avoid_: Overdrive, distortion, saturation
 
 **Amp Model**:
-The selectable voicing after Clean Gain and before Three-Band EQ. Clean Voice leaves the signal unchanged; Clean Tube adds original tube-inspired filtering and gentle saturation; Clean Tube Warm adds fuller low mids, darker highs, and earlier breakup. Only the selected model remains active after its switching transition. Selection does not change the other controls or monitoring state.
+One of six selectable jazz-oriented voicings. Each owns its gain staging, tone controls, and nonlinear behavior and remembers its settings independently.
 _Avoid_: Preset, named amp replica, circuit-accurate simulation
 
-**Three-Band EQ**:
-The fixed bass, middle, and treble tone-shaping stage in the Amp Chain.
+**Studio EQ**:
+The bypassable three-band EQ after Studio Compression, used for final polish rather than amp identity.
 _Avoid_: Parametric EQ, graphic EQ
 
-**Compression**:
-A bypassable Amp Chain stage whose single Amount control moves from effectively uncompressed sound toward progressively firmer dynamics control.
+**Studio Compression**:
+A bypassable post-cabinet stage with Amount, Level Match, and a live Reduction meter. Level Match is a stable trim, not signal-following gain.
 _Avoid_: Limiter, individual compressor parameters
 
 **Reverb**:
@@ -82,7 +78,7 @@ _Avoid_: Amp Model, full-rig preset
 
 **Master Volume**:
 The final player-controlled Amp Chain stage that can attenuate, but not boost, the level sent into Processed Monitoring.
-_Avoid_: Clean Gain, Enable Monitoring
+_Avoid_: Input Trim, Enable Monitoring
 
 **Saved Control Settings**:
 The last control values and bypass states restored on a later visit without restoring an Input Connection or enabling Processed Monitoring.

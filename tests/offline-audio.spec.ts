@@ -1,4 +1,6 @@
 import { expect, test } from '@playwright/test';
+import { DEFAULT_JAZZ_AMP_SETTINGS, type JazzAmpId, type JazzAmpSettings } from '../src/ampModels';
+import type { AmpControlSettings } from '../src/controls';
 
 test('every impulse control changes the response in its intended direction and remains finite at its limits', async ({ page }) => {
   await page.goto('./');
@@ -540,6 +542,20 @@ interface RenderOptions {
   readonly controls?: Partial<import('../src/audio/types').AmpControlSettings>;
 }
 
+function modelControls<Id extends JazzAmpId>(
+  ampModel: Id,
+  changes: Partial<JazzAmpSettings[Id]> = {},
+): Partial<AmpControlSettings> {
+  return {
+    ampModel,
+    ampSettings: {
+      ...DEFAULT_JAZZ_AMP_SETTINGS,
+      [ampModel]: { ...DEFAULT_JAZZ_AMP_SETTINGS[ampModel], ...changes },
+    },
+    masterVolumeDb: 0,
+  };
+}
+
 async function renderAmp(page: import('@playwright/test').Page, options: RenderOptions): Promise<number> {
   return page.evaluate(async ({ frequency, amplitude = 0.1, controls = {} }) => {
     const harnessPath = './tests/offlineAudioHarness.ts';
@@ -560,7 +576,7 @@ async function renderAmp(page: import('@playwright/test').Page, options: RenderO
   }, options);
 }
 
-test('renders a smoothed linear Clean Gain through Master Volume without saturation', async ({ page }) => {
+test('renders a smoothed linear Input Trim through Master Volume without saturation', async ({ page }) => {
   await page.goto('./');
 
   const samples = await page.evaluate(async () => {
@@ -593,23 +609,31 @@ test('renders a smoothed linear Clean Gain through Master Volume without saturat
   expect(samples.afterRamp).toBeCloseTo(0.3972, 3);
 });
 
-const MAX_TUBE_DC_OFFSET = 0.000_2;
+const MAX_AMP_DC_OFFSET = 0.000_2;
 
 for (const sampleRate of [44_100, 48_000]) {
-  test(`Clean Tube models stay stable and break up progressively at ${sampleRate} Hz`, async ({ page }) => {
+  test(`six amp models are stable, level-matched, and respond to drive at ${sampleRate} Hz`, async ({ page }) => {
     await page.goto('./');
-    const tones = await page.evaluate(async (sampleRate) => {
+    const results = await page.evaluate(async (sampleRate) => {
       const harnessPath = './tests/offlineAudioHarness.ts';
+      const settingsPath = './src/ampModels.ts';
       const { connectOfflineEngine, rms, peak } = await import(harnessPath) as typeof import('./offlineAudioHarness');
-      async function render(ampModel: import('../src/controls').AmpModel, amplitude: number, cleanGainDb = 0) {
+      const { AMP_MODELS, DEFAULT_JAZZ_AMP_SETTINGS } = await import(settingsPath) as typeof import('../src/ampModels');
+      type Id = keyof typeof AMP_MODELS;
+      async function render(ampModel: Id, amplitude: number, drive?: number, changes: Record<string, number | string> = {}) {
         const context = new OfflineAudioContext(1, sampleRate, sampleRate);
         const source = context.createOscillator();
         const input = context.createGain();
         source.frequency.value = 200;
         input.gain.value = amplitude;
         source.connect(input);
-        const engine = await connectOfflineEngine(context, input, { ampModel, cleanGainDb, masterVolumeDb: 0 });
-        if (!engine.snapshot.monitoring) throw new Error('Offline engine did not connect');
+        const defaults = DEFAULT_JAZZ_AMP_SETTINGS[ampModel] as unknown as Record<string, number | string>;
+        const driveKey = ampModel === 'amp.studio-clean-v1' ? 'gain' : 'volume';
+        const ampSettings = {
+          ...DEFAULT_JAZZ_AMP_SETTINGS,
+          [ampModel]: { ...defaults, ...changes, ...(drive === undefined ? {} : { [driveKey]: drive }) },
+        };
+        await connectOfflineEngine(context, input, { ampModel, ampSettings, masterVolumeDb: 0 });
         source.start();
         const samples = (await context.startRendering()).getChannelData(0);
         const start = Math.round(sampleRate * 0.5);
@@ -625,112 +649,72 @@ for (const sampleRate of [44_100, 48_000]) {
           return 2 * Math.hypot(real, imaginary) / length;
         });
         return {
-          level: rms(samples, sampleRate, 0.5, 1),
-          peak: peak(samples, sampleRate, 0.5, 1),
+          level: rms(samples, sampleRate, 0.5, 1), peak: peak(samples, sampleRate, 0.5, 1),
           distortion: Math.hypot(...harmonics.slice(1)) / (harmonics[0] || 1),
-          secondHarmonic: harmonics[1],
           dc: samples.slice(start).reduce((sum, value) => sum + value, 0) / length,
           finite: samples.every(Number.isFinite),
         };
       }
+      const entries = [];
+      for (const id of Object.keys(AMP_MODELS) as Id[]) entries.push([id, {
+        normal: await render(id, 0.1), driven: await render(id, 0.1, 9), silent: await render(id, 0, 9),
+      }] as const);
       return {
-        clean: await render('clean-voice', 0.1),
-        original: {
-          light: await render('clean-tube', 0.1),
-          driven: await render('clean-tube', 0.1, 12),
-          hot: await render('clean-tube', 1, 24),
-          silent: await render('clean-tube', 0, 24),
+        models: Object.fromEntries(entries) as Record<Id, { normal: Awaited<ReturnType<typeof render>>; driven: Awaited<ReturnType<typeof render>>; silent: Awaited<ReturnType<typeof render>> }>,
+        highHeadroom: {
+          normal: await render('amp.high-headroom-american-v1', 0.7, 8, { headroom: 'normal' }),
+          ultra: await render('amp.high-headroom-american-v1', 0.7, 8, { headroom: 'ultra' }),
         },
-        warm: {
-          light: await render('clean-tube-warm', 0.1),
-          driven: await render('clean-tube-warm', 0.1, 12),
-          hot: await render('clean-tube-warm', 1, 24),
-          silent: await render('clean-tube-warm', 0, 24),
+        studioHeadroom: {
+          high: await render('amp.studio-clean-v1', 0.7, 7, { headroom: 'high' }),
+          maximum: await render('amp.studio-clean-v1', 0.7, 7, { headroom: 'maximum' }),
         },
       };
     }, sampleRate);
 
-    await test.step('Clean Voice remains a transparent baseline', () => {
-      expect(tones.clean.level).toBeCloseTo(0.1 / Math.sqrt(2), 5);
-      expect(tones.clean.distortion).toBeLessThan(0.0001);
-    });
-
-    const models = [
-      { name: 'clean-tube', tones: tones.original },
-      { name: 'clean-tube-warm', tones: tones.warm },
-    ] as const;
-    for (const model of models) {
-      await test.step(`${model.name} progresses from light color to heavy breakup`, () => {
-        const { light, driven, hot } = model.tones;
-        const lightLevelRatio = light.level / tones.clean.level;
-        expect(lightLevelRatio, `${model.name} light-input level ratio`).toBeGreaterThan(0.75);
-        expect(lightLevelRatio, `${model.name} light-input level ratio`).toBeLessThan(1.05);
-        expect(light.distortion, `${model.name} light-input distortion`).toBeGreaterThan(0.001);
-        expect(light.distortion, `${model.name} light-input distortion`).toBeLessThan(0.02);
-        expect(light.secondHarmonic, `${model.name} light-input second harmonic`).toBeGreaterThan(tones.clean.secondHarmonic * 100);
-        expect(driven.distortion, `${model.name} driven distortion`).toBeGreaterThan(light.distortion * 2);
-        expect(driven.level, `${model.name} driven level`).toBeGreaterThan(light.level * 2);
-        expect(driven.level, `${model.name} driven level`).toBeLessThan(light.level * 4);
-        expect(hot.distortion, `${model.name} hot-input distortion`).toBeGreaterThan(driven.distortion);
-        expect(hot.peak, `${model.name} hot-input peak`).toBeLessThan(1);
-      });
-    }
-
-    await test.step('all operating points remain finite, centered, and silent at zero input', () => {
-      expect(tones.clean.finite, 'clean-voice light-input samples').toBe(true);
-      expect(Math.abs(tones.clean.dc), 'clean-voice light-input DC offset').toBeLessThan(MAX_TUBE_DC_OFFSET);
-      for (const model of models) {
-        for (const [operatingPoint, tone] of Object.entries(model.tones)) {
-          const label = `${model.name} ${operatingPoint}`;
-          expect(tone.finite, `${label} samples`).toBe(true);
-          // Web Audio filter and oversampling implementations vary slightly by
-          // platform. This limit catches meaningful DC without requiring
-          // sample-identical DSP output from every Chromium build.
-          expect(Math.abs(tone.dc), `${label} DC offset`).toBeLessThan(MAX_TUBE_DC_OFFSET);
-        }
-        expect(model.tones.silent.peak, `${model.name} silent peak`).toBe(0);
+    const clean = results.models['amp.studio-clean-v1'];
+    expect(clean.normal.level).toBeCloseTo(0.1 / Math.sqrt(2), 5);
+    expect(clean.normal.distortion).toBeLessThan(0.0001);
+    for (const [id, tones] of Object.entries(results.models)) {
+      expect(tones.normal.finite, `${id} normal is finite`).toBe(true);
+      expect(tones.driven.finite, `${id} driven is finite`).toBe(true);
+      expect(Math.abs(tones.normal.dc), `${id} normal DC`).toBeLessThan(MAX_AMP_DC_OFFSET);
+      expect(Math.abs(tones.driven.dc), `${id} driven DC`).toBeLessThan(MAX_AMP_DC_OFFSET);
+      expect(tones.silent.peak, `${id} is silent at zero input`).toBe(0);
+      const ratio = tones.normal.level / clean.normal.level;
+      expect(ratio, `${id} default level`).toBeGreaterThan(0.89);
+      expect(ratio, `${id} default level`).toBeLessThan(1.12);
+      if (id !== 'amp.studio-clean-v1') {
+        expect(tones.driven.distortion, `${id} distortion rises with drive`).toBeGreaterThan(tones.normal.distortion * 1.15);
       }
-    });
-
-    await test.step('Clean Tube Warm breaks up earlier than the original voice', () => {
-      expect(tones.warm.driven.distortion).toBeGreaterThan(tones.original.driven.distortion * 1.25);
-      expect(tones.warm.driven.level / tones.warm.light.level).toBeLessThan(
-        tones.original.driven.level / tones.original.light.level,
-      );
-    });
+    }
+    expect(results.models['amp.small-tweed-combo-v1'].normal.distortion).toBeGreaterThan(results.models['amp.blackface-combo-v1'].normal.distortion * 2);
+    expect(results.models['amp.high-headroom-american-v1'].normal.distortion).toBeLessThan(results.models['amp.blackface-combo-v1'].normal.distortion);
+    expect(results.highHeadroom.normal.distortion).toBeGreaterThan(results.highHeadroom.ultra.distortion * 1.5);
+    expect(results.highHeadroom.normal.level / results.highHeadroom.ultra.level).toBeGreaterThan(0.9);
+    expect(results.studioHeadroom.high.distortion).toBeGreaterThan(results.studioHeadroom.maximum.distortion * 10);
   });
 }
 
-test('Clean Tube Warm has fuller low mids and darker highs than the original tube voice', async ({ page }) => {
+test('model-specific switches and tone controls move sound in their documented directions', async ({ page }) => {
   await page.goto('./');
-  const responses = [];
-  for (const ampModel of ['clean-tube', 'clean-tube-warm'] as const) {
-    const controls = { ampModel, masterVolumeDb: 0 };
-    responses.push({
-      rumble: await renderAmp(page, { frequency: 10, amplitude: 0.01, controls }),
-      bass: await renderAmp(page, { frequency: 80, amplitude: 0.01, controls }),
-      lowMid: await renderAmp(page, { frequency: 400, amplitude: 0.01, controls }),
-      mid: await renderAmp(page, { frequency: 1_000, amplitude: 0.01, controls }),
-      high: await renderAmp(page, { frequency: 6_000, amplitude: 0.01, controls }),
-    });
-  }
-  const [original, warm] = responses;
-  expect(warm.lowMid / warm.mid).toBeGreaterThan(original.lowMid / original.mid * 1.1);
-  expect(warm.high / warm.mid).toBeLessThan(original.high / original.mid * 0.75);
-  expect(warm.rumble).toBeLessThan(warm.bass * 0.05);
-});
+  const warmNormal = modelControls('amp.warm-jazz-combo-v1');
+  const warmLow = modelControls('amp.warm-jazz-combo-v1', { input: 'low' });
+  expect(await renderAmp(page, { frequency: 200, controls: warmLow })).toBeLessThan(await renderAmp(page, { frequency: 200, controls: warmNormal }) * 0.65);
+  expect(await renderAmp(page, { frequency: 6_000, controls: modelControls('amp.warm-jazz-combo-v1', { color: 'dark' }) }))
+    .toBeLessThan(await renderAmp(page, { frequency: 6_000, controls: modelControls('amp.warm-jazz-combo-v1', { color: 'bright' }) }) * 0.65);
 
-test('Clean Tube rolls off rumble and harsh high frequencies without changing Clean Voice', async ({ page }) => {
-  await page.goto('./');
-  const controls = { ampModel: 'clean-tube', masterVolumeDb: 0 } as const;
-  const low = await renderAmp(page, { frequency: 20, controls });
-  const body = await renderAmp(page, { frequency: 200, controls });
-  const high = await renderAmp(page, { frequency: 10_000, controls });
-  const cleanHigh = await renderAmp(page, { frequency: 10_000, controls: { masterVolumeDb: 0 } });
+  const blackfaceBright = modelControls('amp.blackface-combo-v1', { volume: 2, bright: 'on' });
+  const blackfaceOff = modelControls('amp.blackface-combo-v1', { volume: 2, bright: 'off' });
+  expect(await renderAmp(page, { frequency: 6_000, controls: blackfaceBright })).toBeGreaterThan(await renderAmp(page, { frequency: 6_000, controls: blackfaceOff }) * 1.5);
 
-  expect(low).toBeLessThan(body * 0.25);
-  expect(high).toBeLessThan(body * 0.25);
-  expect(cleanHigh).toBeCloseTo(1 / Math.sqrt(2), 4);
+  const tweedLow = modelControls('amp.small-tweed-combo-v1', { input: 'low' });
+  const tweedNormal = modelControls('amp.small-tweed-combo-v1', { input: 'normal' });
+  expect(await renderAmp(page, { frequency: 200, controls: tweedLow })).toBeLessThan(await renderAmp(page, { frequency: 200, controls: tweedNormal }) * 0.65);
+
+  const chimeDark = modelControls('amp.british-chime-v1', { cut: 10 });
+  const chimeOpen = modelControls('amp.british-chime-v1', { cut: 0 });
+  expect(await renderAmp(page, { frequency: 6_000, controls: chimeDark })).toBeLessThan(await renderAmp(page, { frequency: 6_000, controls: chimeOpen }) * 0.5);
 });
 
 test('rapid amp model switches crossfade and return to the original clean signal', async ({ page }) => {
@@ -745,12 +729,12 @@ test('rapid amp model switches crossfade and return to the original clean signal
     source.offset.value = 0.25;
     const engine = await connectOfflineEngine(context, source, { masterVolumeDb: 0 });
     const switches = [
-      { time: 0.2, model: 'clean-tube' },
-      { time: 0.208, model: 'clean-tube-warm' },
-      { time: 0.216, model: 'clean-tube' },
-      { time: 0.224, model: 'clean-voice' },
-      { time: 0.232, model: 'clean-tube-warm' },
-      { time: 0.5, model: 'clean-voice' },
+      { time: 0.2, model: 'amp.blackface-combo-v1' },
+      { time: 0.208, model: 'amp.small-tweed-combo-v1' },
+      { time: 0.216, model: 'amp.blackface-combo-v1' },
+      { time: 0.224, model: 'amp.studio-clean-v1' },
+      { time: 0.232, model: 'amp.small-tweed-combo-v1' },
+      { time: 0.5, model: 'amp.studio-clean-v1' },
     ] as const;
     const suspensions = switches.map(({ time }) => context.suspend(time));
     source.start();
@@ -775,6 +759,152 @@ test('rapid amp model switches crossfade and return to the original clean signal
   expect(transition.restored).toBeCloseTo(transition.initial, 5);
   expect(transition.maximumStep).toBeLessThan(0.002);
   expect(transition.monitoring).toBe(true);
+});
+
+for (const sampleRate of [44_100, 48_000]) {
+  test(`cabinet voicings are finite, level-matched, and keep distinct response fingerprints at ${sampleRate} Hz`, async ({ page }) => {
+    await page.goto('./');
+    const results = await page.evaluate(async (sampleRate) => {
+      const modulePath = './src/audio/cabinetModel.ts';
+      const settingsPath = './src/cabinetModels.ts';
+      const harnessPath = './tests/offlineAudioHarness.ts';
+      const { CabinetModelStage } = await import(modulePath) as typeof import('../src/audio/cabinetModel');
+      const { CABINET_MODELS } = await import(settingsPath) as typeof import('../src/cabinetModels');
+      const { rms } = await import(harnessPath) as typeof import('./offlineAudioHarness');
+      type Id = keyof typeof CABINET_MODELS;
+      const ids = Object.keys(CABINET_MODELS) as Id[];
+      const frequencies = [70, 120, 230, 800, 2_500, 6_000, 10_000];
+
+      async function sineLevel(id: Id, frequency: number) {
+        const context = new OfflineAudioContext(1, sampleRate * 0.4, sampleRate);
+        const source = context.createOscillator();
+        const input = context.createGain();
+        const stage = new CabinetModelStage(context, id);
+        source.frequency.value = frequency;
+        input.gain.value = 0.05;
+        source.connect(input).connect(stage.input);
+        stage.output.connect(context.destination);
+        source.start();
+        const samples = (await context.startRendering()).getChannelData(0);
+        stage.disconnect();
+        return { level: rms(samples, sampleRate, 0.25, 0.4), finite: samples.every(Number.isFinite) };
+      }
+
+      async function programLevel(id: Id) {
+        const context = new OfflineAudioContext(1, sampleRate * 0.5, sampleRate);
+        const stage = new CabinetModelStage(context, id);
+        const voices = [[82, 1], [147, 0.9], [330, 0.8], [740, 0.68], [1_660, 0.52], [3_720, 0.34]] as const;
+        for (const [frequency, amplitude] of voices) {
+          const source = context.createOscillator();
+          const gain = context.createGain();
+          source.frequency.value = frequency;
+          gain.gain.value = amplitude * 0.015;
+          source.connect(gain).connect(stage.input);
+          source.start();
+        }
+        stage.output.connect(context.destination);
+        const samples = (await context.startRendering()).getChannelData(0);
+        stage.disconnect();
+        return rms(samples, sampleRate, 0.3, 0.5);
+      }
+
+      const responses = {} as Record<Id, { levels: number[]; finite: boolean; program: number }>;
+      for (const id of ids) {
+        const rendered = [];
+        for (const frequency of frequencies) rendered.push(await sineLevel(id, frequency));
+        responses[id] = {
+          levels: rendered.map(({ level }) => level),
+          finite: rendered.every(({ finite }) => finite),
+          program: await programLevel(id),
+        };
+      }
+      return { frequencies, responses };
+    }, sampleRate);
+
+    const direct = results.responses['cab.direct-full-range-v1'];
+    for (const [id, response] of Object.entries(results.responses)) {
+      expect(response.finite, `${id} is finite`).toBe(true);
+      for (let index = 0; index < results.frequencies.length; index += 1) {
+        const relativeDb = 20 * Math.log10(response.levels[index] / direct.levels[index]);
+        if (id === 'cab.direct-full-range-v1') expect(relativeDb, `Direct at ${results.frequencies[index]} Hz`).toBeCloseTo(0, 5);
+      }
+      const programRatio = response.program / direct.program;
+      expect(programRatio, `${id} representative level`).toBeGreaterThan(0.89);
+      expect(programRatio, `${id} representative level`).toBeLessThan(1.12);
+    }
+
+    const processed = Object.entries(results.responses).filter(([id]) => id !== 'cab.direct-full-range-v1');
+    for (let left = 0; left < processed.length; left += 1) {
+      for (let right = left + 1; right < processed.length; right += 1) {
+        const maximumDifferenceDb = Math.max(...processed[left][1].levels.map((level, index) => Math.abs(
+          20 * Math.log10(level / processed[right][1].levels[index]),
+        )));
+        expect(maximumDifferenceDb, `${processed[left][0]} vs ${processed[right][0]}`).toBeGreaterThan(1);
+      }
+    }
+    const index = (frequency: number) => results.frequencies.indexOf(frequency);
+    const compact = results.responses['cab.compact-jazz-1x12-v1'].levels;
+    const americanOne = results.responses['cab.american-open-1x12-v1'].levels;
+    const americanTwo = results.responses['cab.american-open-2x12-v1'].levels;
+    const fourTen = results.responses['cab.open-4x10-v1'].levels;
+    expect(americanOne[index(2_500)]).toBeGreaterThan(compact[index(2_500)]);
+    expect(americanTwo[index(230)]).toBeGreaterThan(americanOne[index(230)]);
+    const fourTenBassRatio = fourTen[index(70)] / fourTen[index(120)];
+    for (const response of [compact, americanOne, americanTwo]) {
+      expect(fourTenBassRatio).toBeLessThan(response[index(70)] / response[index(120)]);
+    }
+    for (const response of [compact, americanOne, americanTwo, fourTen]) {
+      expect(response[index(10_000)]).toBeLessThan(response[index(800)] * 0.7);
+    }
+  });
+}
+
+test('rapid cabinet switches crossfade without recapturing, silence, or an output click', async ({ page }) => {
+  await page.goto('./');
+  const result = await page.evaluate(async () => {
+    const modulePath = './src/audio/cabinetModel.ts';
+    const harnessPath = './tests/offlineAudioHarness.ts';
+    const { CabinetModelStage } = await import(modulePath) as typeof import('../src/audio/cabinetModel');
+    const { maximumSampleStep, rms } = await import(harnessPath) as typeof import('./offlineAudioHarness');
+    const sampleRate = 48_000;
+    const context = new OfflineAudioContext(1, sampleRate, sampleRate);
+    const resumeRendering = context.resume.bind(context);
+    const source = context.createOscillator();
+    const input = context.createGain();
+    const stage = new CabinetModelStage(context, 'cab.direct-full-range-v1');
+    source.frequency.value = 220;
+    input.gain.value = 0.1;
+    source.connect(input).connect(stage.input);
+    stage.output.connect(context.destination);
+    const switches = [
+      { time: 0.2, model: 'cab.compact-jazz-1x12-v1' },
+      { time: 0.205, model: 'cab.american-open-1x12-v1' },
+      { time: 0.21, model: 'cab.open-4x10-v1' },
+      { time: 0.5, model: 'cab.direct-full-range-v1' },
+    ] as const;
+    const suspensions = switches.map(({ time }) => context.suspend(time));
+    source.start();
+    const rendering = context.startRendering();
+    for (let index = 0; index < switches.length; index += 1) {
+      await suspensions[index];
+      stage.setModel(switches[index].model);
+      await resumeRendering();
+    }
+    const samples = (await rendering).getChannelData(0);
+    stage.disconnect();
+    return {
+      finite: samples.every(Number.isFinite),
+      initial: rms(samples, sampleRate, 0.1, 0.18),
+      switched: rms(samples, sampleRate, 0.3, 0.45),
+      restored: rms(samples, sampleRate, 0.7, 0.9),
+      maximumStep: maximumSampleStep(samples, sampleRate, 0.19, 0.6),
+    };
+  });
+  expect(result.finite).toBe(true);
+  expect(result.initial).toBeCloseTo(0.1 / Math.sqrt(2), 3);
+  expect(result.switched).toBeGreaterThan(0.04);
+  expect(result.restored).toBeCloseTo(result.initial, 3);
+  expect(result.maximumStep).toBeLessThan(0.02);
 });
 
 test('shared switching retires old graphs on audio deadlines without further control changes', async ({ page }) => {
@@ -928,40 +1058,90 @@ test('bypasses Compression without losing Amount and maps Amount toward firm com
   const bypassed = await renderAmp(page, {
     frequency: 440,
     amplitude: 0.5,
-    controls: { compressionAmount: 100, compressionBypassed: true, masterVolumeDb: 0 },
+    controls: { compressionAmount: 100, compressionLevelMatch: false, compressionBypassed: true, masterVolumeDb: 0 },
   });
   const neutral = await renderAmp(page, {
     frequency: 440,
     amplitude: 0.5,
-    controls: { compressionAmount: 0, compressionBypassed: false, masterVolumeDb: 0 },
+    controls: { compressionAmount: 0, compressionLevelMatch: false, compressionBypassed: false, masterVolumeDb: 0 },
   });
   const firm = await renderAmp(page, {
     frequency: 440,
     amplitude: 0.5,
-    controls: { compressionAmount: 100, compressionBypassed: false, masterVolumeDb: 0 },
+    controls: { compressionAmount: 100, compressionLevelMatch: false, compressionBypassed: false, masterVolumeDb: 0 },
   });
 
   expect(neutral).toBeCloseTo(bypassed, 2);
   expect(firm).toBeLessThan(bypassed * 0.75);
 });
 
-test('renders Clean Gain and EQ before Compression, then Reverb and Master Volume', async ({ page }) => {
+test('Level Match keeps representative guitar dynamics close to bypass', async ({ page }) => {
+  await page.goto('./');
+
+  const differencesDb = await page.evaluate(async () => {
+    const harnessPath = './tests/offlineAudioHarness.ts';
+    const { connectOfflineEngine, rms } = await import(harnessPath) as typeof import('./offlineAudioHarness');
+    const sampleRate = 48_000;
+
+    async function render(compressionAmount: number, compressionBypassed: boolean): Promise<number> {
+      const durationSeconds = 2;
+      const context = new OfflineAudioContext(1, sampleRate * durationSeconds, sampleRate);
+      const source = context.createBufferSource();
+      const buffer = context.createBuffer(1, sampleRate * durationSeconds, sampleRate);
+      const samples = buffer.getChannelData(0);
+      for (let index = 0; index < samples.length; index += 1) {
+        const elapsed = index / sampleRate;
+        const pickPhase = elapsed % 0.25;
+        const envelope = 0.55 + 0.45 * Math.exp(-10 * pickPhase);
+        samples[index] = 0.5 * envelope * (
+          0.75 * Math.sin(2 * Math.PI * 110 * elapsed)
+          + 0.2 * Math.sin(2 * Math.PI * 220 * elapsed)
+          + 0.05 * Math.sin(2 * Math.PI * 330 * elapsed)
+        );
+      }
+      source.buffer = buffer;
+      await connectOfflineEngine(context, source, {
+        compressionAmount,
+        compressionLevelMatch: true,
+        compressionBypassed,
+        masterVolumeDb: 0,
+      });
+      source.start();
+      return rms((await context.startRendering()).getChannelData(0), sampleRate, 0.08, 1.9);
+    }
+
+    const bypassed = await render(25, true);
+    const differences = [];
+    for (const amount of [25, 50, 75, 100]) {
+      const matched = await render(amount, false);
+      differences.push({ amount, db: 20 * Math.log10(matched / bypassed) });
+    }
+    return differences;
+  });
+
+  expect(
+    Math.max(...differencesDb.map((difference) => Math.abs(difference.db))),
+    `Level Match differences: ${JSON.stringify(differencesDb)}`,
+  ).toBeLessThanOrEqual(1.5);
+});
+
+test('renders Input Trim before Compression, then EQ, Reverb, and Master Volume', async ({ page }) => {
   await page.goto('./');
 
   const compressed = await renderAmp(page, {
     frequency: 800,
     amplitude: 0.1,
-    controls: { compressionAmount: 100, compressionBypassed: false, reverbAmount: 100, reverbBypassed: false, masterVolumeDb: 0 },
+    controls: { compressionAmount: 100, compressionLevelMatch: false, compressionBypassed: false, reverbAmount: 100, reverbBypassed: false, masterVolumeDb: 0 },
   });
   const gainCompensated = await renderAmp(page, {
     frequency: 800,
     amplitude: 0.1,
-    controls: { cleanGainDb: 12, compressionAmount: 100, compressionBypassed: false, reverbAmount: 100, reverbBypassed: false, masterVolumeDb: -12 },
+    controls: { inputTrimDb: 12, compressionAmount: 100, compressionLevelMatch: false, compressionBypassed: false, reverbAmount: 100, reverbBypassed: false, masterVolumeDb: -12 },
   });
   const eqCompensated = await renderAmp(page, {
     frequency: 800,
     amplitude: 0.1,
-    controls: { middleDb: 12, compressionAmount: 100, compressionBypassed: false, reverbAmount: 100, reverbBypassed: false, masterVolumeDb: -12 },
+    controls: { middleDb: 12, compressionAmount: 100, compressionLevelMatch: false, compressionBypassed: false, reverbAmount: 100, reverbBypassed: false, masterVolumeDb: -12 },
   });
   const reverbAtUnity = await renderAmp(page, {
     frequency: 800,
@@ -987,6 +1167,7 @@ test('renders Clean Gain and EQ before Compression, then Reverb and Master Volum
       source.buffer = input;
       await connectOfflineEngine(context, source, {
         compressionAmount: 100,
+        compressionLevelMatch: false,
         compressionBypassed,
         reverbAmount: 100,
         reverbBypassed: false,
@@ -1005,7 +1186,7 @@ test('renders Clean Gain and EQ before Compression, then Reverb and Master Volum
   });
 
   expect(gainCompensated).toBeLessThan(compressed * 0.6);
-  expect(eqCompensated).toBeLessThan(compressed * 0.6);
+  expect(eqCompensated).toBeCloseTo(compressed, 2);
   expect(reverbAttenuated / reverbAtUnity).toBeCloseTo(10 ** (-12 / 20), 2);
   expect(compressedReverbTail.compressed.early).toBeLessThan(compressedReverbTail.bypassed.early * 0.75);
   expect(compressedReverbTail.compressed.late).toBeLessThan(compressedReverbTail.bypassed.late * 0.75);
@@ -1027,6 +1208,7 @@ test('crossfades Compression Stage Bypass without an output click', async ({ pag
     source.connect(inputGain);
     const engine = await connectOfflineEngine(context, inputGain, {
       compressionAmount: 100,
+      compressionLevelMatch: false,
       compressionBypassed: true,
       masterVolumeDb: 0,
     });

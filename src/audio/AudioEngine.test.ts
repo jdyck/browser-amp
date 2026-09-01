@@ -2,7 +2,7 @@ import { DEFAULT_REVERB_SETTINGS } from '../reverbSettings';
 import { describe, expect, it, vi } from 'vitest';
 import { AudioEngine } from './AudioEngine';
 import type { BrowserAudio } from './browserAudio';
-import { REVERB_PROFILES, type ReverbProfile } from '../controls';
+import { DEFAULT_AMP_CONTROLS, REVERB_PROFILES, type ReverbProfile } from '../controls';
 
 function audioNode(properties: Record<string, unknown> = {}): AudioNode {
   return { connect: vi.fn(), disconnect: vi.fn(), ...properties } as unknown as AudioNode;
@@ -14,6 +14,7 @@ function audioContext(overrides: Record<string, unknown> = {}): AudioContext {
     sampleRate: 48_000,
     destination: audioNode(),
     state: 'running',
+    audioWorklet: { addModule: vi.fn().mockResolvedValue(undefined) },
     createMediaStreamSource: vi.fn(() => audioNode()),
     createChannelSplitter: vi.fn(() => audioNode()),
     createChannelMerger: vi.fn(() => audioNode()),
@@ -82,6 +83,9 @@ function browser(overrides: Partial<BrowserAudio> = {}, trackSettings: MediaTrac
       getUserMedia: vi.fn().mockResolvedValue(stream),
     }),
     createAudioContext: vi.fn(() => audioContext()),
+    createAudioWorkletNode: vi.fn(() => audioNode({
+      port: { onmessage: null, postMessage: vi.fn() },
+    }) as AudioWorkletNode),
     requestAnimationFrame: vi.fn(() => 1),
     cancelAnimationFrame: vi.fn(),
     ...overrides,
@@ -98,6 +102,51 @@ describe('AudioEngine', () => {
     expect(environment.createAudioContext).not.toHaveBeenCalled();
   });
 
+  it('detects before the amp, applies the worklet after Cabinet, meters reduction, and disposes it', async () => {
+    const context = audioContext();
+    const port = {
+      onmessage: null as ((event: MessageEvent) => void) | null,
+      postMessage: vi.fn(),
+    };
+    const worklet = audioNode({ port }) as AudioWorkletNode;
+    const createAudioWorkletNode = vi.fn(() => worklet);
+    const engine = new AudioEngine(browser({ createAudioContext: () => context, createAudioWorkletNode }));
+
+    await engine.connectInput();
+
+    expect(context.audioWorklet.addModule).toHaveBeenCalledOnce();
+    expect(createAudioWorkletNode).toHaveBeenCalledWith(context, 'browser-amp-noise-gate', expect.objectContaining({
+      numberOfInputs: 2,
+      numberOfOutputs: 1,
+      processorOptions: { thresholdDb: -55, rangeDb: 9, releaseSeconds: 0.2, bypassed: false },
+    }));
+    const gains = vi.mocked(context.createGain).mock.results.map(({ value }) => value);
+    const signalInput = gains.find((gain) => vi.mocked(gain.connect).mock.calls.some((call: [AudioNode, number?, number?]) => call[0] === worklet && call[2] === 0));
+    const detectorInput = gains.find((gain) => vi.mocked(gain.connect).mock.calls.some((call: [AudioNode, number?, number?]) => call[0] === worklet && call[2] === 1));
+    expect(signalInput).toBeDefined();
+    expect(detectorInput).toBeDefined();
+    const inputAnalyser = vi.mocked(context.createAnalyser).mock.results[0].value;
+    const inputTrim = vi.mocked(inputAnalyser.connect).mock.calls[0][0] as AudioNode;
+    expect(inputTrim.connect).toHaveBeenCalledWith(detectorInput);
+    expect(gains.some((gain) => vi.mocked(gain.connect).mock.calls.some((call: [AudioNode, number?, number?]) => call[0] === signalInput))).toBe(true);
+    expect(worklet.connect).toHaveBeenCalledTimes(2);
+
+    port.onmessage?.(new MessageEvent('message', { data: { open: false, envelopeDb: -70, reductionDb: 8.5 } }));
+    expect(engine.snapshot.noiseGateReductionDb).toBe(8.5);
+    engine.applyControls({ ...engine.snapshot.controls, noiseGateThresholdDb: -45.2, noiseGateBypassed: true });
+    expect(port.postMessage).toHaveBeenLastCalledWith({
+      thresholdDb: -45.2,
+      rangeDb: 9,
+      releaseSeconds: 0.2,
+      bypassed: true,
+    });
+    expect(engine.snapshot.noiseGateReductionDb).toBe(0);
+
+    await engine.disconnectInput();
+    expect(port.onmessage).toBeNull();
+    expect(worklet.disconnect).toHaveBeenCalledOnce();
+  });
+
   it('keeps at most two amp paths live and disposes unselected shapers without recapturing', async () => {
     let now = 0;
     const context = audioContext();
@@ -112,8 +161,8 @@ describe('AudioEngine', () => {
     await engine.connectInput();
     expect(context.createWaveShaper).not.toHaveBeenCalled();
     expect(context.createConvolver).not.toHaveBeenCalled();
-    engine.applyControls({ ...engine.snapshot.controls, ampModel: 'clean-tube' });
-    engine.applyControls({ ...engine.snapshot.controls, ampModel: 'clean-tube-warm' });
+    engine.applyControls({ ...engine.snapshot.controls, ampModel: 'amp.blackface-combo-v1' });
+    engine.applyControls({ ...engine.snapshot.controls, ampModel: 'amp.small-tweed-combo-v1' });
     expect(context.createWaveShaper).toHaveBeenCalledTimes(2);
     finish();
     expect(context.createWaveShaper).toHaveBeenCalledTimes(4);
@@ -121,7 +170,7 @@ describe('AudioEngine', () => {
     const shapers = vi.mocked(context.createWaveShaper).mock.results.map(({ value }) => value);
     for (const shaper of shapers.slice(0, 2)) expect(shaper.disconnect).toHaveBeenCalledOnce();
     for (const shaper of shapers.slice(2)) expect(shaper.disconnect).not.toHaveBeenCalled();
-    engine.applyControls({ ...engine.snapshot.controls, ampModel: 'clean-voice' });
+    engine.applyControls({ ...engine.snapshot.controls, ampModel: 'amp.studio-clean-v1' });
     finish();
     for (const shaper of shapers) expect(shaper.disconnect).toHaveBeenCalledOnce();
     expect(environment.mediaDevices.getUserMedia).toHaveBeenCalledOnce();
@@ -337,27 +386,69 @@ describe('AudioEngine', () => {
     expect(engine.snapshot).toMatchObject({ lifecycle: 'connected-muted', monitoring: false });
   });
 
-  it.each(['clean-tube', 'clean-tube-warm'] as const)('clamps exact controls and preserves %s settings when monitoring stops', async (ampModel) => {
+  it('routes both compression paths through Studio EQ before Reverb', async () => {
+    const context = audioContext();
+    const engine = new AudioEngine(browser({ createAudioContext: () => context }));
+
+    await engine.connectInput();
+
+    const [bassEq, middleEq, trebleEq] = vi.mocked(context.createBiquadFilter).mock.results.map(({ value }) => value);
+    const compressor = vi.mocked(context.createDynamicsCompressor).mock.results[0].value;
+    const levelMatchGain = vi.mocked(compressor.connect).mock.calls[0][0] as unknown as GainNode;
+    const compressionWetGain = vi.mocked(levelMatchGain.connect).mock.calls[0][0] as unknown as GainNode;
+    const eqInputs = vi.mocked(context.createGain).mock.results
+      .map(({ value }) => value)
+      .filter((gain) => vi.mocked(gain.connect).mock.calls.some((call: [AudioNode]) => call[0] === bassEq));
+
+    expect(eqInputs).toHaveLength(2);
+    expect(eqInputs).toContain(compressionWetGain);
+    expect(compressor.connect).toHaveBeenCalledWith(levelMatchGain);
+    expect(bassEq.connect).toHaveBeenCalledWith(middleEq);
+    expect(middleEq.connect).toHaveBeenCalledWith(trebleEq);
+    expect(trebleEq.connect).toHaveBeenCalledOnce();
+    expect(trebleEq.connect).not.toHaveBeenCalledWith(compressor);
+  });
+
+  it('reports gain reduction only while Compression is active and smooths Level Match changes', async () => {
+    let renderFrame: FrameRequestCallback | undefined;
+    const compressor = audioNode({
+      reduction: -6.25,
+      threshold: { value: -24, cancelScheduledValues: vi.fn(), setValueAtTime: vi.fn(), linearRampToValueAtTime: vi.fn() },
+      ratio: { value: 12, cancelScheduledValues: vi.fn(), setValueAtTime: vi.fn(), linearRampToValueAtTime: vi.fn() },
+      attack: { value: 0.003, cancelScheduledValues: vi.fn(), setValueAtTime: vi.fn(), linearRampToValueAtTime: vi.fn() },
+      release: { value: 0.25, cancelScheduledValues: vi.fn(), setValueAtTime: vi.fn(), linearRampToValueAtTime: vi.fn() },
+      knee: { value: 30, cancelScheduledValues: vi.fn(), setValueAtTime: vi.fn(), linearRampToValueAtTime: vi.fn() },
+    }) as DynamicsCompressorNode;
+    const context = audioContext({ createDynamicsCompressor: vi.fn(() => compressor) });
+    const engine = new AudioEngine(browser({
+      createAudioContext: () => context,
+      requestAnimationFrame: (callback) => { renderFrame = callback; return 1; },
+    }));
+    engine.applyControls({ ...engine.snapshot.controls, compressionBypassed: false });
+
+    await engine.connectInput();
+    renderFrame?.(1_000);
+
+    expect(engine.snapshot.compressionReductionDb).toBe(6.25);
+    const levelMatchGain = vi.mocked(compressor.connect).mock.calls[0][0] as unknown as GainNode;
+    engine.applyControls({ ...engine.snapshot.controls, compressionLevelMatch: false });
+    expect(levelMatchGain.gain.linearRampToValueAtTime).toHaveBeenCalledWith(1, 1.02);
+
+    engine.applyControls({ ...engine.snapshot.controls, compressionBypassed: true });
+    expect(engine.snapshot.compressionReductionDb).toBe(0);
+  });
+
+  it('clamps model-specific and studio controls while monitoring stops', async () => {
     const engine = new AudioEngine(browser());
-    expect(engine.snapshot.controls).toEqual({
-      ampModel: 'clean-voice',
-      cleanGainDb: 0,
-      bassDb: 0,
-      middleDb: 0,
-      trebleDb: 0,
-      eqBypassed: false,
-      compressionAmount: 25,
-      compressionBypassed: true,
-      reverbProfile: 'studio-plate',
-      reverbSettings: DEFAULT_REVERB_SETTINGS,
-      reverbAmount: 20,
-      reverbBypassed: true,
-      masterVolumeDb: -18,
-    });
+    expect(engine.snapshot.controls).toEqual(DEFAULT_AMP_CONTROLS);
 
     engine.applyControls({
-      ampModel,
-      cleanGainDb: 30,
+      ...engine.snapshot.controls,
+      ampModel: 'amp.small-tweed-combo-v1',
+      ampSettings: {
+        ...engine.snapshot.controls.ampSettings,
+        'amp.small-tweed-combo-v1': { volume: 30, tone: 3.26, input: 'low' },
+      },
       bassDb: -20,
       middleDb: 3.26,
       trebleDb: 20,
@@ -375,8 +466,12 @@ describe('AudioEngine', () => {
     await engine.setMonitoring(false);
 
     expect(engine.snapshot.controls).toEqual({
-      ampModel,
-      cleanGainDb: 24,
+      ...DEFAULT_AMP_CONTROLS,
+      ampModel: 'amp.small-tweed-combo-v1',
+      ampSettings: {
+        ...DEFAULT_AMP_CONTROLS.ampSettings,
+        'amp.small-tweed-combo-v1': { volume: 10, tone: 3.3, input: 'low' },
+      },
       bassDb: -12,
       middleDb: 3.3,
       trebleDb: 12,
@@ -417,7 +512,7 @@ describe('AudioEngine', () => {
   it('mutes a routing failure without changing Master Volume', async () => {
     const setSinkId = vi.fn().mockRejectedValue(new DOMException('Unavailable', 'NotFoundError'));
     const engine = new AudioEngine(browser({ createAudioContext: () => audioContext({ setSinkId }) }));
-    engine.applyControls({ ...engine.snapshot.controls, cleanGainDb: 6, masterVolumeDb: -12 });
+    engine.applyControls({ ...engine.snapshot.controls, bassDb: 6, masterVolumeDb: -12 });
     await engine.connectInput();
     await engine.setMonitoring(true);
 
@@ -426,7 +521,7 @@ describe('AudioEngine', () => {
     expect(engine.snapshot).toMatchObject({
       lifecycle: 'connected-muted',
       monitoring: false,
-      controls: { cleanGainDb: 6, masterVolumeDb: -12 },
+      controls: { bassDb: 6, masterVolumeDb: -12 },
       outputRouting: {
         selectedDeviceId: 'missing-output',
         error: 'The browser could not route audio to that output. Choose an available output, then enable monitoring again.',
@@ -581,7 +676,7 @@ describe('AudioEngine', () => {
       mediaDevices: testMediaDevices({ getUserMedia }),
     });
     const engine = new AudioEngine(environment);
-    engine.applyControls({ ...engine.snapshot.controls, cleanGainDb: 9, masterVolumeDb: -12 });
+    engine.applyControls({ ...engine.snapshot.controls, bassDb: 9, masterVolumeDb: -12 });
     await engine.connectInput({ deviceId: 'guitar-interface' });
     await engine.setMonitoring(true);
 
@@ -590,7 +685,7 @@ describe('AudioEngine', () => {
     expect(engine.snapshot).toMatchObject({
       lifecycle: 'error',
       monitoring: false,
-      controls: { cleanGainDb: 9, masterVolumeDb: -12 },
+      controls: { bassDb: 9, masterVolumeDb: -12 },
       recovery: {
         code: 'input-device-lost',
         action: 'reconnect-input',
@@ -687,7 +782,7 @@ describe('AudioEngine', () => {
       mediaDevices,
       createAudioContext: () => audioContext({ setSinkId }),
     }));
-    engine.applyControls({ ...engine.snapshot.controls, cleanGainDb: 6 });
+    engine.applyControls({ ...engine.snapshot.controls, bassDb: 6 });
     await engine.connectInput({ deviceId: 'guitar-interface' });
     engine.applySettings({ selectedInputDeviceId: 'guitar-interface', inputChannel: 1 });
     await engine.selectOutput('headphones');
@@ -706,7 +801,7 @@ describe('AudioEngine', () => {
       monitoring: true,
       selectedInputDeviceId: 'guitar-interface',
       inputChannel: 1,
-      controls: { cleanGainDb: 6 },
+      controls: { bassDb: 6 },
       outputRouting: { selectedDeviceId: 'headphones' },
     });
     expect(engine.snapshot.outputRouting.devices).toHaveLength(2);

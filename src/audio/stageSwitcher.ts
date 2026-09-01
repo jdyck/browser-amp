@@ -54,6 +54,13 @@ export class StageSwitcher<Key> {
     }
   }
 
+  /** Applies smoothed parameter edits to every live graph during a crossfade. */
+  visitPaths(visitor: (path: StagePath, key: Key) => void): void {
+    if (this.#disposed) return;
+    visitor(this.#active.path, this.#active.key);
+    if (this.#transition !== undefined) visitor(this.#transition.incoming.path, this.#transition.incoming.key);
+  }
+
   dispose(): void {
     if (this.#disposed) return;
     this.#disposed = true;

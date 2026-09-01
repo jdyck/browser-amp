@@ -1,25 +1,17 @@
 import { DEFAULT_REVERB_SETTINGS, normalizeReverbSettings, type ReverbSettings } from './reverbSettings';
+import {
+  DEFAULT_JAZZ_AMP_SETTINGS,
+  isAmpModel,
+  normalizeJazzAmpSettings,
+  type AmpModel,
+  type JazzAmpSettings,
+} from './ampModels';
+import { DEFAULT_JAZZ_CABINET, isCabinetModel, type JazzCabinetId } from './cabinetModels';
 
-export const AMP_MODELS = {
-  'clean-voice': {
-    label: 'Clean Voice',
-    description: 'Transparent gain without intentional saturation.',
-  },
-  'clean-tube': {
-    label: 'Clean Tube',
-    description: 'Tube-inspired warmth and a softer high end. Raise Clean Gain for gentle breakup; use Master for listening volume.',
-  },
-  'clean-tube-warm': {
-    label: 'Clean Tube Warm',
-    description: 'Fuller low mids, darker highs, and earlier tube-inspired breakup. Raise Clean Gain for more saturation; use Master for listening volume.',
-  },
-} as const;
-
-export type AmpModel = keyof typeof AMP_MODELS;
-
-export function isAmpModel(value: unknown): value is AmpModel {
-  return typeof value === 'string' && Object.hasOwn(AMP_MODELS, value);
-}
+export { AMP_MODELS, isAmpModel } from './ampModels';
+export type { AmpModel, JazzAmpId, JazzAmpSettings } from './ampModels';
+export { CABINET_MODELS, isCabinetModel } from './cabinetModels';
+export type { JazzCabinetId } from './cabinetModels';
 
 export const REVERB_PROFILES = {
   'jazz-room': {
@@ -60,12 +52,19 @@ export function isReverbProfile(value: unknown): value is ReverbProfile {
 
 export interface AmpControlSettings {
   readonly ampModel: AmpModel;
-  readonly cleanGainDb: number;
+  readonly ampSettings: JazzAmpSettings;
+  readonly cabinetModel: JazzCabinetId;
+  readonly inputTrimDb: number;
+  readonly noiseGateThresholdDb: number;
+  readonly noiseGateRangeDb: number;
+  readonly noiseGateReleaseMs: number;
+  readonly noiseGateBypassed: boolean;
   readonly bassDb: number;
   readonly middleDb: number;
   readonly trebleDb: number;
   readonly eqBypassed: boolean;
   readonly compressionAmount: number;
+  readonly compressionLevelMatch: boolean;
   readonly compressionBypassed: boolean;
   readonly reverbProfile: ReverbProfile;
   readonly reverbSettings: ReverbSettings;
@@ -75,19 +74,32 @@ export interface AmpControlSettings {
 }
 
 export const DEFAULT_AMP_CONTROLS: AmpControlSettings = {
-  ampModel: 'clean-voice',
-  cleanGainDb: 0,
+  ampModel: 'amp.studio-clean-v1',
+  ampSettings: DEFAULT_JAZZ_AMP_SETTINGS,
+  cabinetModel: DEFAULT_JAZZ_CABINET,
+  inputTrimDb: 0,
+  noiseGateThresholdDb: -55,
+  noiseGateRangeDb: 9,
+  noiseGateReleaseMs: 200,
+  noiseGateBypassed: false,
   bassDb: 0,
   middleDb: 0,
   trebleDb: 0,
   eqBypassed: false,
   compressionAmount: 25,
+  compressionLevelMatch: true,
   compressionBypassed: true,
   reverbProfile: 'studio-plate',
   reverbSettings: DEFAULT_REVERB_SETTINGS,
   reverbAmount: 20,
   reverbBypassed: true,
   masterVolumeDb: -18,
+};
+
+const LEGACY_AMP_MODELS: Readonly<Record<string, AmpModel>> = {
+  'clean-voice': 'amp.studio-clean-v1',
+  'clean-tube': 'amp.blackface-combo-v1',
+  'clean-tube-warm': 'amp.small-tweed-combo-v1',
 };
 
 export interface ContinuousControlDefinition {
@@ -98,7 +110,10 @@ export interface ContinuousControlDefinition {
 }
 
 export const AMP_CONTROL_DEFINITIONS = {
-  cleanGainDb: { minimum: -12, maximum: 24, step: 0.1, fractionDigits: 1 },
+  inputTrimDb: { minimum: -12, maximum: 24, step: 0.1, fractionDigits: 1 },
+  noiseGateThresholdDb: { minimum: -80, maximum: -20, step: 0.1, fractionDigits: 1 },
+  noiseGateRangeDb: { minimum: 0, maximum: 24, step: 0.1, fractionDigits: 1 },
+  noiseGateReleaseMs: { minimum: 50, maximum: 1_000, step: 10, fractionDigits: 0 },
   bassDb: { minimum: -12, maximum: 12, step: 0.1, fractionDigits: 1 },
   middleDb: { minimum: -12, maximum: 12, step: 0.1, fractionDigits: 1 },
   trebleDb: { minimum: -12, maximum: 12, step: 0.1, fractionDigits: 1 },
@@ -130,7 +145,10 @@ export function normalizeAmpControlSettings(
   fallback: AmpControlSettings = DEFAULT_AMP_CONTROLS,
 ): AmpControlSettings {
   const controls = isRecord(value) ? value : {};
-  const cleanGainDb = finiteNumber(controls.cleanGainDb);
+  const inputTrimDb = finiteNumber(controls.inputTrimDb) ?? finiteNumber(controls.cleanGainDb);
+  const noiseGateThresholdDb = finiteNumber(controls.noiseGateThresholdDb);
+  const noiseGateRangeDb = finiteNumber(controls.noiseGateRangeDb);
+  const noiseGateReleaseMs = finiteNumber(controls.noiseGateReleaseMs);
   const bassDb = finiteNumber(controls.bassDb);
   const middleDb = finiteNumber(controls.middleDb);
   const trebleDb = finiteNumber(controls.trebleDb);
@@ -138,9 +156,31 @@ export function normalizeAmpControlSettings(
   const reverbAmount = finiteNumber(controls.reverbAmount);
   const masterVolumeDb = finiteNumber(controls.masterVolumeDb);
 
+  // Retired tube voices migrate to the closest new intent with a deliberate,
+  // disclosed sound change. Clean Voice maps to the bit-transparent Studio Clean path.
+  const rawModel = controls.ampModel;
+  const ampModel = isAmpModel(rawModel)
+    ? rawModel
+    : typeof rawModel === 'string' && Object.hasOwn(LEGACY_AMP_MODELS, rawModel)
+      ? LEGACY_AMP_MODELS[rawModel]
+      : fallback.ampModel;
+  const cabinetModel = isCabinetModel(controls.cabinetModel) ? controls.cabinetModel : fallback.cabinetModel;
+
   return {
-    ampModel: isAmpModel(controls.ampModel) ? controls.ampModel : fallback.ampModel,
-    cleanGainDb: cleanGainDb === undefined ? fallback.cleanGainDb : normalizeContinuousControl(cleanGainDb, AMP_CONTROL_DEFINITIONS.cleanGainDb),
+    ampModel,
+    ampSettings: normalizeJazzAmpSettings(controls.ampSettings, fallback.ampSettings),
+    cabinetModel,
+    inputTrimDb: inputTrimDb === undefined ? fallback.inputTrimDb : normalizeContinuousControl(inputTrimDb, AMP_CONTROL_DEFINITIONS.inputTrimDb),
+    noiseGateThresholdDb: noiseGateThresholdDb === undefined
+      ? fallback.noiseGateThresholdDb
+      : normalizeContinuousControl(noiseGateThresholdDb, AMP_CONTROL_DEFINITIONS.noiseGateThresholdDb),
+    noiseGateRangeDb: noiseGateRangeDb === undefined
+      ? fallback.noiseGateRangeDb
+      : normalizeContinuousControl(noiseGateRangeDb, AMP_CONTROL_DEFINITIONS.noiseGateRangeDb),
+    noiseGateReleaseMs: noiseGateReleaseMs === undefined
+      ? fallback.noiseGateReleaseMs
+      : normalizeContinuousControl(noiseGateReleaseMs, AMP_CONTROL_DEFINITIONS.noiseGateReleaseMs),
+    noiseGateBypassed: typeof controls.noiseGateBypassed === 'boolean' ? controls.noiseGateBypassed : fallback.noiseGateBypassed,
     bassDb: bassDb === undefined ? fallback.bassDb : normalizeContinuousControl(bassDb, AMP_CONTROL_DEFINITIONS.bassDb),
     middleDb: middleDb === undefined ? fallback.middleDb : normalizeContinuousControl(middleDb, AMP_CONTROL_DEFINITIONS.middleDb),
     trebleDb: trebleDb === undefined ? fallback.trebleDb : normalizeContinuousControl(trebleDb, AMP_CONTROL_DEFINITIONS.trebleDb),
@@ -148,6 +188,9 @@ export function normalizeAmpControlSettings(
     compressionAmount: compressionAmount === undefined
       ? fallback.compressionAmount
       : normalizePercentAmount(compressionAmount),
+    compressionLevelMatch: typeof controls.compressionLevelMatch === 'boolean'
+      ? controls.compressionLevelMatch
+      : fallback.compressionLevelMatch,
     compressionBypassed: typeof controls.compressionBypassed === 'boolean'
       ? controls.compressionBypassed
       : fallback.compressionBypassed,

@@ -1,6 +1,7 @@
 import { AudioEngine } from './audio/AudioEngine';
 import type { AudioSnapshot, InputMeterSnapshot } from './audio/types';
-import { AMP_CONTROL_DEFINITIONS, AMP_MODELS, REVERB_PROFILES, isAmpModel, isReverbProfile, type AmpControlSettings, type ContinuousControlDefinition } from './controls';
+import { AMP_CONTROL_DEFINITIONS, AMP_MODELS, CABINET_MODELS, REVERB_PROFILES, isAmpModel, isCabinetModel, isReverbProfile, type AmpControlSettings, type ContinuousControlDefinition } from './controls';
+import { AMP_MODEL_CONTROLS, type AmpChoiceDefinition, type AmpKnobDefinition, type JazzAmpState } from './ampModels';
 import { WorkbenchPreferencesStore, resetControls, type StoredWorkbenchPreferences } from './settings';
 import { DEFAULT_REVERB_SETTINGS, reverbControlEntries, reverbParameters, type ReverbControlDefinition } from './reverbSettings';
 import './style.css';
@@ -111,11 +112,12 @@ function renderStructure(current: AudioSnapshot): void {
         ${guidanceOpen ? hardwareGuidance() : ''}
       </section>
 
-      ${meterPanel('input', 'Input Level Meter', current.meter, 'Live Guitar Input before Clean Gain. Connecting and metering remain silent until Processed Monitoring is enabled.')}
+      ${meterPanel('input', 'Input Level Meter', current.meter, 'Live Guitar Input before Input Trim and the amp model. Connecting and metering remain silent until Processed Monitoring is enabled.')}
 
       ${meterPanel('output', 'Output Level Meter', current.outputMeter, 'Post-Master signal before browser output.')}
 
-      <section class="${PANEL}" aria-label="Clean Gain">
+      <section class="${PANEL}" aria-label="Amp Model">
+        ${dbControl('input-trim', 'Input Trim', current.controls.inputTrimDb, AMP_CONTROL_DEFINITIONS.inputTrimDb)}
         <div class="mb-3">
           <label for="amp-model" class="block mb-[.35rem] font-medium text-sm">Amp Model</label>
           <select id="amp-model" aria-describedby="amp-model-help">
@@ -123,19 +125,34 @@ function renderStructure(current: AudioSnapshot): void {
           </select>
           <span id="amp-model-help" class="${FIELD_HELP}">${AMP_MODELS[current.controls.ampModel].description}</span>
         </div>
-        ${dbControl('clean-gain', 'Clean Gain', current.controls.cleanGainDb, AMP_CONTROL_DEFINITIONS.cleanGainDb)}
+        <div id="amp-model-controls" class="grid gap-3 mt-4" data-model="${current.controls.ampModel}">${ampModelControls(current.controls)}</div>
       </section>
 
-      <section class="${PANEL}" aria-label="Three-Band EQ">
-        <label class="${STAGE_TOGGLE}" for="eq-enabled">
-          <input id="eq-enabled" type="checkbox" class="${STAGE_TOGGLE_CHECKBOX}" ${current.controls.eqBypassed ? '' : 'checked'}>
-          Enable EQ
+      <section class="${PANEL}" aria-label="Cabinet">
+        <label for="cabinet-model" class="block mb-[.35rem] font-medium text-sm">Cabinet</label>
+        <select id="cabinet-model" aria-describedby="cabinet-model-help">
+          ${Object.entries(CABINET_MODELS).map(([id, model]) => `<option value="${id}" ${id === current.controls.cabinetModel ? 'selected' : ''}>${model.label}</option>`).join('')}
+        </select>
+        <span id="cabinet-model-help" class="${FIELD_HELP}">${CABINET_MODELS[current.controls.cabinetModel].description}</span>
+      </section>
+
+      <section class="${PANEL}" aria-label="Noise Suppression">
+        <label class="${STAGE_TOGGLE}" for="noise-gate-enabled">
+          <input id="noise-gate-enabled" type="checkbox" class="${STAGE_TOGGLE_CHECKBOX}" ${current.controls.noiseGateBypassed ? '' : 'checked'}>
+          Enable Noise Suppression
         </label>
-        <div class="grid gap-2">
-          ${dbControl('bass', 'Bass', current.controls.bassDb, AMP_CONTROL_DEFINITIONS.bassDb)}
-          ${dbControl('middle', 'Middle', current.controls.middleDb, AMP_CONTROL_DEFINITIONS.middleDb)}
-          ${dbControl('treble', 'Treble', current.controls.trebleDb, AMP_CONTROL_DEFINITIONS.trebleDb)}
+        <div class="grid grid-cols-[minmax(0,1fr)_auto] gap-4 items-end max-[34rem]:grid-cols-1">
+          <div class="grid gap-4">
+            ${dbControl('noise-gate-threshold', 'Threshold', current.controls.noiseGateThresholdDb, AMP_CONTROL_DEFINITIONS.noiseGateThresholdDb)}
+            ${dbControl('noise-gate-range', 'Range', current.controls.noiseGateRangeDb, AMP_CONTROL_DEFINITIONS.noiseGateRangeDb)}
+            ${unitControl('noise-gate-release', 'Release', current.controls.noiseGateReleaseMs, AMP_CONTROL_DEFINITIONS.noiseGateReleaseMs, 'ms')}
+          </div>
+          <div class="min-w-24 rounded-md border border-border bg-input-fill px-3 py-2 text-right">
+            <span class="block text-xs text-muted-foreground">Reduction</span>
+            <span id="noise-gate-reduction" aria-label="Noise suppression reduction">${current.noiseGateReductionDb.toFixed(1)} dB</span>
+          </div>
         </div>
+        <p class="${FIELD_HELP}">Threshold chooses when the gate opens. Range sets the maximum cut; Release controls how gradually it settles back into quiet gaps.</p>
       </section>
 
       <section class="${PANEL}" aria-label="Compression">
@@ -143,7 +160,29 @@ function renderStructure(current: AudioSnapshot): void {
           <input id="compression-enabled" type="checkbox" class="${STAGE_TOGGLE_CHECKBOX}" ${current.controls.compressionBypassed ? '' : 'checked'}>
           Enable Compression
         </label>
-        ${percentControl('compression-amount', 'Compression', current.controls.compressionAmount, AMP_CONTROL_DEFINITIONS.compressionAmount)}
+        <div class="grid grid-cols-[minmax(0,1fr)_auto] gap-4 items-end max-[34rem]:grid-cols-1">
+          <div>${percentControl('compression-amount', 'Amount', current.controls.compressionAmount, AMP_CONTROL_DEFINITIONS.compressionAmount)}</div>
+          <div class="min-w-24 rounded-md border border-border bg-input-fill px-3 py-2 text-right">
+            <span class="block text-xs text-muted-foreground">Reduction</span>
+            <span id="compression-reduction" aria-label="Compression reduction">${current.compressionReductionDb.toFixed(1)} dB</span>
+          </div>
+        </div>
+        <label class="${STAGE_TOGGLE}" for="compression-level-match">
+          <input id="compression-level-match" type="checkbox" class="${STAGE_TOGGLE_CHECKBOX}" ${current.controls.compressionLevelMatch ? 'checked' : ''}>
+          Level Match
+        </label>
+      </section>
+
+      <section class="${PANEL}" aria-label="Studio EQ">
+        <label class="${STAGE_TOGGLE}" for="eq-enabled">
+          <input id="eq-enabled" type="checkbox" class="${STAGE_TOGGLE_CHECKBOX}" ${current.controls.eqBypassed ? '' : 'checked'}>
+          Enable Studio EQ
+        </label>
+        <div class="grid gap-2">
+          ${dbControl('bass', 'Bass', current.controls.bassDb, AMP_CONTROL_DEFINITIONS.bassDb)}
+          ${dbControl('middle', 'Middle', current.controls.middleDb, AMP_CONTROL_DEFINITIONS.middleDb)}
+          ${dbControl('treble', 'Treble', current.controls.trebleDb, AMP_CONTROL_DEFINITIONS.trebleDb)}
+        </div>
       </section>
 
       <section class="${PANEL}" aria-label="Reverb">
@@ -197,10 +236,21 @@ function bindStructureEvents(): void {
   root.querySelector<HTMLButtonElement>('#retry-output')?.addEventListener('click', () => {
     void engine.selectOutput(snapshot.outputRouting.selectedDeviceId);
   });
-  bindContinuousControl('clean-gain', (cleanGainDb) => engine.applyControls({ ...snapshot.controls, cleanGainDb }));
+  bindContinuousControl('input-trim', (inputTrimDb) => engine.applyControls({ ...snapshot.controls, inputTrimDb }));
   root.querySelector<HTMLSelectElement>('#amp-model')?.addEventListener('change', (event) => {
     const ampModel = (event.currentTarget as HTMLSelectElement).value;
     if (isAmpModel(ampModel)) engine.applyControls({ ...snapshot.controls, ampModel });
+  });
+  bindAmpModelControls();
+  root.querySelector<HTMLSelectElement>('#cabinet-model')?.addEventListener('change', (event) => {
+    const cabinetModel = (event.currentTarget as HTMLSelectElement).value;
+    if (isCabinetModel(cabinetModel)) engine.applyControls({ ...snapshot.controls, cabinetModel });
+  });
+  bindContinuousControl('noise-gate-threshold', (noiseGateThresholdDb) => engine.applyControls({ ...snapshot.controls, noiseGateThresholdDb }));
+  bindContinuousControl('noise-gate-range', (noiseGateRangeDb) => engine.applyControls({ ...snapshot.controls, noiseGateRangeDb }));
+  bindContinuousControl('noise-gate-release', (noiseGateReleaseMs) => engine.applyControls({ ...snapshot.controls, noiseGateReleaseMs }));
+  root.querySelector<HTMLInputElement>('#noise-gate-enabled')?.addEventListener('change', (event) => {
+    engine.applyControls({ ...snapshot.controls, noiseGateBypassed: !(event.currentTarget as HTMLInputElement).checked });
   });
   root.querySelector<HTMLInputElement>('#eq-enabled')?.addEventListener('change', (event) => {
     engine.applyControls({ ...snapshot.controls, eqBypassed: !(event.currentTarget as HTMLInputElement).checked });
@@ -211,6 +261,9 @@ function bindStructureEvents(): void {
   bindContinuousControl('compression-amount', (compressionAmount) => engine.applyControls({ ...snapshot.controls, compressionAmount }));
   root.querySelector<HTMLInputElement>('#compression-enabled')?.addEventListener('change', (event) => {
     engine.applyControls({ ...snapshot.controls, compressionBypassed: !(event.currentTarget as HTMLInputElement).checked });
+  });
+  root.querySelector<HTMLInputElement>('#compression-level-match')?.addEventListener('change', (event) => {
+    engine.applyControls({ ...snapshot.controls, compressionLevelMatch: (event.currentTarget as HTMLInputElement).checked });
   });
   bindReverbControls();
   root.querySelector<HTMLSelectElement>('#reverb-profile')?.addEventListener('change', (event) => {
@@ -261,6 +314,41 @@ function bindContinuousControl(id: string, apply: (value: number) => void): void
   });
 }
 
+function ampModelControls(controls: AmpControlSettings): string {
+  const definitions = AMP_MODEL_CONTROLS[controls.ampModel] as Readonly<Record<string, AmpKnobDefinition | AmpChoiceDefinition>>;
+  const state = controls.ampSettings[controls.ampModel] as unknown as Readonly<Record<string, number | string>>;
+  return Object.entries(definitions).map(([key, definition]) => {
+    const id = `amp-control-${key}`;
+    const value = state[key];
+    if (definition.kind === 'knob') return knobControl(id, definition.label, value as number, definition);
+    return `<div>
+      <label for="${id}" class="${FIELD}">${definition.label}</label>
+      <select id="${id}" data-amp-control="${key}">
+        ${definition.options.map(([option, label]) => `<option value="${option}" ${option === value ? 'selected' : ''}>${label}</option>`).join('')}
+      </select>
+    </div>`;
+  }).join('');
+}
+
+function bindAmpModelControls(): void {
+  const definitions = AMP_MODEL_CONTROLS[snapshot.controls.ampModel] as Readonly<Record<string, AmpKnobDefinition | AmpChoiceDefinition>>;
+  for (const [key, definition] of Object.entries(definitions)) {
+    const apply = (value: number | string) => {
+      const controls = snapshot.controls;
+      const selected = controls.ampModel;
+      engine.applyControls({ ...controls, ampSettings: {
+        ...controls.ampSettings,
+        [selected]: { ...controls.ampSettings[selected], [key]: value } as JazzAmpState,
+      } });
+    };
+    if (definition.kind === 'knob') bindContinuousControl(`amp-control-${key}`, apply);
+    else root.querySelector<HTMLSelectElement>(`#amp-control-${key}`)?.addEventListener('change', (event) => {
+      const value = (event.currentTarget as HTMLSelectElement).value;
+      if (definition.options.some(([option]) => option === value)) apply(value);
+    });
+  }
+}
+
 function reverbAccordions(controls: AmpControlSettings): string {
   const parameters = reverbParameters(controls.reverbProfile, controls.reverbSettings);
   return (['main', 'advanced'] as const).map((section) => `
@@ -307,12 +395,37 @@ function bindReverbControls(): void {
 }
 
 function renderControls(controls: AmpControlSettings): void {
+  setControlValue('input-trim', controls.inputTrimDb, AMP_CONTROL_DEFINITIONS.inputTrimDb);
   const ampModel = root.querySelector<HTMLSelectElement>('#amp-model');
   if (ampModel !== null && ampModel.value !== controls.ampModel) ampModel.value = controls.ampModel;
   const ampModelHelp = root.querySelector<HTMLElement>('#amp-model-help');
   const modelDescription = AMP_MODELS[controls.ampModel].description;
   if (ampModelHelp !== null && ampModelHelp.textContent !== modelDescription) ampModelHelp.textContent = modelDescription;
-  setControlValue('clean-gain', controls.cleanGainDb, AMP_CONTROL_DEFINITIONS.cleanGainDb);
+  const ampControls = root.querySelector<HTMLElement>('#amp-model-controls');
+  if (ampControls !== null && ampControls.dataset.model !== controls.ampModel) {
+    ampControls.innerHTML = ampModelControls(controls);
+    ampControls.dataset.model = controls.ampModel;
+    bindAmpModelControls();
+  }
+  const definitions = AMP_MODEL_CONTROLS[controls.ampModel] as Readonly<Record<string, AmpKnobDefinition | AmpChoiceDefinition>>;
+  const ampState = controls.ampSettings[controls.ampModel] as unknown as Readonly<Record<string, number | string>>;
+  for (const [key, definition] of Object.entries(definitions)) {
+    if (definition.kind === 'knob') setControlValue(`amp-control-${key}`, ampState[key] as number, definition);
+    else {
+      const select = root.querySelector<HTMLSelectElement>(`#amp-control-${key}`);
+      if (select !== null && select.value !== ampState[key]) select.value = ampState[key] as string;
+    }
+  }
+  const cabinetModel = root.querySelector<HTMLSelectElement>('#cabinet-model');
+  if (cabinetModel !== null && cabinetModel.value !== controls.cabinetModel) cabinetModel.value = controls.cabinetModel;
+  const cabinetModelHelp = root.querySelector<HTMLElement>('#cabinet-model-help');
+  const cabinetDescription = CABINET_MODELS[controls.cabinetModel].description;
+  if (cabinetModelHelp !== null && cabinetModelHelp.textContent !== cabinetDescription) cabinetModelHelp.textContent = cabinetDescription;
+  setControlValue('noise-gate-threshold', controls.noiseGateThresholdDb, AMP_CONTROL_DEFINITIONS.noiseGateThresholdDb);
+  setControlValue('noise-gate-range', controls.noiseGateRangeDb, AMP_CONTROL_DEFINITIONS.noiseGateRangeDb);
+  setControlValue('noise-gate-release', controls.noiseGateReleaseMs, AMP_CONTROL_DEFINITIONS.noiseGateReleaseMs);
+  const noiseGateEnabled = root.querySelector<HTMLInputElement>('#noise-gate-enabled');
+  if (noiseGateEnabled !== null) noiseGateEnabled.checked = !controls.noiseGateBypassed;
   const eqEnabled = root.querySelector<HTMLInputElement>('#eq-enabled');
   if (eqEnabled !== null) eqEnabled.checked = !controls.eqBypassed;
   setControlValue('bass', controls.bassDb, AMP_CONTROL_DEFINITIONS.bassDb);
@@ -321,6 +434,8 @@ function renderControls(controls: AmpControlSettings): void {
   setControlValue('compression-amount', controls.compressionAmount, AMP_CONTROL_DEFINITIONS.compressionAmount);
   const compressionEnabled = root.querySelector<HTMLInputElement>('#compression-enabled');
   if (compressionEnabled !== null) compressionEnabled.checked = !controls.compressionBypassed;
+  const compressionLevelMatch = root.querySelector<HTMLInputElement>('#compression-level-match');
+  if (compressionLevelMatch !== null) compressionLevelMatch.checked = controls.compressionLevelMatch;
   const reverbProfile = root.querySelector<HTMLSelectElement>('#reverb-profile');
   if (reverbProfile !== null && reverbProfile.value !== controls.reverbProfile) reverbProfile.value = controls.reverbProfile;
   const reverbProfileHelp = root.querySelector<HTMLElement>('#reverb-profile-help');
@@ -359,6 +474,12 @@ function setControlValue(id: string, value: number, definition: ContinuousContro
 function renderMeters(current: AudioSnapshot): void {
   updateMeter('input', current.meter);
   updateMeter('output', current.outputMeter);
+  const noiseGateReduction = root.querySelector<HTMLElement>('#noise-gate-reduction');
+  const noiseGateReductionText = `${current.noiseGateReductionDb.toFixed(1)} dB`;
+  if (noiseGateReduction !== null && noiseGateReduction.textContent !== noiseGateReductionText) noiseGateReduction.textContent = noiseGateReductionText;
+  const compressionReduction = root.querySelector<HTMLElement>('#compression-reduction');
+  const reductionText = `${current.compressionReductionDb.toFixed(1)} dB`;
+  if (compressionReduction !== null && compressionReduction.textContent !== reductionText) compressionReduction.textContent = reductionText;
   const indicator = root.querySelector<HTMLElement>('#clip-indicator');
   const clear = root.querySelector<HTMLButtonElement>('#clear-clip');
   if (indicator !== null) {
@@ -430,6 +551,31 @@ function dbControl(id: string, label: string, value: number, definition: Continu
       <input id="${id}-value" aria-label="${label} value" type="number" inputmode="decimal" class="${NUMERIC_INPUT}" min="${definition.minimum}" max="${definition.maximum}" step="${definition.step}" value="${value.toFixed(definition.fractionDigits)}">
       <span aria-hidden="true">dB</span>
     </div>
+  </div>`;
+}
+
+function unitControl(
+  id: string,
+  label: string,
+  value: number,
+  definition: ContinuousControlDefinition,
+  unit: string,
+): string {
+  return `<div class="grid grid-cols-[1fr_auto] max-[34rem]:grid-cols-1 gap-x-4 items-center">
+    <label for="${id}-slider" class="col-span-2 max-[34rem]:col-span-1 font-medium text-sm">${label}</label>
+    <input id="${id}-slider" aria-label="${label} slider" type="range" class="w-full accent-primary" min="${definition.minimum}" max="${definition.maximum}" step="${definition.step}" value="${value}">
+    <div class="flex items-center gap-[.35rem] max-[34rem]:justify-end">
+      <input id="${id}-value" aria-label="${label} value" type="number" inputmode="numeric" class="${NUMERIC_INPUT}" min="${definition.minimum}" max="${definition.maximum}" step="${definition.step}" value="${value.toFixed(definition.fractionDigits)}">
+      <span aria-hidden="true">${unit}</span>
+    </div>
+  </div>`;
+}
+
+function knobControl(id: string, label: string, value: number, definition: AmpKnobDefinition): string {
+  return `<div class="grid grid-cols-[1fr_auto] max-[34rem]:grid-cols-1 gap-x-4 items-center">
+    <label for="${id}-slider" class="col-span-2 max-[34rem]:col-span-1 font-medium text-sm">${label}</label>
+    <input id="${id}-slider" aria-label="${label} slider" type="range" class="w-full accent-primary" min="${definition.minimum}" max="${definition.maximum}" step="${definition.step}" value="${value}">
+    <input id="${id}-value" aria-label="${label} value" type="number" inputmode="decimal" class="${NUMERIC_INPUT}" min="${definition.minimum}" max="${definition.maximum}" step="${definition.step}" value="${value.toFixed(definition.fractionDigits)}">
   </div>`;
 }
 
