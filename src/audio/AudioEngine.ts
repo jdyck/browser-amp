@@ -29,6 +29,27 @@ export function compressionSettings(amount: number): CompressionSettings {
   };
 }
 
+/** Stable, capped compensation trim for useful bypass comparisons without signal-following pumping. */
+export function compressionLevelMatchDb(amount: number): number {
+  const normalizedAmount = normalizePercentAmount(amount);
+  // Web Audio's compressor includes its own level compensation, so the host
+  // trim is not a monotonic makeup curve. These fixed calibration anchors keep
+  // representative guitar program close to bypass without following the live signal.
+  const anchors = [
+    [0, 0],
+    [25, -1],
+    [50, -3.5],
+    [75, -2],
+    [100, 0.5],
+  ] as const;
+  const upperIndex = anchors.findIndex(([anchorAmount]) => anchorAmount >= normalizedAmount);
+  if (upperIndex <= 0) return anchors[0][1];
+  const [lowerAmount, lowerDb] = anchors[upperIndex - 1];
+  const [upperAmount, upperDb] = anchors[upperIndex];
+  const proportion = (normalizedAmount - lowerAmount) / (upperAmount - lowerAmount);
+  return lowerDb + (upperDb - lowerDb) * proportion;
+}
+
 function initialSnapshot(): AudioSnapshot {
   return {
     ...initialSettings,
@@ -41,6 +62,7 @@ function initialSnapshot(): AudioSnapshot {
     rawCaptureWarnings: [],
     meter: { dbfs: METER_FLOOR_DBFS, peakDbfs: METER_FLOOR_DBFS },
     outputMeter: { dbfs: METER_FLOOR_DBFS, peakDbfs: METER_FLOOR_DBFS },
+    compressionReductionDb: 0,
     clipLatched: false,
     latency: undefined,
     error: undefined,
@@ -132,6 +154,7 @@ export class AudioEngine implements AudioEngineContract {
   #middleEq: BiquadFilterNode | undefined;
   #trebleEq: BiquadFilterNode | undefined;
   #compressor: DynamicsCompressorNode | undefined;
+  #compressionLevelMatchGain: GainNode | undefined;
   #compressionDryGain: GainNode | undefined;
   #compressionWetGain: GainNode | undefined;
   #reverb: ReverbStage | undefined;
@@ -202,6 +225,7 @@ export class AudioEngine implements AudioEngineContract {
       this.#middleEq = this.#context.createBiquadFilter();
       this.#trebleEq = this.#context.createBiquadFilter();
       this.#compressor = this.#context.createDynamicsCompressor();
+      this.#compressionLevelMatchGain = this.#context.createGain();
       this.#compressionDryGain = this.#context.createGain();
       this.#compressionWetGain = this.#context.createGain();
       this.#masterGain = this.#context.createGain();
@@ -227,6 +251,11 @@ export class AudioEngine implements AudioEngineContract {
       this.#compressor.attack.value = compression.attackSeconds;
       this.#compressor.release.value = compression.releaseSeconds;
       this.#compressor.knee.value = compression.kneeDb;
+      this.#compressionLevelMatchGain.gain.value = dbToLinearGain(
+        this.#snapshot.controls.compressionLevelMatch
+          ? compressionLevelMatchDb(this.#snapshot.controls.compressionAmount)
+          : 0,
+      );
       this.#compressionDryGain.gain.value = this.#snapshot.controls.compressionBypassed ? 1 : 0;
       this.#compressionWetGain.gain.value = this.#snapshot.controls.compressionBypassed ? 0 : 1;
       this.#reverb = new ReverbStage(
@@ -252,7 +281,8 @@ export class AudioEngine implements AudioEngineContract {
       this.#ampModel.output.connect(this.#cabinetModel.input);
       this.#cabinetModel.output.connect(this.#compressionDryGain);
       this.#cabinetModel.output.connect(this.#compressor);
-      this.#compressor.connect(this.#compressionWetGain);
+      this.#compressor.connect(this.#compressionLevelMatchGain);
+      this.#compressionLevelMatchGain.connect(this.#compressionWetGain);
       this.#compressionDryGain.connect(this.#bassEq);
       this.#compressionWetGain.connect(this.#bassEq);
       this.#bassEq.connect(this.#middleEq);
@@ -359,6 +389,15 @@ export class AudioEngine implements AudioEngineContract {
         smoothGainToValue(this.#compressor.release, compression.releaseSeconds, this.#context.currentTime);
         smoothGainToValue(this.#compressor.knee, compression.kneeDb, this.#context.currentTime);
       }
+      if (this.#compressionLevelMatchGain !== undefined
+        && (controls.compressionAmount !== previousControls.compressionAmount
+          || controls.compressionLevelMatch !== previousControls.compressionLevelMatch)) {
+        smoothGainToDb(
+          this.#compressionLevelMatchGain.gain,
+          controls.compressionLevelMatch ? compressionLevelMatchDb(controls.compressionAmount) : 0,
+          this.#context.currentTime,
+        );
+      }
       if (controls.compressionBypassed !== previousControls.compressionBypassed) {
         if (this.#compressionDryGain !== undefined) {
           smoothGainToValue(this.#compressionDryGain.gain, controls.compressionBypassed ? 1 : 0, this.#context.currentTime);
@@ -371,7 +410,10 @@ export class AudioEngine implements AudioEngineContract {
         reverbParameters(controls.reverbProfile, controls.reverbSettings));
       if (this.#masterGain !== undefined) smoothGainToDb(this.#masterGain.gain, controls.masterVolumeDb, this.#context.currentTime);
     }
-    this.#update({ controls });
+    this.#update({
+      controls,
+      compressionReductionDb: controls.compressionBypassed ? 0 : this.#snapshot.compressionReductionDb,
+    });
   }
 
   public clearClip(): void {
@@ -512,11 +554,18 @@ export class AudioEngine implements AudioEngineContract {
       this.#outputAnalyser.getFloatTimeDomainData(outputSamples);
       const input = meterReadingFromSamples(inputSamples);
       const output = meterReadingFromSamples(outputSamples);
+      const compressorReduction = this.#compressor?.reduction;
+      const compressionReductionDb = this.#snapshot.controls.compressionBypassed
+        || compressorReduction === undefined
+        || !Number.isFinite(compressorReduction)
+        ? 0
+        : Math.max(0, -compressorReduction);
       this.#inputPeak = nextPeakHold(this.#inputPeak, input.dbfs, now);
       this.#outputPeak = nextPeakHold(this.#outputPeak, output.dbfs, now);
       this.#update({
         meter: { dbfs: input.dbfs, peakDbfs: this.#inputPeak.dbfs },
         outputMeter: { dbfs: output.dbfs, peakDbfs: this.#outputPeak.dbfs },
+        compressionReductionDb,
         clipLatched: this.#snapshot.clipLatched || output.clipped,
         latency: this.#latency(),
       });
@@ -537,6 +586,7 @@ export class AudioEngine implements AudioEngineContract {
     this.#middleEq?.disconnect();
     this.#trebleEq?.disconnect();
     this.#compressor?.disconnect();
+    this.#compressionLevelMatchGain?.disconnect();
     this.#compressionDryGain?.disconnect();
     this.#compressionWetGain?.disconnect();
     this.#reverb?.disconnect();
@@ -561,6 +611,7 @@ export class AudioEngine implements AudioEngineContract {
     this.#middleEq = undefined;
     this.#trebleEq = undefined;
     this.#compressor = undefined;
+    this.#compressionLevelMatchGain = undefined;
     this.#compressionDryGain = undefined;
     this.#compressionWetGain = undefined;
     this.#reverb = undefined;

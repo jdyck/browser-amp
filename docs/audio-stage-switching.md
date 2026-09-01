@@ -1,6 +1,6 @@
 # Audio stage switching
 
-The shared `StageSwitcher` in `src/audio/stageSwitcher.ts` owns stable input/output nodes and the lifetime of selected processing paths. It is used for amp selection, cabinet selection, and the reverb wet path (one of seven modules or off). The switcher does not own saved settings, change monitoring, or rebuild input capture. EQ and Compression retain their existing bypass implementation for now.
+The shared `StageSwitcher` in `src/audio/stageSwitcher.ts` owns stable input/output nodes and the lifetime of selected processing paths. It is used for amp selection, cabinet selection, and the reverb wet path. It does not own saved settings, monitoring, or input capture. Studio EQ and Studio Compression use their own bypass paths.
 
 ## Lifetime contract
 
@@ -22,16 +22,17 @@ The actual graph disconnection happens on the control thread when the ended even
 
 | Stage | Policy |
 | --- | --- |
-| Amp | Keep the outgoing amp fed during the transition. New tube paths warm for 100 ms before a 20 ms fade; Clean Voice needs no warmup. The original model parameters are unchanged. |
+| Amp | Keep the outgoing amp fed during the transition. Non-Studio-Clean paths warm for 60 ms before a 20 ms fade; Studio Clean needs no warmup. |
+| Cabinet | Crossfade for 20 ms, then dispose the outgoing filter path. |
 | Reverb | The dry path stays at unity. Switching modules or bypassing disconnects the outgoing effect's incoming audio immediately, fades its remaining tail over 20 ms, and disposes the convolver. Re-enabling or returning to a module builds fresh history. There is no preserve-trails mode. |
 
 Reverb bypass does not create a replacement convolver. Each module's impulse response is generated on enabled use or a response-parameter change. The cache keeps only the latest response for each module, at most seven entries, and is cleared on disconnect. Outgoing convolvers can retain their previous buffers only until retirement. Dwell and modulation edits reuse the response data; their extra nodes are disposed with the path, including stopping modulation oscillators. Choosing or editing a module while bypassed generates nothing. Amp lookup curves are likewise cached on first use. Reverb Amount still changes only the wet return; Amount, selection, and each module's parameters remain saved while bypassed. See [Reverb modules](reverb-modules.md) for the response generators.
 
-Switching latency is distinct from steady audio latency: tube selection takes about 120 ms when idle, and a queued choice waits for the current transition to finish. The switcher adds no delay to the dry path. Selected effects can introduce their own wet-path predelay, oversampling latency, or modulation delay. Phase differences can color overlaps; the fades are not a promise of equal loudness or identical phase.
+Switching latency is distinct from steady audio latency: a non-Studio-Clean topology switch takes about 80 ms when idle, and queued choices wait for the current transition. The switcher adds no delay to the steady path. Selected effects may add their own latency.
 
 ## Verification and limits
 
-Unit tests exercise lazy creation, the two-path bound, latest-selection behavior, both-edge retirement, delayed callbacks, paused audio time, and disposal during a transition. Engine tests verify that Clean Voice creates no tube shapers, bypassed reverb creates no convolver, old shapers are disposed, impulse data is reused without retaining tails, and disconnect cancels pending callbacks.
+Unit tests exercise lazy creation, the two-path bound, latest-selection behavior, retirement, paused audio time, and disposal. Engine tests verify lazy reverb creation, amp-path disposal, impulse reuse without retained tails, and cleanup on disconnect.
 
 Browser OfflineAudioContext tests check native deadline delivery and graph retirement without another control command, rapid amp switching, rapid reverb module switching/bypass without resurrecting tails, the original signal responses, and switching discontinuities. All seven reverb responses are checked at 44.1, 48, and 96 kHz for deterministic output, finite samples, decay, stereo differences, dry attack, and bounded wet energy. UI and production smoke tests cover selection, persistence, and unchanged monitoring behavior.
 

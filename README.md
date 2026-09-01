@@ -6,13 +6,17 @@ The canonical release is <https://jdyck.github.io/browser-amp/>. Current Google 
 
 ## Amp models
 
-Choose **Clean Voice** for transparent gain, **Clean Tube** for gentle tube-inspired saturation and a softer high end, or **Clean Tube Warm** for fuller low mids, darker highs, and earlier breakup. With either tube model selected, raise Clean Gain to approach breakup and use Master for listening volume. The selection is saved; Reset Controls returns to Clean Voice. These are original voicings, not replicas of named amps. See [Clean Tube model notes](docs/clean-tube-model.md) for the signal paths and validation limits.
+Choose **Studio Clean**, **Warm Jazz Combo**, **Blackface Combo**, **High-Headroom American**, **Small Tweed Combo**, or **British Chime**. Each model remembers its own controls; Reset Controls returns to Studio Clean. These are original, inspired voicings rather than hardware replicas. See the [amp model specification](docs/jazz-amp-models-spec.md).
 
 Amp, cabinet, and reverb selection share [stage switching](docs/audio-stage-switching.md): unused paths are retired after a fade, and bypassed reverb has no live convolver. Compression and Studio EQ retain their existing bypass behavior.
 
 ## Cabinet voicings
 
 Choose **Compact 1×12 Jazz**, **American 1×12 Open-Back**, **American 2×12 Open-Back**, **4×10 Open-Back**, or **Direct / Full Range** after the amp model. Compact 1×12 Jazz is the default. The four voiced cabinets use causal biquad filters and a calibrated output trim; Direct is a unity path with no cabinet filters. Cabinet selection is saved, and changing it does not change the amp, effects, input capture, or monitoring. See the [cabinet voicing specification](docs/jazz-cabinet-models-spec.md).
+
+## Studio compression
+
+Studio Compression sits between Cabinet and Studio EQ. **Amount** controls intensity, **Level Match** makes bypass comparisons fairer, and **Reduction** shows live attenuation. Settings persist while bypassed. See the [controls specification](docs/studio-compression-controls-spec.md).
 
 ## Reverb modules
 

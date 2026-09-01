@@ -60,6 +60,7 @@ export interface AmpControlSettings {
   readonly trebleDb: number;
   readonly eqBypassed: boolean;
   readonly compressionAmount: number;
+  readonly compressionLevelMatch: boolean;
   readonly compressionBypassed: boolean;
   readonly reverbProfile: ReverbProfile;
   readonly reverbSettings: ReverbSettings;
@@ -78,6 +79,7 @@ export const DEFAULT_AMP_CONTROLS: AmpControlSettings = {
   trebleDb: 0,
   eqBypassed: false,
   compressionAmount: 25,
+  compressionLevelMatch: true,
   compressionBypassed: true,
   reverbProfile: 'studio-plate',
   reverbSettings: DEFAULT_REVERB_SETTINGS,
@@ -162,6 +164,9 @@ export function normalizeAmpControlSettings(
     compressionAmount: compressionAmount === undefined
       ? fallback.compressionAmount
       : normalizePercentAmount(compressionAmount),
+    compressionLevelMatch: typeof controls.compressionLevelMatch === 'boolean'
+      ? controls.compressionLevelMatch
+      : fallback.compressionLevelMatch,
     compressionBypassed: typeof controls.compressionBypassed === 'boolean'
       ? controls.compressionBypassed
       : fallback.compressionBypassed,

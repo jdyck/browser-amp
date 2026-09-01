@@ -1058,21 +1058,71 @@ test('bypasses Compression without losing Amount and maps Amount toward firm com
   const bypassed = await renderAmp(page, {
     frequency: 440,
     amplitude: 0.5,
-    controls: { compressionAmount: 100, compressionBypassed: true, masterVolumeDb: 0 },
+    controls: { compressionAmount: 100, compressionLevelMatch: false, compressionBypassed: true, masterVolumeDb: 0 },
   });
   const neutral = await renderAmp(page, {
     frequency: 440,
     amplitude: 0.5,
-    controls: { compressionAmount: 0, compressionBypassed: false, masterVolumeDb: 0 },
+    controls: { compressionAmount: 0, compressionLevelMatch: false, compressionBypassed: false, masterVolumeDb: 0 },
   });
   const firm = await renderAmp(page, {
     frequency: 440,
     amplitude: 0.5,
-    controls: { compressionAmount: 100, compressionBypassed: false, masterVolumeDb: 0 },
+    controls: { compressionAmount: 100, compressionLevelMatch: false, compressionBypassed: false, masterVolumeDb: 0 },
   });
 
   expect(neutral).toBeCloseTo(bypassed, 2);
   expect(firm).toBeLessThan(bypassed * 0.75);
+});
+
+test('Level Match keeps representative guitar dynamics close to bypass', async ({ page }) => {
+  await page.goto('./');
+
+  const differencesDb = await page.evaluate(async () => {
+    const harnessPath = './tests/offlineAudioHarness.ts';
+    const { connectOfflineEngine, rms } = await import(harnessPath) as typeof import('./offlineAudioHarness');
+    const sampleRate = 48_000;
+
+    async function render(compressionAmount: number, compressionBypassed: boolean): Promise<number> {
+      const durationSeconds = 2;
+      const context = new OfflineAudioContext(1, sampleRate * durationSeconds, sampleRate);
+      const source = context.createBufferSource();
+      const buffer = context.createBuffer(1, sampleRate * durationSeconds, sampleRate);
+      const samples = buffer.getChannelData(0);
+      for (let index = 0; index < samples.length; index += 1) {
+        const elapsed = index / sampleRate;
+        const pickPhase = elapsed % 0.25;
+        const envelope = 0.55 + 0.45 * Math.exp(-10 * pickPhase);
+        samples[index] = 0.5 * envelope * (
+          0.75 * Math.sin(2 * Math.PI * 110 * elapsed)
+          + 0.2 * Math.sin(2 * Math.PI * 220 * elapsed)
+          + 0.05 * Math.sin(2 * Math.PI * 330 * elapsed)
+        );
+      }
+      source.buffer = buffer;
+      await connectOfflineEngine(context, source, {
+        compressionAmount,
+        compressionLevelMatch: true,
+        compressionBypassed,
+        masterVolumeDb: 0,
+      });
+      source.start();
+      return rms((await context.startRendering()).getChannelData(0), sampleRate, 0.08, 1.9);
+    }
+
+    const bypassed = await render(25, true);
+    const differences = [];
+    for (const amount of [25, 50, 75, 100]) {
+      const matched = await render(amount, false);
+      differences.push({ amount, db: 20 * Math.log10(matched / bypassed) });
+    }
+    return differences;
+  });
+
+  expect(
+    Math.max(...differencesDb.map((difference) => Math.abs(difference.db))),
+    `Level Match differences: ${JSON.stringify(differencesDb)}`,
+  ).toBeLessThanOrEqual(1.5);
 });
 
 test('renders Input Trim before Compression, then EQ, Reverb, and Master Volume', async ({ page }) => {
@@ -1081,17 +1131,17 @@ test('renders Input Trim before Compression, then EQ, Reverb, and Master Volume'
   const compressed = await renderAmp(page, {
     frequency: 800,
     amplitude: 0.1,
-    controls: { compressionAmount: 100, compressionBypassed: false, reverbAmount: 100, reverbBypassed: false, masterVolumeDb: 0 },
+    controls: { compressionAmount: 100, compressionLevelMatch: false, compressionBypassed: false, reverbAmount: 100, reverbBypassed: false, masterVolumeDb: 0 },
   });
   const gainCompensated = await renderAmp(page, {
     frequency: 800,
     amplitude: 0.1,
-    controls: { inputTrimDb: 12, compressionAmount: 100, compressionBypassed: false, reverbAmount: 100, reverbBypassed: false, masterVolumeDb: -12 },
+    controls: { inputTrimDb: 12, compressionAmount: 100, compressionLevelMatch: false, compressionBypassed: false, reverbAmount: 100, reverbBypassed: false, masterVolumeDb: -12 },
   });
   const eqCompensated = await renderAmp(page, {
     frequency: 800,
     amplitude: 0.1,
-    controls: { middleDb: 12, compressionAmount: 100, compressionBypassed: false, reverbAmount: 100, reverbBypassed: false, masterVolumeDb: -12 },
+    controls: { middleDb: 12, compressionAmount: 100, compressionLevelMatch: false, compressionBypassed: false, reverbAmount: 100, reverbBypassed: false, masterVolumeDb: -12 },
   });
   const reverbAtUnity = await renderAmp(page, {
     frequency: 800,
@@ -1117,6 +1167,7 @@ test('renders Input Trim before Compression, then EQ, Reverb, and Master Volume'
       source.buffer = input;
       await connectOfflineEngine(context, source, {
         compressionAmount: 100,
+        compressionLevelMatch: false,
         compressionBypassed,
         reverbAmount: 100,
         reverbBypassed: false,
@@ -1157,6 +1208,7 @@ test('crossfades Compression Stage Bypass without an output click', async ({ pag
     source.connect(inputGain);
     const engine = await connectOfflineEngine(context, inputGain, {
       compressionAmount: 100,
+      compressionLevelMatch: false,
       compressionBypassed: true,
       masterVolumeDb: 0,
     });

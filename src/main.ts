@@ -141,7 +141,17 @@ function renderStructure(current: AudioSnapshot): void {
           <input id="compression-enabled" type="checkbox" class="${STAGE_TOGGLE_CHECKBOX}" ${current.controls.compressionBypassed ? '' : 'checked'}>
           Enable Compression
         </label>
-        ${percentControl('compression-amount', 'Compression', current.controls.compressionAmount, AMP_CONTROL_DEFINITIONS.compressionAmount)}
+        <div class="grid grid-cols-[minmax(0,1fr)_auto] gap-4 items-end max-[34rem]:grid-cols-1">
+          <div>${percentControl('compression-amount', 'Amount', current.controls.compressionAmount, AMP_CONTROL_DEFINITIONS.compressionAmount)}</div>
+          <div class="min-w-24 rounded-md border border-border bg-input-fill px-3 py-2 text-right">
+            <span class="block text-xs text-muted-foreground">Reduction</span>
+            <span id="compression-reduction" aria-label="Compression reduction">${current.compressionReductionDb.toFixed(1)} dB</span>
+          </div>
+        </div>
+        <label class="${STAGE_TOGGLE}" for="compression-level-match">
+          <input id="compression-level-match" type="checkbox" class="${STAGE_TOGGLE_CHECKBOX}" ${current.controls.compressionLevelMatch ? 'checked' : ''}>
+          Level Match
+        </label>
       </section>
 
       <section class="${PANEL}" aria-label="Studio EQ">
@@ -226,6 +236,9 @@ function bindStructureEvents(): void {
   bindContinuousControl('compression-amount', (compressionAmount) => engine.applyControls({ ...snapshot.controls, compressionAmount }));
   root.querySelector<HTMLInputElement>('#compression-enabled')?.addEventListener('change', (event) => {
     engine.applyControls({ ...snapshot.controls, compressionBypassed: !(event.currentTarget as HTMLInputElement).checked });
+  });
+  root.querySelector<HTMLInputElement>('#compression-level-match')?.addEventListener('change', (event) => {
+    engine.applyControls({ ...snapshot.controls, compressionLevelMatch: (event.currentTarget as HTMLInputElement).checked });
   });
   bindReverbControls();
   root.querySelector<HTMLSelectElement>('#reverb-profile')?.addEventListener('change', (event) => {
@@ -391,6 +404,8 @@ function renderControls(controls: AmpControlSettings): void {
   setControlValue('compression-amount', controls.compressionAmount, AMP_CONTROL_DEFINITIONS.compressionAmount);
   const compressionEnabled = root.querySelector<HTMLInputElement>('#compression-enabled');
   if (compressionEnabled !== null) compressionEnabled.checked = !controls.compressionBypassed;
+  const compressionLevelMatch = root.querySelector<HTMLInputElement>('#compression-level-match');
+  if (compressionLevelMatch !== null) compressionLevelMatch.checked = controls.compressionLevelMatch;
   const reverbProfile = root.querySelector<HTMLSelectElement>('#reverb-profile');
   if (reverbProfile !== null && reverbProfile.value !== controls.reverbProfile) reverbProfile.value = controls.reverbProfile;
   const reverbProfileHelp = root.querySelector<HTMLElement>('#reverb-profile-help');
@@ -429,6 +444,9 @@ function setControlValue(id: string, value: number, definition: ContinuousContro
 function renderMeters(current: AudioSnapshot): void {
   updateMeter('input', current.meter);
   updateMeter('output', current.outputMeter);
+  const compressionReduction = root.querySelector<HTMLElement>('#compression-reduction');
+  const reductionText = `${current.compressionReductionDb.toFixed(1)} dB`;
+  if (compressionReduction !== null && compressionReduction.textContent !== reductionText) compressionReduction.textContent = reductionText;
   const indicator = root.querySelector<HTMLElement>('#clip-indicator');
   const clear = root.querySelector<HTMLButtonElement>('#clear-clip');
   if (indicator !== null) {

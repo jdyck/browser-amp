@@ -104,7 +104,7 @@ async function installAudioBrowser(page: Page, options: {
       createConstantSource() { return node({ offset: { value: 1 }, start: () => undefined, stop: () => undefined, onended: null }); }
       createDynamicsCompressor() {
         const parameter = (value: number) => ({ value, cancelScheduledValues: () => undefined, setValueAtTime: () => undefined, linearRampToValueAtTime: () => undefined });
-        return node({ threshold: parameter(-24), ratio: parameter(12), attack: parameter(0.003), release: parameter(0.25), knee: parameter(30) });
+        return node({ reduction: -4, threshold: parameter(-24), ratio: parameter(12), attack: parameter(0.003), release: parameter(0.25), knee: parameter(30) });
       }
       createBuffer(channels: number, length: number, sampleRate: number) {
         const data = Array.from({ length: channels }, () => new Float32Array(length));
@@ -441,9 +441,10 @@ test('synchronizes, clamps, and restores controls without restoring Processed Mo
   const middle = studioEq.getByLabel('Middle value');
   const treble = studioEq.getByLabel('Treble value');
   const eqEnabled = page.getByLabel('Enable Studio EQ');
-  const compressionAmount = page.getByLabel('Compression value');
-  const compressionAmountSlider = page.getByLabel('Compression slider');
+  const compressionAmount = page.getByLabel('Amount value');
+  const compressionAmountSlider = page.getByLabel('Amount slider');
   const compressionEnabled = page.getByLabel('Enable Compression');
+  const compressionLevelMatch = page.getByLabel('Level Match');
   const reverbAmount = page.getByLabel('Reverb value');
   const reverbAmountSlider = page.getByLabel('Reverb slider');
   const reverbEnabled = page.getByLabel('Enable Reverb');
@@ -456,6 +457,7 @@ test('synchronizes, clamps, and restores controls without restoring Processed Mo
   await expect(eqEnabled).toBeChecked();
   await expect(compressionAmount).toHaveValue('25');
   await expect(compressionEnabled).not.toBeChecked();
+  await expect(compressionLevelMatch).toBeChecked();
   await expect(reverbAmount).toHaveValue('20');
   await expect(reverbEnabled).not.toBeChecked();
   await expect(masterVolume).toHaveValue('-18.0');
@@ -471,6 +473,7 @@ test('synchronizes, clamps, and restores controls without restoring Processed Mo
   await compressionAmount.fill('101');
   await compressionAmount.press('Enter');
   await compressionEnabled.check();
+  await compressionLevelMatch.uncheck();
   await reverbAmount.fill('-1');
   await reverbAmount.press('Enter');
   await reverbEnabled.check();
@@ -494,15 +497,16 @@ test('synchronizes, clamps, and restores controls without restoring Processed Mo
   await expect(studioEq.getByLabel('Bass value')).toHaveValue('12.0');
   await expect(studioEq.getByLabel('Middle value')).toHaveValue('3.3');
   await expect(studioEq.getByLabel('Treble value')).toHaveValue('-12.0');
-  await expect(page.getByLabel('Compression value')).toHaveValue('100');
+  await expect(page.getByLabel('Amount value')).toHaveValue('100');
   await expect(compressionEnabled).toBeChecked();
+  await expect(compressionLevelMatch).not.toBeChecked();
   await expect(page.getByLabel('Reverb value')).toHaveValue('0');
   await expect(reverbEnabled).toBeChecked();
   await expect(page.getByLabel('Master value')).toHaveValue('-12.3');
   await expect(page.getByRole('button', { name: 'Enable Monitoring' })).toBeDisabled();
 
   const enabledSettings = await page.evaluate(() => JSON.parse(localStorage.getItem('browser-amp.saved-control-settings') ?? 'null'));
-  expect(enabledSettings.controls).toMatchObject({ eqBypassed: false, compressionBypassed: false, reverbBypassed: false });
+  expect(enabledSettings.controls).toMatchObject({ eqBypassed: false, compressionBypassed: false, compressionLevelMatch: false, reverbBypassed: false });
 
   await eqEnabled.uncheck();
   await expect(bass).toHaveValue('12.0');
@@ -553,6 +557,7 @@ test('Reset Controls restores sound defaults without changing connection, monito
   await page.getByRole('region', { name: 'Studio EQ' }).getByLabel('Bass value').fill('-4');
   await page.getByLabel('Enable Studio EQ').uncheck();
   await page.getByLabel('Enable Compression').check();
+  await page.getByLabel('Level Match').uncheck();
   await page.getByLabel('Reverb value').fill('60');
   await page.getByLabel('Enable Reverb').check();
   await page.getByLabel('Master value').fill('-6');
@@ -568,8 +573,9 @@ test('Reset Controls restores sound defaults without changing connection, monito
   await expect(studioEq.getByLabel('Middle value')).toHaveValue('0.0');
   await expect(studioEq.getByLabel('Treble value')).toHaveValue('0.0');
   await expect(page.getByLabel('Enable Studio EQ')).toBeChecked();
-  await expect(page.getByLabel('Compression value')).toHaveValue('25');
+  await expect(page.getByLabel('Amount value')).toHaveValue('25');
   await expect(page.getByLabel('Enable Compression')).not.toBeChecked();
+  await expect(page.getByLabel('Level Match')).toBeChecked();
   await expect(page.getByLabel('Reverb value')).toHaveValue('20');
   await expect(page.getByLabel('Enable Reverb')).not.toBeChecked();
   await expect(page.getByLabel('Master value')).toHaveValue('-18.0');
@@ -600,6 +606,11 @@ test('shows browser-visible output routing and clears a latched post-Master CLIP
 
   await page.getByLabel('Output device').selectOption('headphones');
   await expect.poll(() => page.evaluate(() => (window as Window & { selectedSink?: string }).selectedSink)).toBe('headphones');
+  await expect(page.getByLabel('Compression reduction')).toHaveText('0.0 dB');
+  await page.getByLabel('Enable Compression').check();
+  await expect(page.getByLabel('Compression reduction')).toHaveText('4.0 dB');
+  await page.getByLabel('Enable Compression').uncheck();
+  await expect(page.getByLabel('Compression reduction')).toHaveText('0.0 dB');
   await expect(page.locator('#clip-indicator')).toHaveAttribute('aria-hidden', 'false');
   await page.getByRole('button', { name: 'Clear CLIP' }).click();
   await expect(page.locator('#clip-indicator')).toHaveAttribute('aria-hidden', 'true');
@@ -741,7 +752,7 @@ test('keeps exact controls keyboard-operable and in Amp Chain order on a narrow 
     'Master Volume',
   ]);
 
-  const amountBounds = await page.getByLabel('Compression value').boundingBox();
+  const amountBounds = await page.getByLabel('Amount value').boundingBox();
   expect(amountBounds).not.toBeNull();
   expect((amountBounds?.x ?? 0) + (amountBounds?.width ?? 0)).toBeLessThanOrEqual(320);
 });

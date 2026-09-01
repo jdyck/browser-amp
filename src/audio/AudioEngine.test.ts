@@ -345,17 +345,48 @@ describe('AudioEngine', () => {
 
     const [bassEq, middleEq, trebleEq] = vi.mocked(context.createBiquadFilter).mock.results.map(({ value }) => value);
     const compressor = vi.mocked(context.createDynamicsCompressor).mock.results[0].value;
-    const compressionWetGain = vi.mocked(compressor.connect).mock.calls[0][0] as GainNode;
+    const levelMatchGain = vi.mocked(compressor.connect).mock.calls[0][0] as unknown as GainNode;
+    const compressionWetGain = vi.mocked(levelMatchGain.connect).mock.calls[0][0] as unknown as GainNode;
     const eqInputs = vi.mocked(context.createGain).mock.results
       .map(({ value }) => value)
       .filter((gain) => vi.mocked(gain.connect).mock.calls.some((call: [AudioNode]) => call[0] === bassEq));
 
     expect(eqInputs).toHaveLength(2);
     expect(eqInputs).toContain(compressionWetGain);
+    expect(compressor.connect).toHaveBeenCalledWith(levelMatchGain);
     expect(bassEq.connect).toHaveBeenCalledWith(middleEq);
     expect(middleEq.connect).toHaveBeenCalledWith(trebleEq);
     expect(trebleEq.connect).toHaveBeenCalledOnce();
     expect(trebleEq.connect).not.toHaveBeenCalledWith(compressor);
+  });
+
+  it('reports gain reduction only while Compression is active and smooths Level Match changes', async () => {
+    let renderFrame: FrameRequestCallback | undefined;
+    const compressor = audioNode({
+      reduction: -6.25,
+      threshold: { value: -24, cancelScheduledValues: vi.fn(), setValueAtTime: vi.fn(), linearRampToValueAtTime: vi.fn() },
+      ratio: { value: 12, cancelScheduledValues: vi.fn(), setValueAtTime: vi.fn(), linearRampToValueAtTime: vi.fn() },
+      attack: { value: 0.003, cancelScheduledValues: vi.fn(), setValueAtTime: vi.fn(), linearRampToValueAtTime: vi.fn() },
+      release: { value: 0.25, cancelScheduledValues: vi.fn(), setValueAtTime: vi.fn(), linearRampToValueAtTime: vi.fn() },
+      knee: { value: 30, cancelScheduledValues: vi.fn(), setValueAtTime: vi.fn(), linearRampToValueAtTime: vi.fn() },
+    }) as DynamicsCompressorNode;
+    const context = audioContext({ createDynamicsCompressor: vi.fn(() => compressor) });
+    const engine = new AudioEngine(browser({
+      createAudioContext: () => context,
+      requestAnimationFrame: (callback) => { renderFrame = callback; return 1; },
+    }));
+    engine.applyControls({ ...engine.snapshot.controls, compressionBypassed: false });
+
+    await engine.connectInput();
+    renderFrame?.(1_000);
+
+    expect(engine.snapshot.compressionReductionDb).toBe(6.25);
+    const levelMatchGain = vi.mocked(compressor.connect).mock.calls[0][0] as unknown as GainNode;
+    engine.applyControls({ ...engine.snapshot.controls, compressionLevelMatch: false });
+    expect(levelMatchGain.gain.linearRampToValueAtTime).toHaveBeenCalledWith(1, 1.02);
+
+    engine.applyControls({ ...engine.snapshot.controls, compressionBypassed: true });
+    expect(engine.snapshot.compressionReductionDb).toBe(0);
   });
 
   it('clamps model-specific and studio controls while monitoring stops', async () => {

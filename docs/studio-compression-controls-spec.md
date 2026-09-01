@@ -25,6 +25,7 @@ Do not add an advanced accordion.
 - Bypass removes both compression and its level-matching gain from the audible path.
 - Amount and Level Match remain saved while Compression is bypassed.
 - The Reduction meter reads `0 dB` while bypassed and shows current compressor gain reduction while active.
+- Reduction is signal-dependent; changing Amount without input does not move the meter.
 - Reset restores Compression to bypassed, Amount to `25%`, and Level Match to `On`.
 
 ## Not included

@@ -66,6 +66,7 @@ export interface AudioSnapshot extends InputSettings {
   readonly rawCaptureWarnings: readonly string[];
   readonly meter: InputMeterSnapshot;
   readonly outputMeter: InputMeterSnapshot;
+  readonly compressionReductionDb: number;
   readonly clipLatched: boolean;
   readonly latency: LatencySnapshot | undefined;
   readonly error: string | undefined;

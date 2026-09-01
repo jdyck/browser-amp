@@ -2,6 +2,8 @@
 
 Keep one fixed, easy-to-follow signal chain. Modules may change internally, but their order stays the same.
 
+This is the target path. Input conditioning and Noise Suppression remain planned; the implemented stages keep the same relative order.
+
 ## Full path
 
 ```text
@@ -142,4 +144,3 @@ The Amp Type does not contain cabinet response, noise suppression, studio effect
 - [Jazz amp models](jazz-amp-models-spec.md)
 - [Jazz cabinet models](jazz-cabinet-models-spec.md)
 - [Swappable module architecture](research/swappable-audio-module-architecture.md)
-

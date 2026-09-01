@@ -1,6 +1,8 @@
-# Browser Amp — First-Release Plan
+# Browser Amp — Historical First-Release Plan
 
-Status: ready for implementation
+Status: superseded
+
+This records the original release scope. For the current chain and module contracts, use [Audio path](docs/audio-path-spec.md) and the linked module specifications.
 
 This plan defines the first usable Browser Amp release. Domain terms are defined in [CONTEXT.md](./CONTEXT.md), and the AudioEngine seam is recorded in [ADR 0001](./docs/adr/0001-keep-web-audio-behind-a-deep-audio-engine.md).
 

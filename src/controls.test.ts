@@ -93,6 +93,13 @@ describe('Amp Control Settings', () => {
     expect(normalizeAmpControlSettings({ bassDb: 6 }).eqBypassed).toBe(false);
   });
 
+  it('normalizes Level Match and enables it for older settings', () => {
+    expect(normalizeAmpControlSettings({ compressionLevelMatch: false }).compressionLevelMatch).toBe(false);
+    expect(normalizeAmpControlSettings({ compressionLevelMatch: true }).compressionLevelMatch).toBe(true);
+    expect(normalizeAmpControlSettings({ compressionLevelMatch: 'off' }).compressionLevelMatch).toBe(true);
+    expect(normalizeAmpControlSettings({ compressionAmount: 50 }).compressionLevelMatch).toBe(true);
+  });
+
   it('normalizes values to their documented ranges and precision', () => {
     expect(normalizeAmpControlSettings({
       ...DEFAULT_AMP_CONTROLS,
