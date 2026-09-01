@@ -1075,7 +1075,7 @@ test('bypasses Compression without losing Amount and maps Amount toward firm com
   expect(firm).toBeLessThan(bypassed * 0.75);
 });
 
-test('renders Input Trim and EQ before Compression, then Reverb and Master Volume', async ({ page }) => {
+test('renders Input Trim before Compression, then EQ, Reverb, and Master Volume', async ({ page }) => {
   await page.goto('./');
 
   const compressed = await renderAmp(page, {
@@ -1135,7 +1135,7 @@ test('renders Input Trim and EQ before Compression, then Reverb and Master Volum
   });
 
   expect(gainCompensated).toBeLessThan(compressed * 0.6);
-  expect(eqCompensated).toBeLessThan(compressed * 0.6);
+  expect(eqCompensated).toBeCloseTo(compressed, 2);
   expect(reverbAttenuated / reverbAtUnity).toBeCloseTo(10 ** (-12 / 20), 2);
   expect(compressedReverbTail.compressed.early).toBeLessThan(compressedReverbTail.bypassed.early * 0.75);
   expect(compressedReverbTail.compressed.late).toBeLessThan(compressedReverbTail.bypassed.late * 0.75);

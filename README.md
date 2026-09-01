@@ -8,7 +8,7 @@ The canonical release is <https://jdyck.github.io/browser-amp/>. Current Google 
 
 Choose **Clean Voice** for transparent gain, **Clean Tube** for gentle tube-inspired saturation and a softer high end, or **Clean Tube Warm** for fuller low mids, darker highs, and earlier breakup. With either tube model selected, raise Clean Gain to approach breakup and use Master for listening volume. The selection is saved; Reset Controls returns to Clean Voice. These are original voicings, not replicas of named amps. See [Clean Tube model notes](docs/clean-tube-model.md) for the signal paths and validation limits.
 
-Amp, cabinet, and reverb selection share [stage switching](docs/audio-stage-switching.md): unused paths are retired after a fade, and bypassed reverb has no live convolver. EQ and Compression retain their existing bypass behavior.
+Amp, cabinet, and reverb selection share [stage switching](docs/audio-stage-switching.md): unused paths are retired after a fade, and bypassed reverb has no live convolver. Compression and Studio EQ retain their existing bypass behavior.
 
 ## Cabinet voicings
 

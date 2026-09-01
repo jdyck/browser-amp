@@ -136,24 +136,24 @@ function renderStructure(current: AudioSnapshot): void {
         <span id="cabinet-model-help" class="${FIELD_HELP}">${CABINET_MODELS[current.controls.cabinetModel].description}</span>
       </section>
 
-      <section class="${PANEL}" aria-label="Three-Band EQ">
-        <label class="${STAGE_TOGGLE}" for="eq-enabled">
-          <input id="eq-enabled" type="checkbox" class="${STAGE_TOGGLE_CHECKBOX}" ${current.controls.eqBypassed ? '' : 'checked'}>
-          Enable EQ
-        </label>
-        <div class="grid gap-2">
-          ${dbControl('bass', 'Bass', current.controls.bassDb, AMP_CONTROL_DEFINITIONS.bassDb)}
-          ${dbControl('middle', 'Middle', current.controls.middleDb, AMP_CONTROL_DEFINITIONS.middleDb)}
-          ${dbControl('treble', 'Treble', current.controls.trebleDb, AMP_CONTROL_DEFINITIONS.trebleDb)}
-        </div>
-      </section>
-
       <section class="${PANEL}" aria-label="Compression">
         <label class="${STAGE_TOGGLE}" for="compression-enabled">
           <input id="compression-enabled" type="checkbox" class="${STAGE_TOGGLE_CHECKBOX}" ${current.controls.compressionBypassed ? '' : 'checked'}>
           Enable Compression
         </label>
         ${percentControl('compression-amount', 'Compression', current.controls.compressionAmount, AMP_CONTROL_DEFINITIONS.compressionAmount)}
+      </section>
+
+      <section class="${PANEL}" aria-label="Studio EQ">
+        <label class="${STAGE_TOGGLE}" for="eq-enabled">
+          <input id="eq-enabled" type="checkbox" class="${STAGE_TOGGLE_CHECKBOX}" ${current.controls.eqBypassed ? '' : 'checked'}>
+          Enable Studio EQ
+        </label>
+        <div class="grid gap-2">
+          ${dbControl('bass', 'Bass', current.controls.bassDb, AMP_CONTROL_DEFINITIONS.bassDb)}
+          ${dbControl('middle', 'Middle', current.controls.middleDb, AMP_CONTROL_DEFINITIONS.middleDb)}
+          ${dbControl('treble', 'Treble', current.controls.trebleDb, AMP_CONTROL_DEFINITIONS.trebleDb)}
+        </div>
       </section>
 
       <section class="${PANEL}" aria-label="Reverb">

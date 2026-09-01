@@ -435,12 +435,12 @@ test('synchronizes, clamps, and restores controls without restoring Processed Mo
 
   const inputTrim = page.getByLabel('Input Trim value');
   const inputTrimSlider = page.getByLabel('Input Trim slider');
-  const studioEq = page.getByRole('region', { name: 'Three-Band EQ' });
+  const studioEq = page.getByRole('region', { name: 'Studio EQ' });
   const bass = studioEq.getByLabel('Bass value');
   const bassSlider = studioEq.getByLabel('Bass slider');
   const middle = studioEq.getByLabel('Middle value');
   const treble = studioEq.getByLabel('Treble value');
-  const eqEnabled = page.getByLabel('Enable EQ');
+  const eqEnabled = page.getByLabel('Enable Studio EQ');
   const compressionAmount = page.getByLabel('Compression value');
   const compressionAmountSlider = page.getByLabel('Compression slider');
   const compressionEnabled = page.getByLabel('Enable Compression');
@@ -550,8 +550,8 @@ test('Reset Controls restores sound defaults without changing connection, monito
   await installAudioBrowser(page);
   await page.goto('./');
   await page.getByLabel('Input Trim value').fill('9');
-  await page.getByRole('region', { name: 'Three-Band EQ' }).getByLabel('Bass value').fill('-4');
-  await page.getByLabel('Enable EQ').uncheck();
+  await page.getByRole('region', { name: 'Studio EQ' }).getByLabel('Bass value').fill('-4');
+  await page.getByLabel('Enable Studio EQ').uncheck();
   await page.getByLabel('Enable Compression').check();
   await page.getByLabel('Reverb value').fill('60');
   await page.getByLabel('Enable Reverb').check();
@@ -563,11 +563,11 @@ test('Reset Controls restores sound defaults without changing connection, monito
   await page.getByRole('button', { name: 'Reset Controls' }).click();
 
   await expect(page.getByLabel('Input Trim value')).toHaveValue('0.0');
-  const studioEq = page.getByRole('region', { name: 'Three-Band EQ' });
+  const studioEq = page.getByRole('region', { name: 'Studio EQ' });
   await expect(studioEq.getByLabel('Bass value')).toHaveValue('0.0');
   await expect(studioEq.getByLabel('Middle value')).toHaveValue('0.0');
   await expect(studioEq.getByLabel('Treble value')).toHaveValue('0.0');
-  await expect(page.getByLabel('Enable EQ')).toBeChecked();
+  await expect(page.getByLabel('Enable Studio EQ')).toBeChecked();
   await expect(page.getByLabel('Compression value')).toHaveValue('25');
   await expect(page.getByLabel('Enable Compression')).not.toBeChecked();
   await expect(page.getByLabel('Reverb value')).toHaveValue('20');
@@ -725,7 +725,7 @@ test('keeps exact controls keyboard-operable and in Amp Chain order on a narrow 
   await page.setViewportSize({ width: 320, height: 900 });
   await page.goto('./');
 
-  const studioEq = page.getByRole('region', { name: 'Three-Band EQ' });
+  const studioEq = page.getByRole('region', { name: 'Studio EQ' });
   const bassSlider = studioEq.getByLabel('Bass slider');
   await bassSlider.focus();
   await bassSlider.press('ArrowRight');
@@ -735,8 +735,8 @@ test('keeps exact controls keyboard-operable and in Amp Chain order on a narrow 
   await expect(page.locator('.panel[aria-label]').evaluateAll((panels) => panels.map((panel) => panel.getAttribute('aria-label')))).resolves.toEqual([
     'Amp Model',
     'Cabinet',
-    'Three-Band EQ',
     'Compression',
+    'Studio EQ',
     'Reverb',
     'Master Volume',
   ]);

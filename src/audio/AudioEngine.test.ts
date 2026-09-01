@@ -337,6 +337,27 @@ describe('AudioEngine', () => {
     expect(engine.snapshot).toMatchObject({ lifecycle: 'connected-muted', monitoring: false });
   });
 
+  it('routes both compression paths through Studio EQ before Reverb', async () => {
+    const context = audioContext();
+    const engine = new AudioEngine(browser({ createAudioContext: () => context }));
+
+    await engine.connectInput();
+
+    const [bassEq, middleEq, trebleEq] = vi.mocked(context.createBiquadFilter).mock.results.map(({ value }) => value);
+    const compressor = vi.mocked(context.createDynamicsCompressor).mock.results[0].value;
+    const compressionWetGain = vi.mocked(compressor.connect).mock.calls[0][0] as GainNode;
+    const eqInputs = vi.mocked(context.createGain).mock.results
+      .map(({ value }) => value)
+      .filter((gain) => vi.mocked(gain.connect).mock.calls.some((call: [AudioNode]) => call[0] === bassEq));
+
+    expect(eqInputs).toHaveLength(2);
+    expect(eqInputs).toContain(compressionWetGain);
+    expect(bassEq.connect).toHaveBeenCalledWith(middleEq);
+    expect(middleEq.connect).toHaveBeenCalledWith(trebleEq);
+    expect(trebleEq.connect).toHaveBeenCalledOnce();
+    expect(trebleEq.connect).not.toHaveBeenCalledWith(compressor);
+  });
+
   it('clamps model-specific and studio controls while monitoring stops', async () => {
     const engine = new AudioEngine(browser());
     expect(engine.snapshot.controls).toEqual(DEFAULT_AMP_CONTROLS);
