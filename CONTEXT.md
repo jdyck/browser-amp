@@ -9,7 +9,7 @@ The interactive experience for shaping a Live Guitar Input through an intentiona
 _Avoid_: General Web Audio workbench, patch builder
 
 **Amp Chain**:
-The fixed sequence Input Trim, Amp Model, Cabinet, planned Noise Suppression, Studio Compression, Studio EQ, Reverb, and Master that transforms the Live Guitar Input before Processed Monitoring.
+The fixed sequence Input Trim, Amp Model, Cabinet, Noise Suppression, Studio Compression, Studio EQ, Reverb, and Master that transforms the Live Guitar Input before Processed Monitoring.
 _Avoid_: Pedalboard, arbitrary graph
 
 **Live Guitar Input**:
@@ -45,11 +45,11 @@ Monitoring in which listeners hear the Amp Chain's output rather than a parallel
 _Avoid_: Dry monitoring, dry/wet blend
 
 **Stage Bypass**:
-A control that removes Studio Compression, Studio EQ, or Reverb without changing its settings. Reverb bypass also ends the existing tail.
+A control that removes Noise Suppression, Studio Compression, Studio EQ, or Reverb without changing its settings. Reverb bypass also ends the existing tail.
 _Avoid_: Per-parameter bypass, dry monitoring
 
 **Noise Suppression**:
-A gentle downward-expansion stage detected from the conditioned input and applied after Cabinet. Threshold chooses when it opens, Range bounds the maximum reduction, and Release controls how gradually it closes. Opening, hold, and hysteresis remain fixed.
+A gentle downward expander after Cabinet, controlled by the trimmed input. Threshold chooses when it opens, Range limits attenuation, and Release controls how gradually it closes.
 _Avoid_: Browser voice processing, microphone cleanup, Noise Gate
 
 **Input Trim**:

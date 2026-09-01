@@ -2,24 +2,22 @@
 
 Keep one fixed, easy-to-follow signal chain. Modules may change internally, but their order stays the same.
 
-This is the target path. Input conditioning and Noise Suppression remain planned; the implemented stages keep the same relative order.
-
 ## Full path
 
 ```text
 Selected mono input
 → Input meter
-→ Input trim and conditioning
-   ├─→ Noise-suppression detector
-   └─→ Amp Type
+→ Input trim
+   ├─→ Noise Suppression detector
+   └─→ Amp Model
         1. Input voicing
         2. Preamp stage 1
         3. Tone stack
         4. Preamp stage 2 / phase inverter
         5. Power-amp stage
 → Cabinet
-→ Noise-suppression gain
-→ Studio compression
+→ Noise Suppression gain
+→ Studio Compression
 → Studio EQ
 → Reverb
 → Master
@@ -28,7 +26,7 @@ Selected mono input
 → Selected output
 ```
 
-The path stays mono through Amp, Cabinet, Noise Suppression, Compression, and Studio EQ. Reverb may create stereo; Master and output monitoring preserve it.
+The path stays mono through Amp Model, Cabinet, Noise Suppression, Studio Compression, and Studio EQ. Reverb may create stereo; Master and output monitoring preserve it.
 
 ## 1. Input
 
@@ -37,14 +35,13 @@ The path stays mono through Amp, Cabinet, Noise Suppression, Compression, and St
 - Input meter shows the raw selected channel before processing.
 - Connecting input never enables monitoring.
 
-## 2. Input trim and conditioning
+## 2. Input trim
 
 - Apply the player's calibration trim.
-- Remove DC/rumble and unnecessary extreme highs.
-- Feed both the Amp Type and the noise-suppression detector.
+- Feed both the Amp Model and the Noise Suppression detector.
 - Keep this global; changing amps does not change calibration.
 
-## 3. Amp Type
+## 3. Amp Model
 
 Every amp contains the same five conceptual stages, but each model supplies its own filters, gains, nonlinear curves, and control mappings.
 
@@ -77,17 +74,17 @@ Every amp contains the same five conceptual stages, but each model supplies its 
 - Sag or bias movement belongs here if implemented.
 - Ends with a calibrated amp output trim, not the player's Master.
 
-The Amp Type does not contain cabinet response, noise suppression, studio effects, reverb, or final Master.
+The Amp Model does not contain cabinet response, noise suppression, studio effects, reverb, or final Master.
 
 ## 4. Cabinet
 
 - Apply the selected speaker/cab/microphone response after the full amp model.
 - Direct / Full Range is a unity bypass with no convolver.
-- Cabinet choice never changes automatically with Amp Type.
+- Cabinet choice never changes automatically with Amp Model.
 
-## 5. Noise suppression
+## 5. Noise Suppression
 
-- Detect playing from the clean, conditioned input.
+- Detect playing from the trimmed input.
 - Apply gentle downward expansion after Amp and Cabinet so amplified interface noise is reduced.
 - Sit before Reverb so closing the suppressor does not chop an existing reverb tail.
 - Bypass is unity gain.
@@ -96,7 +93,7 @@ The Amp Type does not contain cabinet response, noise suppression, studio effect
 - Expose maximum Range from 0–24 dB (default 9 dB) and Release from 50–1,000 ms (default 200 ms).
 - Show the current reduction without driving DSP from the UI update loop.
 
-## 6. Studio compression
+## 6. Studio Compression
 
 - Control peaks and consistency after the amp/cab sound is complete.
 - Keep it subtle or bypassed by default for jazz dynamics.

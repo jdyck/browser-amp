@@ -34,8 +34,9 @@ Run this section against the exact production URL in Chrome, not Vite preview.
 - [ ] Connect Input asks for permission and reaches connected-muted; both meters remain visible and Processed Monitoring remains off.
 - [ ] Enable Processed Monitoring is a separate action and the Hardware Direct Monitoring guidance appears when not previously dismissed.
 - [ ] Sliders and exact numeric fields stay synchronized and clamp to their documented ranges.
+- [ ] Noise Suppression preserves Threshold, Range, and Release while bypassed; its Reduction meter reads 0 dB while bypassed and responds while playing.
 - [ ] Studio Compression, Studio EQ, and Reverb bypass preserve settings; Reverb bypass has the expected tail chop without a pop.
-- [ ] Level Match survives reload and reset; Reduction reads 0 dB while bypassed and responds while playing.
+- [ ] Level Match survives reload and reset; Compression Reduction reads 0 dB while bypassed and responds while playing.
 - [ ] Saved Control Settings survive reload while the Input Connection and Processed Monitoring do not.
 - [ ] Reset Controls restores defaults without changing connection or monitoring.
 - [ ] CLIP latches under deliberate overload and Clear CLIP resets it.
@@ -82,8 +83,9 @@ Copy this section once for each available Validation Interface.
 #### Controls and recovery
 
 - [ ] Input and Output Level Meters respond to actual guitar samples.
-- [ ] Input Trim, the selected Amp Model controls, Cabinet, Studio Compression, Studio EQ, Reverb, and Master all produce the expected audible change.
+- [ ] Input Trim, the selected Amp Model controls, Cabinet, Noise Suppression, Studio Compression, Studio EQ, Reverb, and Master all produce the expected audible change.
 - [ ] Exact numeric entry, clamping, slider synchronization, arrow keys, and focus visibility work for every continuous control.
+- [ ] Noise Suppression bypass preserves Threshold, Range, and Release and switches without an obvious click.
 - [ ] Studio Compression bypass preserves Amount and Level Match and switches without an obvious click.
 - [ ] Reverb Stage Bypass preserves Amount and produces the expected tail chop without an obvious pop.
 - [ ] Defaults provide audible headroom with Master Volume at -18 dB.
@@ -115,6 +117,6 @@ Do not convert the subjective result into a universal latency promise. Attach sc
 - [ ] All available Validation Interfaces have a completed full record and a passing summary row.
 - [ ] Every available interface completed a monitored session of at least 15 minutes without dropouts or unrecoverable failure.
 - [ ] Production smoke and automated release gate refer to the same commit SHA.
-- [ ] Release notes still name Chrome on macOS as supported and keep iPhone browsers and Noise Suppression outside the release scope.
+- [ ] Release notes still name Chrome on macOS as supported.
 
 Sign-off name, date, decision, and remaining risks:

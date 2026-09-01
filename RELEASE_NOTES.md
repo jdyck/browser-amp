@@ -6,13 +6,13 @@ Browser Amp 0.1.0 is the first release of the Clean Amp Workbench.
 
 - Current Google Chrome on macOS is the supported first-release browser and operating system.
 - Chrome and Safari on iPhone remain experimental and are not part of first-release support.
-- Noise Suppression is planned and not included.
 
 ## Included
 
 - Explicit Live Guitar Input connection with silent metering before Processed Monitoring is enabled.
-- Fixed Amp Chain: Input Trim, Amp Model, Cabinet, Studio Compression, Studio EQ, Reverb, and Master.
+- Fixed Amp Chain: Input Trim, Amp Model, Cabinet, Noise Suppression, Studio Compression, Studio EQ, Reverb, and Master.
 - Six amp models, five cabinet choices, seven reverb modules, and saved per-module controls.
+- Configurable Noise Suppression with live Reduction metering.
 - Level-matched Studio Compression with live Reduction metering; Studio Compression, Studio EQ, and Reverb bypass.
 - Exact numeric entry, keyboard-accessible controls, Saved Control Settings, and Reset Controls.
 - Input and output meters, latched CLIP indication, explicit device-loss recovery, and capability-driven output routing.
