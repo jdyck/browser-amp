@@ -14,6 +14,7 @@ function audioContext(overrides: Record<string, unknown> = {}): AudioContext {
     sampleRate: 48_000,
     destination: audioNode(),
     state: 'running',
+    audioWorklet: { addModule: vi.fn().mockResolvedValue(undefined) },
     createMediaStreamSource: vi.fn(() => audioNode()),
     createChannelSplitter: vi.fn(() => audioNode()),
     createChannelMerger: vi.fn(() => audioNode()),
@@ -82,6 +83,9 @@ function browser(overrides: Partial<BrowserAudio> = {}, trackSettings: MediaTrac
       getUserMedia: vi.fn().mockResolvedValue(stream),
     }),
     createAudioContext: vi.fn(() => audioContext()),
+    createAudioWorkletNode: vi.fn(() => audioNode({
+      port: { onmessage: null, postMessage: vi.fn() },
+    }) as AudioWorkletNode),
     requestAnimationFrame: vi.fn(() => 1),
     cancelAnimationFrame: vi.fn(),
     ...overrides,
@@ -96,6 +100,51 @@ describe('AudioEngine', () => {
     expect(engine.snapshot.lifecycle).toBe('disconnected');
     expect(engine.snapshot.monitoring).toBe(false);
     expect(environment.createAudioContext).not.toHaveBeenCalled();
+  });
+
+  it('detects before the amp, applies the worklet after Cabinet, meters reduction, and disposes it', async () => {
+    const context = audioContext();
+    const port = {
+      onmessage: null as ((event: MessageEvent) => void) | null,
+      postMessage: vi.fn(),
+    };
+    const worklet = audioNode({ port }) as AudioWorkletNode;
+    const createAudioWorkletNode = vi.fn(() => worklet);
+    const engine = new AudioEngine(browser({ createAudioContext: () => context, createAudioWorkletNode }));
+
+    await engine.connectInput();
+
+    expect(context.audioWorklet.addModule).toHaveBeenCalledOnce();
+    expect(createAudioWorkletNode).toHaveBeenCalledWith(context, 'browser-amp-noise-gate', expect.objectContaining({
+      numberOfInputs: 2,
+      numberOfOutputs: 1,
+      processorOptions: { thresholdDb: -55, rangeDb: 9, releaseSeconds: 0.2, bypassed: false },
+    }));
+    const gains = vi.mocked(context.createGain).mock.results.map(({ value }) => value);
+    const signalInput = gains.find((gain) => vi.mocked(gain.connect).mock.calls.some((call: [AudioNode, number?, number?]) => call[0] === worklet && call[2] === 0));
+    const detectorInput = gains.find((gain) => vi.mocked(gain.connect).mock.calls.some((call: [AudioNode, number?, number?]) => call[0] === worklet && call[2] === 1));
+    expect(signalInput).toBeDefined();
+    expect(detectorInput).toBeDefined();
+    const inputAnalyser = vi.mocked(context.createAnalyser).mock.results[0].value;
+    const inputTrim = vi.mocked(inputAnalyser.connect).mock.calls[0][0] as AudioNode;
+    expect(inputTrim.connect).toHaveBeenCalledWith(detectorInput);
+    expect(gains.some((gain) => vi.mocked(gain.connect).mock.calls.some((call: [AudioNode, number?, number?]) => call[0] === signalInput))).toBe(true);
+    expect(worklet.connect).toHaveBeenCalledTimes(2);
+
+    port.onmessage?.(new MessageEvent('message', { data: { open: false, envelopeDb: -70, reductionDb: 8.5 } }));
+    expect(engine.snapshot.noiseGateReductionDb).toBe(8.5);
+    engine.applyControls({ ...engine.snapshot.controls, noiseGateThresholdDb: -45.2, noiseGateBypassed: true });
+    expect(port.postMessage).toHaveBeenLastCalledWith({
+      thresholdDb: -45.2,
+      rangeDb: 9,
+      releaseSeconds: 0.2,
+      bypassed: true,
+    });
+    expect(engine.snapshot.noiseGateReductionDb).toBe(0);
+
+    await engine.disconnectInput();
+    expect(port.onmessage).toBeNull();
+    expect(worklet.disconnect).toHaveBeenCalledOnce();
   });
 
   it('keeps at most two amp paths live and disposes unselected shapers without recapturing', async () => {

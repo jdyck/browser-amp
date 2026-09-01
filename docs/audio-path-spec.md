@@ -91,6 +91,10 @@ The Amp Type does not contain cabinet response, noise suppression, studio effect
 - Apply gentle downward expansion after Amp and Cabinet so amplified interface noise is reduced.
 - Sit before Reverb so closing the suppressor does not chop an existing reverb tail.
 - Bypass is unity gain.
+- Expose a −80 to −20 dB threshold, defaulting to −55 dB in 0.1 dB steps.
+- Keep detection and gain movement sample-accurate inside an `AudioWorklet`: 5 ms opening, 60 ms hold, and 6 dB hysteresis.
+- Expose maximum Range from 0–24 dB (default 9 dB) and Release from 50–1,000 ms (default 200 ms).
+- Show the current reduction without driving DSP from the UI update loop.
 
 ## 6. Studio compression
 

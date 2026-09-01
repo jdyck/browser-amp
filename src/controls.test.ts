@@ -93,6 +93,19 @@ describe('Amp Control Settings', () => {
     expect(normalizeAmpControlSettings({ bassDb: 6 }).eqBypassed).toBe(false);
   });
 
+  it('normalizes every noise suppression control independently', () => {
+    expect(normalizeAmpControlSettings({ noiseGateThresholdDb: -100 }).noiseGateThresholdDb).toBe(-80);
+    expect(normalizeAmpControlSettings({ noiseGateThresholdDb: -37.26 }).noiseGateThresholdDb).toBe(-37.3);
+    expect(normalizeAmpControlSettings({ noiseGateThresholdDb: 0 }).noiseGateThresholdDb).toBe(-20);
+    expect(normalizeAmpControlSettings({ noiseGateRangeDb: 30 }).noiseGateRangeDb).toBe(24);
+    expect(normalizeAmpControlSettings({ noiseGateRangeDb: 12.26 }).noiseGateRangeDb).toBe(12.3);
+    expect(normalizeAmpControlSettings({ noiseGateReleaseMs: 25 }).noiseGateReleaseMs).toBe(50);
+    expect(normalizeAmpControlSettings({ noiseGateReleaseMs: 734 }).noiseGateReleaseMs).toBe(730);
+    expect(normalizeAmpControlSettings({ noiseGateReleaseMs: 2_000 }).noiseGateReleaseMs).toBe(1_000);
+    expect(normalizeAmpControlSettings({ noiseGateBypassed: true }).noiseGateBypassed).toBe(true);
+    expect(normalizeAmpControlSettings({ noiseGateBypassed: 'yes' }).noiseGateBypassed).toBe(false);
+  });
+
   it('normalizes Level Match and enables it for older settings', () => {
     expect(normalizeAmpControlSettings({ compressionLevelMatch: false }).compressionLevelMatch).toBe(false);
     expect(normalizeAmpControlSettings({ compressionLevelMatch: true }).compressionLevelMatch).toBe(true);

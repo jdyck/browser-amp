@@ -55,6 +55,10 @@ export interface AmpControlSettings {
   readonly ampSettings: JazzAmpSettings;
   readonly cabinetModel: JazzCabinetId;
   readonly inputTrimDb: number;
+  readonly noiseGateThresholdDb: number;
+  readonly noiseGateRangeDb: number;
+  readonly noiseGateReleaseMs: number;
+  readonly noiseGateBypassed: boolean;
   readonly bassDb: number;
   readonly middleDb: number;
   readonly trebleDb: number;
@@ -74,6 +78,10 @@ export const DEFAULT_AMP_CONTROLS: AmpControlSettings = {
   ampSettings: DEFAULT_JAZZ_AMP_SETTINGS,
   cabinetModel: DEFAULT_JAZZ_CABINET,
   inputTrimDb: 0,
+  noiseGateThresholdDb: -55,
+  noiseGateRangeDb: 9,
+  noiseGateReleaseMs: 200,
+  noiseGateBypassed: false,
   bassDb: 0,
   middleDb: 0,
   trebleDb: 0,
@@ -103,6 +111,9 @@ export interface ContinuousControlDefinition {
 
 export const AMP_CONTROL_DEFINITIONS = {
   inputTrimDb: { minimum: -12, maximum: 24, step: 0.1, fractionDigits: 1 },
+  noiseGateThresholdDb: { minimum: -80, maximum: -20, step: 0.1, fractionDigits: 1 },
+  noiseGateRangeDb: { minimum: 0, maximum: 24, step: 0.1, fractionDigits: 1 },
+  noiseGateReleaseMs: { minimum: 50, maximum: 1_000, step: 10, fractionDigits: 0 },
   bassDb: { minimum: -12, maximum: 12, step: 0.1, fractionDigits: 1 },
   middleDb: { minimum: -12, maximum: 12, step: 0.1, fractionDigits: 1 },
   trebleDb: { minimum: -12, maximum: 12, step: 0.1, fractionDigits: 1 },
@@ -135,6 +146,9 @@ export function normalizeAmpControlSettings(
 ): AmpControlSettings {
   const controls = isRecord(value) ? value : {};
   const inputTrimDb = finiteNumber(controls.inputTrimDb) ?? finiteNumber(controls.cleanGainDb);
+  const noiseGateThresholdDb = finiteNumber(controls.noiseGateThresholdDb);
+  const noiseGateRangeDb = finiteNumber(controls.noiseGateRangeDb);
+  const noiseGateReleaseMs = finiteNumber(controls.noiseGateReleaseMs);
   const bassDb = finiteNumber(controls.bassDb);
   const middleDb = finiteNumber(controls.middleDb);
   const trebleDb = finiteNumber(controls.trebleDb);
@@ -157,6 +171,16 @@ export function normalizeAmpControlSettings(
     ampSettings: normalizeJazzAmpSettings(controls.ampSettings, fallback.ampSettings),
     cabinetModel,
     inputTrimDb: inputTrimDb === undefined ? fallback.inputTrimDb : normalizeContinuousControl(inputTrimDb, AMP_CONTROL_DEFINITIONS.inputTrimDb),
+    noiseGateThresholdDb: noiseGateThresholdDb === undefined
+      ? fallback.noiseGateThresholdDb
+      : normalizeContinuousControl(noiseGateThresholdDb, AMP_CONTROL_DEFINITIONS.noiseGateThresholdDb),
+    noiseGateRangeDb: noiseGateRangeDb === undefined
+      ? fallback.noiseGateRangeDb
+      : normalizeContinuousControl(noiseGateRangeDb, AMP_CONTROL_DEFINITIONS.noiseGateRangeDb),
+    noiseGateReleaseMs: noiseGateReleaseMs === undefined
+      ? fallback.noiseGateReleaseMs
+      : normalizeContinuousControl(noiseGateReleaseMs, AMP_CONTROL_DEFINITIONS.noiseGateReleaseMs),
+    noiseGateBypassed: typeof controls.noiseGateBypassed === 'boolean' ? controls.noiseGateBypassed : fallback.noiseGateBypassed,
     bassDb: bassDb === undefined ? fallback.bassDb : normalizeContinuousControl(bassDb, AMP_CONTROL_DEFINITIONS.bassDb),
     middleDb: middleDb === undefined ? fallback.middleDb : normalizeContinuousControl(middleDb, AMP_CONTROL_DEFINITIONS.middleDb),
     trebleDb: trebleDb === undefined ? fallback.trebleDb : normalizeContinuousControl(trebleDb, AMP_CONTROL_DEFINITIONS.trebleDb),

@@ -49,7 +49,7 @@ A control that removes Studio Compression, Studio EQ, or Reverb without changing
 _Avoid_: Per-parameter bypass, dry monitoring
 
 **Noise Suppression**:
-A planned downward-expansion stage detected from the conditioned input and applied after Cabinet.
+A gentle downward-expansion stage detected from the conditioned input and applied after Cabinet. Threshold chooses when it opens, Range bounds the maximum reduction, and Release controls how gradually it closes. Opening, hold, and hysteresis remain fixed.
 _Avoid_: Browser voice processing, microphone cleanup, Noise Gate
 
 **Input Trim**:

@@ -23,14 +23,17 @@ export async function connectOfflineEngine(
       removeEventListener: () => undefined,
     } as unknown as MediaDevices,
     createAudioContext: () => context as unknown as AudioContext,
+    createAudioWorkletNode: (workletContext, name, options) => new AudioWorkletNode(workletContext, name, options),
     requestAnimationFrame: () => 1,
     cancelAnimationFrame: () => undefined,
   });
   // Most callers measure one downstream module in isolation. Keep the test
-  // harness full-range unless a cabinet is explicitly part of the scenario.
+  // harness full-range and disable level-dependent suppression unless either
+  // stage is explicitly part of the scenario.
   engine.applyControls({
     ...engine.snapshot.controls,
     cabinetModel: 'cab.direct-full-range-v1',
+    noiseGateBypassed: true,
     ...controls,
   });
   await engine.connectInput();

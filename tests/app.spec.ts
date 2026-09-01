@@ -67,6 +67,7 @@ async function installAudioBrowser(page: Page, options: {
       sampleRate = 48_000;
       destination = node();
       state = 'running';
+      audioWorklet = { addModule: async () => undefined };
       constructor() {
         super();
         activeContext = this;
@@ -121,6 +122,12 @@ async function installAudioBrowser(page: Page, options: {
         return Promise.resolve();
       }
     }
+    class MockAudioWorkletNode {
+      port = { onmessage: null, postMessage: () => undefined };
+      constructor(_context: BaseAudioContext, _name: string, _options?: AudioWorkletNodeOptions) {}
+      connect() { return undefined; }
+      disconnect() { return undefined; }
+    }
     if (outputSelection) {
       Object.defineProperty(MockAudioContext.prototype, 'setSinkId', {
         value: (deviceId: string) => {
@@ -142,6 +149,7 @@ async function installAudioBrowser(page: Page, options: {
       document.dispatchEvent(new Event('visibilitychange'));
     };
     Object.defineProperty(window, 'AudioContext', { value: MockAudioContext, configurable: true });
+    Object.defineProperty(window, 'AudioWorkletNode', { value: MockAudioWorkletNode, configurable: true });
   }, options);
 }
 
@@ -158,6 +166,35 @@ test('places monitoring below input settings and output metering below input met
 
   await expect(page.locator('[aria-labelledby="input-title"] + section')).toHaveAttribute('aria-labelledby', 'monitoring-title');
   await expect(page.locator('[aria-labelledby="input-meter-title"] + section')).toHaveAttribute('aria-labelledby', 'output-meter-title');
+});
+
+test('persists and resets the Noise Suppression controls', async ({ page }) => {
+  await page.goto('./');
+  const section = page.getByRole('region', { name: 'Noise Suppression' });
+  const enabled = section.getByRole('checkbox', { name: 'Enable Noise Suppression' });
+  const threshold = section.getByLabel('Threshold value');
+  const range = section.getByLabel('Range value');
+  const release = section.getByLabel('Release value');
+  await expect(enabled).toBeChecked();
+  await expect(threshold).toHaveValue('-55.0');
+  await expect(range).toHaveValue('9.0');
+  await expect(release).toHaveValue('200');
+
+  await threshold.fill('-37.2');
+  await range.fill('15.5');
+  await release.fill('640');
+  await enabled.uncheck();
+  await page.reload();
+  await expect(threshold).toHaveValue('-37.2');
+  await expect(range).toHaveValue('15.5');
+  await expect(release).toHaveValue('640');
+  await expect(enabled).not.toBeChecked();
+
+  await page.getByRole('button', { name: 'Reset Controls' }).click();
+  await expect(threshold).toHaveValue('-55.0');
+  await expect(range).toHaveValue('9.0');
+  await expect(release).toHaveValue('200');
+  await expect(enabled).toBeChecked();
 });
 
 test('exposes six model-specific control sets, remembers them, and switches without recapturing', async ({ page }) => {
@@ -742,10 +779,11 @@ test('keeps exact controls keyboard-operable and in Amp Chain order on a narrow 
   await bassSlider.press('ArrowRight');
   await expect(studioEq.getByLabel('Bass value')).toHaveValue('0.1');
 
-  await expect(page.locator('.panel[aria-label]')).toHaveCount(6);
+  await expect(page.locator('.panel[aria-label]')).toHaveCount(7);
   await expect(page.locator('.panel[aria-label]').evaluateAll((panels) => panels.map((panel) => panel.getAttribute('aria-label')))).resolves.toEqual([
     'Amp Model',
     'Cabinet',
+    'Noise Suppression',
     'Compression',
     'Studio EQ',
     'Reverb',

@@ -6,6 +6,7 @@ import { ReverbStage } from './reverb';
 import { reverbParameters } from '../reverbSettings';
 import { AmpModelStage } from './ampModel';
 import { CabinetModelStage } from './cabinetModel';
+import { NoiseGateStage } from './noiseGate';
 import type { AmpControlSettings, AudioEngine as AudioEngineContract, AudioRecoverySnapshot, AudioSnapshot, InputDevice, InputSettings, LatencySnapshot, OutputDevice } from './types';
 
 const initialSettings: InputSettings = { selectedInputDeviceId: undefined, inputChannel: 0 };
@@ -63,6 +64,7 @@ function initialSnapshot(): AudioSnapshot {
     meter: { dbfs: METER_FLOOR_DBFS, peakDbfs: METER_FLOOR_DBFS },
     outputMeter: { dbfs: METER_FLOOR_DBFS, peakDbfs: METER_FLOOR_DBFS },
     compressionReductionDb: 0,
+    noiseGateReductionDb: 0,
     clipLatched: false,
     latency: undefined,
     error: undefined,
@@ -150,6 +152,7 @@ export class AudioEngine implements AudioEngineContract {
   #inputTrim: GainNode | undefined;
   #ampModel: AmpModelStage | undefined;
   #cabinetModel: CabinetModelStage | undefined;
+  #noiseGate: NoiseGateStage | undefined;
   #bassEq: BiquadFilterNode | undefined;
   #middleEq: BiquadFilterNode | undefined;
   #trebleEq: BiquadFilterNode | undefined;
@@ -234,6 +237,19 @@ export class AudioEngine implements AudioEngineContract {
       this.#monitorGain = this.#context.createGain();
       this.#ampModel = new AmpModelStage(this.#context, this.#snapshot.controls.ampModel, this.#snapshot.controls.ampSettings);
       this.#cabinetModel = new CabinetModelStage(this.#context, this.#snapshot.controls.cabinetModel);
+      this.#noiseGate = await NoiseGateStage.create(
+        this.#context,
+        this.#environment,
+        {
+          thresholdDb: this.#snapshot.controls.noiseGateThresholdDb,
+          rangeDb: this.#snapshot.controls.noiseGateRangeDb,
+          releaseSeconds: this.#snapshot.controls.noiseGateReleaseMs / 1_000,
+          bypassed: this.#snapshot.controls.noiseGateBypassed,
+        },
+        (state) => this.#update({
+          noiseGateReductionDb: this.#snapshot.controls.noiseGateBypassed ? 0 : state.reductionDb,
+        }),
+      );
       this.#inputTrim.gain.value = dbToLinearGain(this.#snapshot.controls.inputTrimDb);
       this.#bassEq.type = 'lowshelf';
       this.#bassEq.frequency.value = 120;
@@ -278,9 +294,11 @@ export class AudioEngine implements AudioEngineContract {
       }
       this.#inputAnalyser.connect(this.#inputTrim);
       this.#inputTrim.connect(this.#ampModel.input);
+      this.#inputTrim.connect(this.#noiseGate.detectorInput);
       this.#ampModel.output.connect(this.#cabinetModel.input);
-      this.#cabinetModel.output.connect(this.#compressionDryGain);
-      this.#cabinetModel.output.connect(this.#compressor);
+      this.#cabinetModel.output.connect(this.#noiseGate.input);
+      this.#noiseGate.output.connect(this.#compressionDryGain);
+      this.#noiseGate.output.connect(this.#compressor);
       this.#compressor.connect(this.#compressionLevelMatchGain);
       this.#compressionLevelMatchGain.connect(this.#compressionWetGain);
       this.#compressionDryGain.connect(this.#bassEq);
@@ -376,6 +394,12 @@ export class AudioEngine implements AudioEngineContract {
     if (this.#context !== undefined) {
       this.#ampModel?.setControls(controls.ampModel, controls.ampSettings);
       this.#cabinetModel?.setModel(controls.cabinetModel);
+      this.#noiseGate?.setControls({
+        thresholdDb: controls.noiseGateThresholdDb,
+        rangeDb: controls.noiseGateRangeDb,
+        releaseSeconds: controls.noiseGateReleaseMs / 1_000,
+        bypassed: controls.noiseGateBypassed,
+      });
       if (this.#inputTrim !== undefined) smoothGainToDb(this.#inputTrim.gain, controls.inputTrimDb, this.#context.currentTime);
       // Zero-gain shelves and peaking filters pass the signal unchanged while preserving the saved band settings.
       if (this.#bassEq !== undefined) smoothGainToValue(this.#bassEq.gain, controls.eqBypassed ? 0 : controls.bassDb, this.#context.currentTime);
@@ -412,6 +436,7 @@ export class AudioEngine implements AudioEngineContract {
     }
     this.#update({
       controls,
+      noiseGateReductionDb: controls.noiseGateBypassed ? 0 : this.#snapshot.noiseGateReductionDb,
       compressionReductionDb: controls.compressionBypassed ? 0 : this.#snapshot.compressionReductionDb,
     });
   }
@@ -582,6 +607,7 @@ export class AudioEngine implements AudioEngineContract {
     this.#inputTrim?.disconnect();
     this.#ampModel?.disconnect();
     this.#cabinetModel?.disconnect();
+    this.#noiseGate?.disconnect();
     this.#bassEq?.disconnect();
     this.#middleEq?.disconnect();
     this.#trebleEq?.disconnect();
@@ -607,6 +633,7 @@ export class AudioEngine implements AudioEngineContract {
     this.#inputTrim = undefined;
     this.#ampModel = undefined;
     this.#cabinetModel = undefined;
+    this.#noiseGate = undefined;
     this.#bassEq = undefined;
     this.#middleEq = undefined;
     this.#trebleEq = undefined;

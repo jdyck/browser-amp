@@ -136,6 +136,25 @@ function renderStructure(current: AudioSnapshot): void {
         <span id="cabinet-model-help" class="${FIELD_HELP}">${CABINET_MODELS[current.controls.cabinetModel].description}</span>
       </section>
 
+      <section class="${PANEL}" aria-label="Noise Suppression">
+        <label class="${STAGE_TOGGLE}" for="noise-gate-enabled">
+          <input id="noise-gate-enabled" type="checkbox" class="${STAGE_TOGGLE_CHECKBOX}" ${current.controls.noiseGateBypassed ? '' : 'checked'}>
+          Enable Noise Suppression
+        </label>
+        <div class="grid grid-cols-[minmax(0,1fr)_auto] gap-4 items-end max-[34rem]:grid-cols-1">
+          <div class="grid gap-4">
+            ${dbControl('noise-gate-threshold', 'Threshold', current.controls.noiseGateThresholdDb, AMP_CONTROL_DEFINITIONS.noiseGateThresholdDb)}
+            ${dbControl('noise-gate-range', 'Range', current.controls.noiseGateRangeDb, AMP_CONTROL_DEFINITIONS.noiseGateRangeDb)}
+            ${unitControl('noise-gate-release', 'Release', current.controls.noiseGateReleaseMs, AMP_CONTROL_DEFINITIONS.noiseGateReleaseMs, 'ms')}
+          </div>
+          <div class="min-w-24 rounded-md border border-border bg-input-fill px-3 py-2 text-right">
+            <span class="block text-xs text-muted-foreground">Reduction</span>
+            <span id="noise-gate-reduction" aria-label="Noise suppression reduction">${current.noiseGateReductionDb.toFixed(1)} dB</span>
+          </div>
+        </div>
+        <p class="${FIELD_HELP}">Threshold chooses when the gate opens. Range sets the maximum cut; Release controls how gradually it settles back into quiet gaps.</p>
+      </section>
+
       <section class="${PANEL}" aria-label="Compression">
         <label class="${STAGE_TOGGLE}" for="compression-enabled">
           <input id="compression-enabled" type="checkbox" class="${STAGE_TOGGLE_CHECKBOX}" ${current.controls.compressionBypassed ? '' : 'checked'}>
@@ -226,6 +245,12 @@ function bindStructureEvents(): void {
   root.querySelector<HTMLSelectElement>('#cabinet-model')?.addEventListener('change', (event) => {
     const cabinetModel = (event.currentTarget as HTMLSelectElement).value;
     if (isCabinetModel(cabinetModel)) engine.applyControls({ ...snapshot.controls, cabinetModel });
+  });
+  bindContinuousControl('noise-gate-threshold', (noiseGateThresholdDb) => engine.applyControls({ ...snapshot.controls, noiseGateThresholdDb }));
+  bindContinuousControl('noise-gate-range', (noiseGateRangeDb) => engine.applyControls({ ...snapshot.controls, noiseGateRangeDb }));
+  bindContinuousControl('noise-gate-release', (noiseGateReleaseMs) => engine.applyControls({ ...snapshot.controls, noiseGateReleaseMs }));
+  root.querySelector<HTMLInputElement>('#noise-gate-enabled')?.addEventListener('change', (event) => {
+    engine.applyControls({ ...snapshot.controls, noiseGateBypassed: !(event.currentTarget as HTMLInputElement).checked });
   });
   root.querySelector<HTMLInputElement>('#eq-enabled')?.addEventListener('change', (event) => {
     engine.applyControls({ ...snapshot.controls, eqBypassed: !(event.currentTarget as HTMLInputElement).checked });
@@ -396,6 +421,11 @@ function renderControls(controls: AmpControlSettings): void {
   const cabinetModelHelp = root.querySelector<HTMLElement>('#cabinet-model-help');
   const cabinetDescription = CABINET_MODELS[controls.cabinetModel].description;
   if (cabinetModelHelp !== null && cabinetModelHelp.textContent !== cabinetDescription) cabinetModelHelp.textContent = cabinetDescription;
+  setControlValue('noise-gate-threshold', controls.noiseGateThresholdDb, AMP_CONTROL_DEFINITIONS.noiseGateThresholdDb);
+  setControlValue('noise-gate-range', controls.noiseGateRangeDb, AMP_CONTROL_DEFINITIONS.noiseGateRangeDb);
+  setControlValue('noise-gate-release', controls.noiseGateReleaseMs, AMP_CONTROL_DEFINITIONS.noiseGateReleaseMs);
+  const noiseGateEnabled = root.querySelector<HTMLInputElement>('#noise-gate-enabled');
+  if (noiseGateEnabled !== null) noiseGateEnabled.checked = !controls.noiseGateBypassed;
   const eqEnabled = root.querySelector<HTMLInputElement>('#eq-enabled');
   if (eqEnabled !== null) eqEnabled.checked = !controls.eqBypassed;
   setControlValue('bass', controls.bassDb, AMP_CONTROL_DEFINITIONS.bassDb);
@@ -444,6 +474,9 @@ function setControlValue(id: string, value: number, definition: ContinuousContro
 function renderMeters(current: AudioSnapshot): void {
   updateMeter('input', current.meter);
   updateMeter('output', current.outputMeter);
+  const noiseGateReduction = root.querySelector<HTMLElement>('#noise-gate-reduction');
+  const noiseGateReductionText = `${current.noiseGateReductionDb.toFixed(1)} dB`;
+  if (noiseGateReduction !== null && noiseGateReduction.textContent !== noiseGateReductionText) noiseGateReduction.textContent = noiseGateReductionText;
   const compressionReduction = root.querySelector<HTMLElement>('#compression-reduction');
   const reductionText = `${current.compressionReductionDb.toFixed(1)} dB`;
   if (compressionReduction !== null && compressionReduction.textContent !== reductionText) compressionReduction.textContent = reductionText;
@@ -517,6 +550,23 @@ function dbControl(id: string, label: string, value: number, definition: Continu
     <div class="flex items-center gap-[.35rem] max-[34rem]:justify-end">
       <input id="${id}-value" aria-label="${label} value" type="number" inputmode="decimal" class="${NUMERIC_INPUT}" min="${definition.minimum}" max="${definition.maximum}" step="${definition.step}" value="${value.toFixed(definition.fractionDigits)}">
       <span aria-hidden="true">dB</span>
+    </div>
+  </div>`;
+}
+
+function unitControl(
+  id: string,
+  label: string,
+  value: number,
+  definition: ContinuousControlDefinition,
+  unit: string,
+): string {
+  return `<div class="grid grid-cols-[1fr_auto] max-[34rem]:grid-cols-1 gap-x-4 items-center">
+    <label for="${id}-slider" class="col-span-2 max-[34rem]:col-span-1 font-medium text-sm">${label}</label>
+    <input id="${id}-slider" aria-label="${label} slider" type="range" class="w-full accent-primary" min="${definition.minimum}" max="${definition.maximum}" step="${definition.step}" value="${value}">
+    <div class="flex items-center gap-[.35rem] max-[34rem]:justify-end">
+      <input id="${id}-value" aria-label="${label} value" type="number" inputmode="numeric" class="${NUMERIC_INPUT}" min="${definition.minimum}" max="${definition.maximum}" step="${definition.step}" value="${value.toFixed(definition.fractionDigits)}">
+      <span aria-hidden="true">${unit}</span>
     </div>
   </div>`;
 }
