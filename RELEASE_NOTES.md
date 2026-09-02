@@ -14,6 +14,7 @@ Browser Amp 0.1.0 is the first release of the Clean Amp Workbench.
 - Six amp models, five cabinet choices, seven reverb modules, and saved per-module controls.
 - Configurable Noise Suppression with live Reduction metering.
 - Level-matched Studio Compression with live Reduction metering; Studio Compression, Studio EQ, and Reverb bypass.
+- Four-band Studio EQ with fixed Low/High shelves and two broad, sweepable mid bands.
 - Exact numeric entry, keyboard-accessible controls, Saved Control Settings, and Reset Controls.
 - Input and output meters, latched CLIP indication, explicit device-loss recovery, and capability-driven output routing.
 - Static HTTPS deployment at <https://jdyck.github.io/browser-amp/>.

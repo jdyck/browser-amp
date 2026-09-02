@@ -1,7 +1,7 @@
-import type { AmpControlSettings } from '../controls';
+import type { AmpControlSettings } from '../signalChain/settings';
 
-export { DEFAULT_AMP_CONTROLS } from '../controls';
-export type { AmpControlSettings } from '../controls';
+export { DEFAULT_AMP_CONTROLS } from '../signalChain/settings';
+export type { AmpControlSettings } from '../signalChain/settings';
 
 export type ConnectionLifecycle = 'disconnected' | 'connecting' | 'connected-muted' | 'monitoring' | 'interrupted' | 'error';
 

@@ -79,7 +79,7 @@ For straight-ahead jazz guitar, start short and dark (roughly 0.8–1.6 s, modes
 
 ## Recommended product shape
 
-The current app exposes only `reverbAmount` and `reverbBypassed`, generates one plate-inspired impulse, keeps dry at unity, and raises only the wet contribution ([controls](../../src/controls.ts), [generator](../../src/audio/reverb.ts), [routing](../../src/audio/AudioEngine.ts#L241-L269)). Retain that simple first-level experience and add a profile selector:
+The current app exposes only `reverbAmount` and `reverbBypassed`, generates one plate-inspired impulse, keeps dry at unity, and raises only the wet contribution ([controls](../../src/signalChain/settings.ts), [generator](../../src/audio/reverb.ts), [routing](../../src/audio/AudioEngine.ts#L241-L269)). Retain that simple first-level experience and add a profile selector:
 
 ```ts
 type ReverbProfile =

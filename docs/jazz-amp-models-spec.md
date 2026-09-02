@@ -183,5 +183,3 @@ Reset selects Studio Clean and restores all six amps to their defaults. Existing
 
 - [Cabinet models](jazz-cabinet-models-spec.md)
 - [Amp-modeling research](research/filter-and-waveshaper-amp-modeling.md)
-- [Fender voicing research](research/fender-amp-gain-and-era-voicings.md)
-- [Polytone feasibility](research/polytone-amp-simulator-feasibility.md)

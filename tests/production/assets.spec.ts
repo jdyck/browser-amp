@@ -14,7 +14,7 @@ test('loads the production app and its generated assets from the repository path
   page.on('pageerror', (error) => browserErrors.push(error.message));
 
   await page.goto('./');
-  await expect(page.getByRole('heading', { name: 'Browser Amp' })).toBeVisible();
+  await expect(page.getByLabel('Browser Amp', { exact: true })).toBeVisible();
 
   const assetPaths = await page.locator('script[src], link[rel="stylesheet"][href]').evaluateAll((elements) => (
     elements.map((element) => {

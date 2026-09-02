@@ -102,8 +102,12 @@ The Amp Model does not contain cabinet response, noise suppression, studio effec
 ## 7. Studio EQ
 
 - Provide broad final polish after compression.
+- Use four serial bands: fixed 120 Hz Low shelf, sweepable 180–500 Hz Low Mid bell, sweepable 600 Hz–2 kHz Upper Mid bell, and fixed 3.2 kHz High shelf.
+- Keep both bell bandwidths broad and fixed at Q 0.8; expose gain for all four bands and frequency only for the two bells.
 - Do not use it to create the basic identity of an amp or cabinet.
 - Bypass is a flat unity path.
+
+The complete control and persistence contract is in [Studio EQ controls](studio-eq-controls-spec.md).
 
 ## 8. Reverb
 
@@ -144,4 +148,4 @@ The Amp Model does not contain cabinet response, noise suppression, studio effec
 
 - [Jazz amp models](jazz-amp-models-spec.md)
 - [Jazz cabinet models](jazz-cabinet-models-spec.md)
-- [Swappable module architecture](research/swappable-audio-module-architecture.md)
+- [Audio stage switching](audio-stage-switching.md)

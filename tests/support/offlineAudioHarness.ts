@@ -1,5 +1,5 @@
-import { AudioEngine } from '../src/audio/AudioEngine';
-import type { AmpControlSettings } from '../src/audio/types';
+import { AudioEngine } from '../../src/audio/AudioEngine';
+import type { AmpControlSettings } from '../../src/audio/types';
 
 export async function connectOfflineEngine(
   context: OfflineAudioContext,

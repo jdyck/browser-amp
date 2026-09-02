@@ -1,4 +1,4 @@
-import { DEFAULT_REVERB_SETTINGS, normalizeReverbSettings, type ReverbSettings } from './reverbSettings';
+import { DEFAULT_REVERB_SETTINGS, normalizeReverbSettings, type ReverbSettings } from './reverbProfiles';
 import {
   DEFAULT_JAZZ_AMP_SETTINGS,
   isAmpModel,
@@ -26,13 +26,13 @@ export const REVERB_PROFILES = {
     label: 'Studio Plate',
     description: 'Smooth, diffuse stereo sustain. The original Browser Amp reverb.',
   },
-  'fender-spring': {
-    label: 'Fender Spring',
-    description: 'Bright, splashy spring-inspired response. A synthetic voice, not a measured Fender tank.',
+  'bright-spring': {
+    label: 'Bright Spring',
+    description: 'Bright, splashy synthetic spring response with adjustable drive.',
   },
-  'polytone-spring': {
-    label: 'Polytone Spring',
-    description: 'Darker, restrained spring-inspired response. A synthetic voice, not a measured Polytone tank.',
+  'dark-spring': {
+    label: 'Dark Spring',
+    description: 'Dark, restrained synthetic spring response with a compact decay.',
   },
   'digital-room': {
     label: 'Digital Room',
@@ -45,6 +45,11 @@ export const REVERB_PROFILES = {
 } as const;
 
 export type ReverbProfile = keyof typeof REVERB_PROFILES;
+
+const LEGACY_REVERB_PROFILES: Readonly<Record<string, ReverbProfile>> = {
+  'fender-spring': 'bright-spring',
+  'polytone-spring': 'dark-spring',
+};
 
 export function isReverbProfile(value: unknown): value is ReverbProfile {
   return typeof value === 'string' && Object.hasOwn(REVERB_PROFILES, value);
@@ -59,9 +64,12 @@ export interface AmpControlSettings {
   readonly noiseGateRangeDb: number;
   readonly noiseGateReleaseMs: number;
   readonly noiseGateBypassed: boolean;
-  readonly bassDb: number;
-  readonly middleDb: number;
-  readonly trebleDb: number;
+  readonly lowShelfDb: number;
+  readonly lowMidFrequencyHz: number;
+  readonly lowMidDb: number;
+  readonly upperMidFrequencyHz: number;
+  readonly upperMidDb: number;
+  readonly highShelfDb: number;
   readonly eqBypassed: boolean;
   readonly compressionAmount: number;
   readonly compressionLevelMatch: boolean;
@@ -82,9 +90,12 @@ export const DEFAULT_AMP_CONTROLS: AmpControlSettings = {
   noiseGateRangeDb: 9,
   noiseGateReleaseMs: 200,
   noiseGateBypassed: false,
-  bassDb: 0,
-  middleDb: 0,
-  trebleDb: 0,
+  lowShelfDb: 0,
+  lowMidFrequencyHz: 300,
+  lowMidDb: 0,
+  upperMidFrequencyHz: 1_000,
+  upperMidDb: 0,
+  highShelfDb: 0,
   eqBypassed: false,
   compressionAmount: 25,
   compressionLevelMatch: true,
@@ -114,9 +125,12 @@ export const AMP_CONTROL_DEFINITIONS = {
   noiseGateThresholdDb: { minimum: -80, maximum: -20, step: 0.1, fractionDigits: 1 },
   noiseGateRangeDb: { minimum: 0, maximum: 24, step: 0.1, fractionDigits: 1 },
   noiseGateReleaseMs: { minimum: 50, maximum: 1_000, step: 10, fractionDigits: 0 },
-  bassDb: { minimum: -12, maximum: 12, step: 0.1, fractionDigits: 1 },
-  middleDb: { minimum: -12, maximum: 12, step: 0.1, fractionDigits: 1 },
-  trebleDb: { minimum: -12, maximum: 12, step: 0.1, fractionDigits: 1 },
+  lowShelfDb: { minimum: -12, maximum: 12, step: 0.1, fractionDigits: 1 },
+  lowMidFrequencyHz: { minimum: 180, maximum: 500, step: 1, fractionDigits: 0 },
+  lowMidDb: { minimum: -12, maximum: 12, step: 0.1, fractionDigits: 1 },
+  upperMidFrequencyHz: { minimum: 600, maximum: 2_000, step: 1, fractionDigits: 0 },
+  upperMidDb: { minimum: -12, maximum: 12, step: 0.1, fractionDigits: 1 },
+  highShelfDb: { minimum: -12, maximum: 12, step: 0.1, fractionDigits: 1 },
   compressionAmount: { minimum: 0, maximum: 100, step: 1, fractionDigits: 0 },
   reverbAmount: { minimum: 0, maximum: 100, step: 1, fractionDigits: 0 },
   masterVolumeDb: { minimum: -60, maximum: 0, step: 0.1, fractionDigits: 1 },
@@ -149,9 +163,15 @@ export function normalizeAmpControlSettings(
   const noiseGateThresholdDb = finiteNumber(controls.noiseGateThresholdDb);
   const noiseGateRangeDb = finiteNumber(controls.noiseGateRangeDb);
   const noiseGateReleaseMs = finiteNumber(controls.noiseGateReleaseMs);
-  const bassDb = finiteNumber(controls.bassDb);
-  const middleDb = finiteNumber(controls.middleDb);
-  const trebleDb = finiteNumber(controls.trebleDb);
+  const legacyBassDb = finiteNumber(controls.bassDb);
+  const legacyMiddleDb = finiteNumber(controls.middleDb);
+  const legacyTrebleDb = finiteNumber(controls.trebleDb);
+  const lowShelfDb = finiteNumber(controls.lowShelfDb) ?? legacyBassDb;
+  const lowMidFrequencyHz = finiteNumber(controls.lowMidFrequencyHz);
+  const lowMidDb = finiteNumber(controls.lowMidDb);
+  const upperMidFrequencyHz = finiteNumber(controls.upperMidFrequencyHz);
+  const upperMidDb = finiteNumber(controls.upperMidDb) ?? legacyMiddleDb;
+  const highShelfDb = finiteNumber(controls.highShelfDb) ?? legacyTrebleDb;
   const compressionAmount = finiteNumber(controls.compressionAmount);
   const reverbAmount = finiteNumber(controls.reverbAmount);
   const masterVolumeDb = finiteNumber(controls.masterVolumeDb);
@@ -181,9 +201,28 @@ export function normalizeAmpControlSettings(
       ? fallback.noiseGateReleaseMs
       : normalizeContinuousControl(noiseGateReleaseMs, AMP_CONTROL_DEFINITIONS.noiseGateReleaseMs),
     noiseGateBypassed: typeof controls.noiseGateBypassed === 'boolean' ? controls.noiseGateBypassed : fallback.noiseGateBypassed,
-    bassDb: bassDb === undefined ? fallback.bassDb : normalizeContinuousControl(bassDb, AMP_CONTROL_DEFINITIONS.bassDb),
-    middleDb: middleDb === undefined ? fallback.middleDb : normalizeContinuousControl(middleDb, AMP_CONTROL_DEFINITIONS.middleDb),
-    trebleDb: trebleDb === undefined ? fallback.trebleDb : normalizeContinuousControl(trebleDb, AMP_CONTROL_DEFINITIONS.trebleDb),
+    lowShelfDb: lowShelfDb === undefined
+      ? fallback.lowShelfDb
+      : normalizeContinuousControl(lowShelfDb, AMP_CONTROL_DEFINITIONS.lowShelfDb),
+    lowMidFrequencyHz: lowMidFrequencyHz === undefined
+      ? fallback.lowMidFrequencyHz
+      : normalizeContinuousControl(lowMidFrequencyHz, AMP_CONTROL_DEFINITIONS.lowMidFrequencyHz),
+    lowMidDb: lowMidDb === undefined
+      ? fallback.lowMidDb
+      : normalizeContinuousControl(lowMidDb, AMP_CONTROL_DEFINITIONS.lowMidDb),
+    // The retired Middle bell was fixed at 800 Hz. Keep that exact center when
+    // loading an old non-flat setting rather than silently moving the saved tone.
+    upperMidFrequencyHz: upperMidFrequencyHz === undefined && legacyMiddleDb !== undefined && legacyMiddleDb !== 0
+      ? 800
+      : upperMidFrequencyHz === undefined
+        ? fallback.upperMidFrequencyHz
+        : normalizeContinuousControl(upperMidFrequencyHz, AMP_CONTROL_DEFINITIONS.upperMidFrequencyHz),
+    upperMidDb: upperMidDb === undefined
+      ? fallback.upperMidDb
+      : normalizeContinuousControl(upperMidDb, AMP_CONTROL_DEFINITIONS.upperMidDb),
+    highShelfDb: highShelfDb === undefined
+      ? fallback.highShelfDb
+      : normalizeContinuousControl(highShelfDb, AMP_CONTROL_DEFINITIONS.highShelfDb),
     eqBypassed: typeof controls.eqBypassed === 'boolean' ? controls.eqBypassed : fallback.eqBypassed,
     compressionAmount: compressionAmount === undefined
       ? fallback.compressionAmount
@@ -194,7 +233,11 @@ export function normalizeAmpControlSettings(
     compressionBypassed: typeof controls.compressionBypassed === 'boolean'
       ? controls.compressionBypassed
       : fallback.compressionBypassed,
-    reverbProfile: isReverbProfile(controls.reverbProfile) ? controls.reverbProfile : fallback.reverbProfile,
+    reverbProfile: isReverbProfile(controls.reverbProfile)
+      ? controls.reverbProfile
+      : typeof controls.reverbProfile === 'string' && Object.hasOwn(LEGACY_REVERB_PROFILES, controls.reverbProfile)
+        ? LEGACY_REVERB_PROFILES[controls.reverbProfile]
+        : fallback.reverbProfile,
     reverbSettings: normalizeReverbSettings(controls.reverbSettings, fallback.reverbSettings),
     reverbAmount: reverbAmount === undefined
       ? fallback.reverbAmount

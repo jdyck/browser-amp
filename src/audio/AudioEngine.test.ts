@@ -1,8 +1,8 @@
-import { DEFAULT_REVERB_SETTINGS } from '../reverbSettings';
+import { DEFAULT_REVERB_SETTINGS } from '../signalChain/reverbProfiles';
 import { describe, expect, it, vi } from 'vitest';
 import { AudioEngine } from './AudioEngine';
 import type { BrowserAudio } from './browserAudio';
-import { DEFAULT_AMP_CONTROLS, REVERB_PROFILES, type ReverbProfile } from '../controls';
+import { DEFAULT_AMP_CONTROLS, REVERB_PROFILES, type ReverbProfile } from '../signalChain/settings';
 
 function audioNode(properties: Record<string, unknown> = {}): AudioNode {
   return { connect: vi.fn(), disconnect: vi.fn(), ...properties } as unknown as AudioNode;
@@ -24,7 +24,7 @@ function audioContext(overrides: Record<string, unknown> = {}): AudioContext {
     createGain: vi.fn(() => audioNode({ gain: { value: 1, cancelScheduledValues: vi.fn(), setValueAtTime: vi.fn(), linearRampToValueAtTime: vi.fn() } })),
     createBiquadFilter: vi.fn(() => audioNode({
       type: 'peaking',
-      frequency: { value: 0 },
+      frequency: { value: 0, cancelScheduledValues: vi.fn(), setValueAtTime: vi.fn(), linearRampToValueAtTime: vi.fn() },
       Q: { value: 0 },
       gain: { value: 0, cancelScheduledValues: vi.fn(), setValueAtTime: vi.fn(), linearRampToValueAtTime: vi.fn() },
     })),
@@ -285,15 +285,15 @@ describe('AudioEngine', () => {
     expect(engine.snapshot.monitoring).toBe(true);
     expect(engine.snapshot.controls.reverbAmount).toBe(64);
 
-    engine.applyControls({ ...engine.snapshot.controls, reverbProfile: 'fender-spring' });
-    engine.applyControls({ ...engine.snapshot.controls, reverbProfile: 'polytone-spring' });
+    engine.applyControls({ ...engine.snapshot.controls, reverbProfile: 'bright-spring' });
+    engine.applyControls({ ...engine.snapshot.controls, reverbProfile: 'dark-spring' });
     await engine.disconnectInput();
     expect(live()).toHaveLength(0);
     for (const { value } of vi.mocked(context.createConstantSource).mock.results) expect(value.onended).toBeNull();
     await engine.connectInput();
     expect(live()).toHaveLength(1);
-    expect(live()[0].buffer).not.toBe(buffers.get('polytone-spring'));
-    expect(engine.snapshot.controls.reverbProfile).toBe('polytone-spring');
+    expect(live()[0].buffer).not.toBe(buffers.get('dark-spring'));
+    expect(engine.snapshot.controls.reverbProfile).toBe('dark-spring');
     expect(engine.snapshot.monitoring).toBe(false);
     await engine.disconnectInput();
   });
@@ -342,9 +342,9 @@ describe('AudioEngine', () => {
     changeHall({ modulationDepth: 0 });
     finish();
     for (const { value } of vi.mocked(context.createOscillator).mock.results) expect(value.stop).toHaveBeenCalledOnce();
-    engine.applyControls({ ...engine.snapshot.controls, reverbProfile: 'fender-spring', reverbSettings: {
+    engine.applyControls({ ...engine.snapshot.controls, reverbProfile: 'bright-spring', reverbSettings: {
       ...engine.snapshot.controls.reverbSettings,
-      'fender-spring': { ...DEFAULT_REVERB_SETTINGS['fender-spring'], dwell: 90 },
+      'bright-spring': { ...DEFAULT_REVERB_SETTINGS['bright-spring'], dwell: 90 },
     } });
     finish();
     const shaper = vi.mocked(context.createWaveShaper).mock.results[0].value;
@@ -392,21 +392,22 @@ describe('AudioEngine', () => {
 
     await engine.connectInput();
 
-    const [bassEq, middleEq, trebleEq] = vi.mocked(context.createBiquadFilter).mock.results.map(({ value }) => value);
+    const [lowShelfEq, lowMidEq, upperMidEq, highShelfEq] = vi.mocked(context.createBiquadFilter).mock.results.map(({ value }) => value);
     const compressor = vi.mocked(context.createDynamicsCompressor).mock.results[0].value;
     const levelMatchGain = vi.mocked(compressor.connect).mock.calls[0][0] as unknown as GainNode;
     const compressionWetGain = vi.mocked(levelMatchGain.connect).mock.calls[0][0] as unknown as GainNode;
     const eqInputs = vi.mocked(context.createGain).mock.results
       .map(({ value }) => value)
-      .filter((gain) => vi.mocked(gain.connect).mock.calls.some((call: [AudioNode]) => call[0] === bassEq));
+      .filter((gain) => vi.mocked(gain.connect).mock.calls.some((call: [AudioNode]) => call[0] === lowShelfEq));
 
     expect(eqInputs).toHaveLength(2);
     expect(eqInputs).toContain(compressionWetGain);
     expect(compressor.connect).toHaveBeenCalledWith(levelMatchGain);
-    expect(bassEq.connect).toHaveBeenCalledWith(middleEq);
-    expect(middleEq.connect).toHaveBeenCalledWith(trebleEq);
-    expect(trebleEq.connect).toHaveBeenCalledOnce();
-    expect(trebleEq.connect).not.toHaveBeenCalledWith(compressor);
+    expect(lowShelfEq.connect).toHaveBeenCalledWith(lowMidEq);
+    expect(lowMidEq.connect).toHaveBeenCalledWith(upperMidEq);
+    expect(upperMidEq.connect).toHaveBeenCalledWith(highShelfEq);
+    expect(highShelfEq.connect).toHaveBeenCalledOnce();
+    expect(highShelfEq.connect).not.toHaveBeenCalledWith(compressor);
   });
 
   it('reports gain reduction only while Compression is active and smooths Level Match changes', async () => {
@@ -449,9 +450,12 @@ describe('AudioEngine', () => {
         ...engine.snapshot.controls.ampSettings,
         'amp.small-tweed-combo-v1': { volume: 30, tone: 3.26, input: 'low' },
       },
-      bassDb: -20,
-      middleDb: 3.26,
-      trebleDb: 20,
+      lowShelfDb: -20,
+      lowMidFrequencyHz: 100,
+      lowMidDb: -20,
+      upperMidFrequencyHz: 3_000,
+      upperMidDb: 3.26,
+      highShelfDb: 20,
       eqBypassed: true,
       compressionAmount: 74.6,
       compressionBypassed: false,
@@ -472,9 +476,12 @@ describe('AudioEngine', () => {
         ...DEFAULT_AMP_CONTROLS.ampSettings,
         'amp.small-tweed-combo-v1': { volume: 10, tone: 3.3, input: 'low' },
       },
-      bassDb: -12,
-      middleDb: 3.3,
-      trebleDb: 12,
+      lowShelfDb: -12,
+      lowMidFrequencyHz: 180,
+      lowMidDb: -12,
+      upperMidFrequencyHz: 2_000,
+      upperMidDb: 3.3,
+      highShelfDb: 12,
       eqBypassed: true,
       compressionAmount: 75,
       compressionBypassed: false,
@@ -512,7 +519,7 @@ describe('AudioEngine', () => {
   it('mutes a routing failure without changing Master Volume', async () => {
     const setSinkId = vi.fn().mockRejectedValue(new DOMException('Unavailable', 'NotFoundError'));
     const engine = new AudioEngine(browser({ createAudioContext: () => audioContext({ setSinkId }) }));
-    engine.applyControls({ ...engine.snapshot.controls, bassDb: 6, masterVolumeDb: -12 });
+    engine.applyControls({ ...engine.snapshot.controls, lowShelfDb: 6, masterVolumeDb: -12 });
     await engine.connectInput();
     await engine.setMonitoring(true);
 
@@ -521,7 +528,7 @@ describe('AudioEngine', () => {
     expect(engine.snapshot).toMatchObject({
       lifecycle: 'connected-muted',
       monitoring: false,
-      controls: { bassDb: 6, masterVolumeDb: -12 },
+      controls: { lowShelfDb: 6, masterVolumeDb: -12 },
       outputRouting: {
         selectedDeviceId: 'missing-output',
         error: 'The browser could not route audio to that output. Choose an available output, then enable monitoring again.',
@@ -676,7 +683,7 @@ describe('AudioEngine', () => {
       mediaDevices: testMediaDevices({ getUserMedia }),
     });
     const engine = new AudioEngine(environment);
-    engine.applyControls({ ...engine.snapshot.controls, bassDb: 9, masterVolumeDb: -12 });
+    engine.applyControls({ ...engine.snapshot.controls, lowShelfDb: 9, masterVolumeDb: -12 });
     await engine.connectInput({ deviceId: 'guitar-interface' });
     await engine.setMonitoring(true);
 
@@ -685,7 +692,7 @@ describe('AudioEngine', () => {
     expect(engine.snapshot).toMatchObject({
       lifecycle: 'error',
       monitoring: false,
-      controls: { bassDb: 9, masterVolumeDb: -12 },
+      controls: { lowShelfDb: 9, masterVolumeDb: -12 },
       recovery: {
         code: 'input-device-lost',
         action: 'reconnect-input',
@@ -782,7 +789,7 @@ describe('AudioEngine', () => {
       mediaDevices,
       createAudioContext: () => audioContext({ setSinkId }),
     }));
-    engine.applyControls({ ...engine.snapshot.controls, bassDb: 6 });
+    engine.applyControls({ ...engine.snapshot.controls, lowShelfDb: 6 });
     await engine.connectInput({ deviceId: 'guitar-interface' });
     engine.applySettings({ selectedInputDeviceId: 'guitar-interface', inputChannel: 1 });
     await engine.selectOutput('headphones');
@@ -801,7 +808,7 @@ describe('AudioEngine', () => {
       monitoring: true,
       selectedInputDeviceId: 'guitar-interface',
       inputChannel: 1,
-      controls: { bassDb: 6 },
+      controls: { lowShelfDb: 6 },
       outputRouting: { selectedDeviceId: 'headphones' },
     });
     expect(engine.snapshot.outputRouting.devices).toHaveLength(2);

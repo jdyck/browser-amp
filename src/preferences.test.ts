@@ -1,6 +1,6 @@
-import { DEFAULT_REVERB_SETTINGS } from './reverbSettings';
+import { DEFAULT_REVERB_SETTINGS } from './signalChain/reverbProfiles';
 import { describe, expect, it } from 'vitest';
-import { CABINET_MODELS, DEFAULT_AMP_CONTROLS, REVERB_PROFILES, type JazzCabinetId, type ReverbProfile } from './controls';
+import { CABINET_MODELS, DEFAULT_AMP_CONTROLS, REVERB_PROFILES, type JazzCabinetId, type ReverbProfile } from './signalChain/settings';
 import {
   DEFAULT_STORED_WORKBENCH_PREFERENCES,
   LEGACY_CONTROLS_STORAGE_KEY,
@@ -8,7 +8,7 @@ import {
   SAVED_CONTROL_SETTINGS_STORAGE_KEY,
   WorkbenchPreferencesStore,
   resetControls,
-} from './settings';
+} from './preferences';
 
 class MemoryStorage {
   readonly values = new Map<string, string>();
@@ -60,8 +60,9 @@ describe('Saved Control Settings', () => {
       controls: {
         ...DEFAULT_AMP_CONTROLS,
         inputTrimDb: 24,
-        bassDb: -12,
-        middleDb: 3.3,
+        lowShelfDb: -12,
+        upperMidFrequencyHz: 800,
+        upperMidDb: 3.3,
         compressionAmount: 100,
         compressionLevelMatch: false,
         reverbAmount: 0,
@@ -183,9 +184,12 @@ describe('Saved Control Settings', () => {
           ...DEFAULT_AMP_CONTROLS.ampSettings,
           'amp.small-tweed-combo-v1': { volume: 8, tone: 7, input: 'low' },
         },
-        bassDb: -4,
-        middleDb: 5,
-        trebleDb: 7,
+        lowShelfDb: -4,
+        lowMidFrequencyHz: 240,
+        lowMidDb: -3,
+        upperMidFrequencyHz: 1_300,
+        upperMidDb: 5,
+        highShelfDb: 7,
         eqBypassed: true,
         compressionAmount: 80,
         compressionLevelMatch: false,
@@ -211,7 +215,7 @@ describe('Saved Control Settings', () => {
     const reverbSettings = {
       ...DEFAULT_REVERB_SETTINGS,
       'studio-plate': { ...DEFAULT_REVERB_SETTINGS['studio-plate'], decaySeconds: 2.4, damping: 80 },
-      'fender-spring': { ...DEFAULT_REVERB_SETTINGS['fender-spring'], dwell: 70, toneDb: -4 },
+      'bright-spring': { ...DEFAULT_REVERB_SETTINGS['bright-spring'], dwell: 70, toneDb: -4 },
       'digital-hall': { ...DEFAULT_REVERB_SETTINGS['digital-hall'], modulationDepth: 65, modulationRateHz: 0.7 },
     };
     store.save({ ...DEFAULT_STORED_WORKBENCH_PREFERENCES,

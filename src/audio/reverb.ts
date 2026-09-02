@@ -1,5 +1,5 @@
-import type { ReverbProfile } from '../controls';
-import { reverbParameters, type ReverbParameters } from '../reverbSettings';
+import type { ReverbProfile } from '../signalChain/settings';
+import { reverbParameters, type ReverbParameters } from '../signalChain/reverbProfiles';
 import { createReverbImpulse } from './reverbImpulses';
 import { smoothGainToValue } from './gain';
 import { StageSwitcher, type StagePath } from './stageSwitcher';
@@ -83,7 +83,7 @@ export class ReverbStage {
     let output: AudioNode = convolver;
     let shaper: WaveShaperNode | undefined;
     let oscillator: OscillatorNode | undefined;
-    if (profile === 'fender-spring' && parameters.dwell > 0) {
+    if (profile === 'bright-spring' && parameters.dwell > 0) {
       const send = this.#context.createGain();
       send.gain.value = 1 / 8;
       shaper = this.#context.createWaveShaper();

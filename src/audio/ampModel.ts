@@ -1,8 +1,8 @@
 import type {
   AmpModel, BlackfaceComboSettings, BritishChimeSettings, HighHeadroomAmericanSettings,
   JazzAmpSettings, SmallTweedComboSettings, StudioCleanSettings, WarmJazzComboSettings,
-} from '../ampModels';
-import { studioGainDb } from '../ampModels';
+} from '../signalChain/ampModels';
+import { studioGainDb } from '../signalChain/ampModels';
 import { dbToLinearGain, smoothGainToDb, smoothGainToValue } from './gain';
 import { StageSwitcher, type StagePath } from './stageSwitcher';
 

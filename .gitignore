@@ -5,3 +5,4 @@ playwright-report/
 tsconfig.tsbuildinfo
 .idea/
 local/
+.DS_Store
