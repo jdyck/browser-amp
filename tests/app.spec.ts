@@ -161,6 +161,18 @@ async function installAudioBrowser(page: Page, options: {
   }, options);
 }
 
+type AmpSection = 'Input' | 'Amp + Cabinet' | 'Compression' | 'EQ' | 'Reverb' | 'Master';
+
+async function openSection(page: Page, section: AmpSection): Promise<void> {
+  await page.getByRole('button', { name: section, exact: true }).click();
+}
+
+async function resetControlsFrom(page: Page, section: AmpSection): Promise<void> {
+  await openSection(page, 'Master');
+  await page.getByRole('button', { name: 'Reset Controls' }).click();
+  await openSection(page, section);
+}
+
 test('starts disconnected with monitoring unavailable', async ({ page }) => {
   await page.goto('./');
 
@@ -169,11 +181,16 @@ test('starts disconnected with monitoring unavailable', async ({ page }) => {
   await expect(page.getByRole('progressbar', { name: 'Input level' })).toHaveAttribute('aria-valuenow', '-60');
 });
 
-test('places monitoring below input settings and output metering below input metering', async ({ page }) => {
+test('keeps monitoring and meters in the top bar while routing selectors stay in their sections', async ({ page }) => {
   await page.goto('./');
 
-  await expect(page.locator('[aria-labelledby="input-title"] + section')).toHaveAttribute('aria-labelledby', 'monitoring-title');
-  await expect(page.locator('[aria-labelledby="input-meter-title"] + section')).toHaveAttribute('aria-labelledby', 'output-meter-title');
+  await expect(page.locator('.topbar').getByRole('progressbar', { name: 'Input level' })).toBeVisible();
+  await expect(page.locator('.topbar').getByRole('progressbar', { name: 'Output level' })).toBeVisible();
+  await expect(page.locator('.topbar').getByLabel('Input device')).toHaveCount(0);
+  await expect(page.getByLabel('Input device')).toBeVisible();
+  await openSection(page, 'Master');
+  await expect(page.getByLabel('Output device')).toBeVisible();
+  await expect(page.locator('.topbar').getByLabel('Output device')).toHaveCount(0);
 });
 
 test('persists and resets the Noise Suppression controls', async ({ page }) => {
@@ -198,7 +215,7 @@ test('persists and resets the Noise Suppression controls', async ({ page }) => {
   await expect(release).toHaveValue('640');
   await expect(enabled).not.toBeChecked();
 
-  await page.getByRole('button', { name: 'Reset Controls' }).click();
+  await resetControlsFrom(page, 'Input');
   await expect(threshold).toHaveValue('-55.0');
   await expect(range).toHaveValue('9.0');
   await expect(release).toHaveValue('200');
@@ -208,6 +225,7 @@ test('persists and resets the Noise Suppression controls', async ({ page }) => {
 test('exposes six model-specific control sets, remembers them, and switches without recapturing', async ({ page }) => {
   await installAudioBrowser(page);
   await page.goto('./');
+  await openSection(page, 'Amp + Cabinet');
 
   const ampSection = page.getByRole('region', { name: 'Amp Model', exact: true });
   const ampModel = ampSection.getByRole('combobox', { name: 'Amp Model' });
@@ -250,8 +268,10 @@ test('exposes six model-specific control sets, remembers them, and switches with
 
   await page.reload();
   await expect(ampModel).toHaveValue('amp.small-tweed-combo-v1');
+  await openSection(page, 'Input');
   await page.getByRole('button', { name: 'Connect Input', exact: true }).click();
   await expect(page.locator('#monitoring-state')).toHaveText('Off');
+  await openSection(page, 'Amp + Cabinet');
   await expect(ampModel).toHaveValue('amp.small-tweed-combo-v1');
   await page.getByRole('button', { name: 'Enable Monitoring', exact: true }).click();
   await page.getByRole('button', { name: 'Checked — Enable Monitoring' }).click();
@@ -261,7 +281,7 @@ test('exposes six model-specific control sets, remembers them, and switches with
   await ampModel.selectOption('amp.blackface-combo-v1');
   await ampModel.selectOption('amp.small-tweed-combo-v1');
   await expect.poll(() => page.evaluate(() => (window as Window & { captureRequests?: number }).captureRequests)).toBe(1);
-  await page.getByRole('button', { name: 'Reset Controls' }).click();
+  await resetControlsFrom(page, 'Amp + Cabinet');
   await expect(ampModel).toHaveValue('amp.studio-clean-v1');
   await expect(page.locator('#monitoring-state')).toHaveText('On');
 });
@@ -269,6 +289,7 @@ test('exposes six model-specific control sets, remembers them, and switches with
 test('switches every cabinet voicing, persists the choice, and resets without recapturing', async ({ page }) => {
   await installAudioBrowser(page);
   await page.goto('./');
+  await openSection(page, 'Amp + Cabinet');
 
   const cabinet = page.getByRole('combobox', { name: 'Cabinet', exact: true });
   await expect(cabinet).toHaveValue('cab.compact-jazz-1x12-v1');
@@ -284,7 +305,9 @@ test('switches every cabinet voicing, persists the choice, and resets without re
   await page.reload();
   await expect(cabinet).toHaveValue('cab.direct-full-range-v1');
 
+  await openSection(page, 'Input');
   await page.getByRole('button', { name: 'Connect Input', exact: true }).click();
+  await openSection(page, 'Amp + Cabinet');
   await page.getByRole('button', { name: 'Enable Monitoring', exact: true }).click();
   await page.getByRole('button', { name: 'Checked — Enable Monitoring' }).click();
   for (const id of [
@@ -297,7 +320,7 @@ test('switches every cabinet voicing, persists the choice, and resets without re
   await expect(page.locator('#monitoring-state')).toHaveText('On');
   await expect.poll(() => page.evaluate(() => (window as Window & { captureRequests?: number }).captureRequests)).toBe(1);
 
-  await page.getByRole('button', { name: 'Reset Controls' }).click();
+  await resetControlsFrom(page, 'Amp + Cabinet');
   await expect(cabinet).toHaveValue('cab.compact-jazz-1x12-v1');
   await expect(page.locator('#monitoring-state')).toHaveText('On');
 });
@@ -305,6 +328,7 @@ test('switches every cabinet voicing, persists the choice, and resets without re
 test('switches all reverb modules, remembers bypassed selections, and resets without recapturing', async ({ page }) => {
   await installAudioBrowser(page);
   await page.goto('./');
+  await openSection(page, 'Reverb');
   const module = page.getByRole('combobox', { name: 'Reverb Module' });
   const enabled = page.getByLabel('Enable Reverb');
   await expect(module).toHaveValue('studio-plate');
@@ -318,8 +342,10 @@ test('switches all reverb modules, remembers bypassed selections, and resets wit
   await page.reload();
   await expect(module).toHaveValue('polytone-spring');
   await expect(enabled).not.toBeChecked();
+  await openSection(page, 'Input');
   await page.getByRole('button', { name: 'Connect Input', exact: true }).click();
   await expect(page.locator('#monitoring-state')).toHaveText('Off');
+  await openSection(page, 'Reverb');
   await enabled.check();
   await page.getByRole('button', { name: 'Enable Monitoring', exact: true }).click();
   await page.getByRole('button', { name: 'Checked — Enable Monitoring' }).click();
@@ -335,7 +361,7 @@ test('switches all reverb modules, remembers bypassed selections, and resets wit
   await expect(module).toHaveValue('digital-hall');
   await expect(enabled).toBeChecked();
   await expect(page.locator('#monitoring-state')).toHaveText('Off');
-  await page.getByRole('button', { name: 'Reset Controls' }).click();
+  await resetControlsFrom(page, 'Reverb');
   await expect(module).toHaveValue('studio-plate');
   await expect(page.locator('#reverb-profile-help')).toContainText('original Browser Amp reverb');
   await expect(enabled).not.toBeChecked();
@@ -367,13 +393,16 @@ for (const [index, profile] of (Object.keys(REVERB_PROFILES) as ReverbProfile[])
       key: SAVED_CONTROL_SETTINGS_STORAGE_KEY, value: preferences,
     });
     await page.reload();
+    await openSection(page, 'Reverb');
     const module = page.getByRole('combobox', { name: 'Reverb Module' });
     // Switching before resetting also verifies the handler uses the current selection.
     await module.selectOption(profile === 'studio-plate' ? 'jazz-room' : 'studio-plate');
     await module.selectOption(profile);
+    await openSection(page, 'Input');
     await page.getByRole('button', { name: 'Connect Input', exact: true }).click();
     await page.getByRole('button', { name: 'Enable Monitoring', exact: true }).click();
     await expect(page.locator('#monitoring-state')).toHaveText('On');
+    await openSection(page, 'Reverb');
     const reset = page.getByRole('button', { name: 'Reset This Reverb', exact: true });
     await reset.focus();
     await reset.press('Enter');
@@ -409,6 +438,7 @@ test('shows module-specific accordions, keeps edits focused, and restores every 
   await installAudioBrowser(page);
   await page.setViewportSize({ width: 320, height: 900 });
   await page.goto('./');
+  await openSection(page, 'Reverb');
   const module = page.getByRole('combobox', { name: 'Reverb Module' });
   const main = page.locator('#reverb-main');
   const advanced = page.locator('#reverb-advanced');
@@ -459,7 +489,9 @@ test('shows module-specific accordions, keeps edits focused, and restores every 
     await module.selectOption(item.id);
     await expect(page.getByLabel(`${item.edit} value`, { exact: true })).toHaveValue(item.value);
   }
+  await openSection(page, 'Input');
   await page.getByRole('button', { name: 'Connect Input', exact: true }).click();
+  await openSection(page, 'Reverb');
   await expect(advanced).toHaveAttribute('open', '');
   await page.getByLabel('Enable Reverb').check();
   await page.getByRole('button', { name: 'Enable Monitoring', exact: true }).click();
@@ -467,7 +499,7 @@ test('shows module-specific accordions, keeps edits focused, and restores every 
   await page.getByLabel('Decay value').fill('4');
   await expect(page.locator('#monitoring-state')).toHaveText('On');
   await expect.poll(() => page.evaluate(() => (window as Window & { captureRequests?: number }).captureRequests)).toBe(1);
-  await page.getByRole('button', { name: 'Reset Controls' }).click();
+  await resetControlsFrom(page, 'Reverb');
   await expect(page.getByLabel('Decay value')).toHaveValue('1.50');
   await module.selectOption('fender-spring');
   await expect(page.getByLabel('Dwell value')).toHaveValue('0');
@@ -482,6 +514,13 @@ test('synchronizes, clamps, and restores controls without restoring Processed Mo
 
   const inputTrim = page.getByLabel('Input Trim value');
   const inputTrimSlider = page.getByLabel('Input Trim slider');
+  await expect(inputTrim).toHaveValue('0.0');
+  await inputTrim.fill('30');
+  await inputTrim.press('Enter');
+  await expect(inputTrim).toHaveValue('24.0');
+  await expect(inputTrimSlider).toHaveValue('24');
+
+  await openSection(page, 'EQ');
   const studioEq = page.getByRole('region', { name: 'Studio EQ' });
   const low = studioEq.getByLabel('Low value');
   const lowSlider = studioEq.getByLabel('Low slider');
@@ -491,16 +530,6 @@ test('synchronizes, clamps, and restores controls without restoring Processed Mo
   const upperMid = studioEq.getByLabel('Upper Mid value');
   const high = studioEq.getByLabel('High value');
   const eqEnabled = page.getByLabel('Enable Studio EQ');
-  const compressionAmount = page.getByLabel('Amount value');
-  const compressionAmountSlider = page.getByLabel('Amount slider');
-  const compressionEnabled = page.getByLabel('Enable Compression');
-  const compressionLevelMatch = page.getByLabel('Level Match');
-  const reverbAmount = page.getByLabel('Reverb value');
-  const reverbAmountSlider = page.getByLabel('Reverb slider');
-  const reverbEnabled = page.getByLabel('Enable Reverb');
-  const masterVolume = page.getByLabel('Master value');
-
-  await expect(inputTrim).toHaveValue('0.0');
   await expect(low).toHaveValue('0.0');
   await expect(lowMidFrequency).toHaveValue('300');
   await expect(lowMid).toHaveValue('0.0');
@@ -508,15 +537,6 @@ test('synchronizes, clamps, and restores controls without restoring Processed Mo
   await expect(upperMid).toHaveValue('0.0');
   await expect(high).toHaveValue('0.0');
   await expect(eqEnabled).toBeChecked();
-  await expect(compressionAmount).toHaveValue('25');
-  await expect(compressionEnabled).not.toBeChecked();
-  await expect(compressionLevelMatch).toBeChecked();
-  await expect(reverbAmount).toHaveValue('20');
-  await expect(reverbEnabled).not.toBeChecked();
-  await expect(masterVolume).toHaveValue('-18.0');
-
-  await inputTrim.fill('30');
-  await inputTrim.press('Enter');
   await low.fill('20');
   await low.press('Enter');
   await lowMidFrequency.fill('100');
@@ -529,18 +549,7 @@ test('synchronizes, clamps, and restores controls without restoring Processed Mo
   await upperMid.press('Enter');
   await high.fill('-20');
   await high.press('Enter');
-  await compressionAmount.fill('101');
-  await compressionAmount.press('Enter');
-  await compressionEnabled.check();
-  await compressionLevelMatch.uncheck();
-  await reverbAmount.fill('-1');
-  await reverbAmount.press('Enter');
-  await reverbEnabled.check();
-  await masterVolume.fill('-12.26');
-  await masterVolume.press('Enter');
 
-  await expect(inputTrim).toHaveValue('24.0');
-  await expect(inputTrimSlider).toHaveValue('24');
   await expect(low).toHaveValue('12.0');
   await expect(lowSlider).toHaveValue('12');
   await expect(lowMidFrequency).toHaveValue('180');
@@ -548,46 +557,84 @@ test('synchronizes, clamps, and restores controls without restoring Processed Mo
   await expect(upperMidFrequency).toHaveValue('2000');
   await expect(upperMid).toHaveValue('3.3');
   await expect(high).toHaveValue('-12.0');
+
+  await openSection(page, 'Compression');
+  const compressionAmount = page.getByLabel('Amount value');
+  const compressionAmountSlider = page.getByLabel('Amount slider');
+  const compressionEnabled = page.getByLabel('Enable Compression');
+  const compressionLevelMatch = page.getByLabel('Level Match');
+  await expect(compressionAmount).toHaveValue('25');
+  await expect(compressionEnabled).not.toBeChecked();
+  await expect(compressionLevelMatch).toBeChecked();
+  await compressionAmount.fill('101');
+  await compressionAmount.press('Enter');
+  await compressionEnabled.check();
+  await compressionLevelMatch.uncheck();
   await expect(compressionAmount).toHaveValue('100');
   await expect(compressionAmountSlider).toHaveValue('100');
+
+  await openSection(page, 'Reverb');
+  const reverbAmount = page.getByLabel('Reverb value');
+  const reverbAmountSlider = page.getByLabel('Reverb slider');
+  const reverbEnabled = page.getByLabel('Enable Reverb');
+  await expect(reverbAmount).toHaveValue('20');
+  await expect(reverbEnabled).not.toBeChecked();
+  await reverbAmount.fill('-1');
+  await reverbAmount.press('Enter');
+  await reverbEnabled.check();
   await expect(reverbAmount).toHaveValue('0');
   await expect(reverbAmountSlider).toHaveValue('0');
+
+  await openSection(page, 'Master');
+  const masterVolume = page.getByLabel('Master value');
+  await expect(masterVolume).toHaveValue('-18.0');
+  await masterVolume.fill('-12.26');
+  await masterVolume.press('Enter');
   await expect(masterVolume).toHaveValue('-12.3');
 
   await page.reload();
+  await expect(page.getByLabel('Master value')).toHaveValue('-12.3');
+  await expect(page.getByRole('button', { name: 'Enable Monitoring' })).toBeDisabled();
+  await openSection(page, 'Input');
   await expect(page.getByLabel('Input Trim value')).toHaveValue('24.0');
+  await openSection(page, 'EQ');
   await expect(studioEq.getByLabel('Low value')).toHaveValue('12.0');
   await expect(studioEq.getByLabel('Low Mid Frequency value')).toHaveValue('180');
   await expect(studioEq.getByLabel('Low Mid value')).toHaveValue('-3.3');
   await expect(studioEq.getByLabel('Upper Mid Frequency value')).toHaveValue('2000');
   await expect(studioEq.getByLabel('Upper Mid value')).toHaveValue('3.3');
   await expect(studioEq.getByLabel('High value')).toHaveValue('-12.0');
+  await openSection(page, 'Compression');
   await expect(page.getByLabel('Amount value')).toHaveValue('100');
   await expect(compressionEnabled).toBeChecked();
   await expect(compressionLevelMatch).not.toBeChecked();
+  await openSection(page, 'Reverb');
   await expect(page.getByLabel('Reverb value')).toHaveValue('0');
   await expect(reverbEnabled).toBeChecked();
-  await expect(page.getByLabel('Master value')).toHaveValue('-12.3');
-  await expect(page.getByRole('button', { name: 'Enable Monitoring' })).toBeDisabled();
 
   const enabledSettings = await page.evaluate(() => JSON.parse(localStorage.getItem('browser-amp.saved-control-settings') ?? 'null'));
   expect(enabledSettings.controls).toMatchObject({ eqBypassed: false, compressionBypassed: false, compressionLevelMatch: false, reverbBypassed: false });
 
+  await openSection(page, 'EQ');
   await eqEnabled.uncheck();
   await expect(low).toHaveValue('12.0');
   await expect(lowMid).toHaveValue('-3.3');
   await expect(upperMid).toHaveValue('3.3');
   await expect(high).toHaveValue('-12.0');
+  await openSection(page, 'Compression');
   await compressionEnabled.uncheck();
+  await openSection(page, 'Reverb');
   await expect(reverbEnabled).toBeChecked();
   await reverbEnabled.uncheck();
   const bypassedSettings = await page.evaluate(() => JSON.parse(localStorage.getItem('browser-amp.saved-control-settings') ?? 'null'));
   expect(bypassedSettings.controls).toMatchObject({ eqBypassed: true, compressionBypassed: true, reverbBypassed: true });
 
   await page.reload();
-  await expect(eqEnabled).not.toBeChecked();
-  await expect(compressionEnabled).not.toBeChecked();
   await expect(reverbEnabled).not.toBeChecked();
+  await openSection(page, 'Compression');
+  await expect(compressionEnabled).not.toBeChecked();
+  await openSection(page, 'EQ');
+  await expect(eqEnabled).not.toBeChecked();
   await eqEnabled.check();
   await expect(low).toHaveValue('12.0');
   await expect(lowMid).toHaveValue('-3.3');
@@ -602,6 +649,7 @@ test('requires a separate monitoring action and remembers dismissed Hardware Dir
   await page.goto('./');
   await page.getByRole('button', { name: 'Connect Input' }).click();
 
+  await openSection(page, 'Master');
   await expect(page.getByText('This browser does not expose output selection.')).toBeVisible();
   await page.getByRole('button', { name: 'Enable Monitoring' }).click();
   await expect(page.getByRole('heading', { name: 'Before you monitor' })).toBeVisible();
@@ -611,6 +659,7 @@ test('requires a separate monitoring action and remembers dismissed Hardware Dir
   await page.getByRole('button', { name: 'Checked — Enable Monitoring' }).click();
   await expect(page.getByRole('button', { name: 'Disable Monitoring' })).toBeVisible();
   await page.reload();
+  await openSection(page, 'Input');
   await page.getByRole('button', { name: 'Connect Input' }).click();
   await page.getByRole('button', { name: 'Enable Monitoring' }).click();
   await expect(page.getByRole('button', { name: 'Disable Monitoring' })).toBeVisible();
@@ -621,20 +670,28 @@ test('Reset Controls restores sound defaults without changing connection, monito
   await installAudioBrowser(page);
   await page.goto('./');
   await page.getByLabel('Input Trim value').fill('9');
+  await openSection(page, 'EQ');
   await page.getByRole('region', { name: 'Studio EQ' }).getByLabel('Low value').fill('-4');
   await page.getByLabel('Enable Studio EQ').uncheck();
+  await openSection(page, 'Compression');
   await page.getByLabel('Enable Compression').check();
   await page.getByLabel('Level Match').uncheck();
+  await openSection(page, 'Reverb');
   await page.getByLabel('Reverb value').fill('60');
   await page.getByLabel('Enable Reverb').check();
+  await openSection(page, 'Master');
   await page.getByLabel('Master value').fill('-6');
+  await openSection(page, 'Input');
   await page.getByRole('button', { name: 'Connect Input' }).click();
   await page.getByRole('button', { name: 'Enable Monitoring' }).click();
   await page.getByRole('button', { name: 'Checked — Enable Monitoring' }).click();
 
+  await openSection(page, 'Master');
   await page.getByRole('button', { name: 'Reset Controls' }).click();
 
+  await openSection(page, 'Input');
   await expect(page.getByLabel('Input Trim value')).toHaveValue('0.0');
+  await openSection(page, 'EQ');
   const studioEq = page.getByRole('region', { name: 'Studio EQ' });
   await expect(studioEq.getByLabel('Low value')).toHaveValue('0.0');
   await expect(studioEq.getByLabel('Low Mid Frequency value')).toHaveValue('300');
@@ -643,12 +700,16 @@ test('Reset Controls restores sound defaults without changing connection, monito
   await expect(studioEq.getByLabel('Upper Mid value')).toHaveValue('0.0');
   await expect(studioEq.getByLabel('High value')).toHaveValue('0.0');
   await expect(page.getByLabel('Enable Studio EQ')).toBeChecked();
+  await openSection(page, 'Compression');
   await expect(page.getByLabel('Amount value')).toHaveValue('25');
   await expect(page.getByLabel('Enable Compression')).not.toBeChecked();
   await expect(page.getByLabel('Level Match')).toBeChecked();
+  await openSection(page, 'Reverb');
   await expect(page.getByLabel('Reverb value')).toHaveValue('20');
   await expect(page.getByLabel('Enable Reverb')).not.toBeChecked();
+  await openSection(page, 'Master');
   await expect(page.getByLabel('Master value')).toHaveValue('-18.0');
+  await openSection(page, 'Input');
   await expect(page.locator('.connection-state')).toHaveText('Connected — monitoring');
   await expect(page.getByRole('button', { name: 'Disable Monitoring' })).toBeVisible();
   await expect.poll(() => page.evaluate(() => (window as Window & { captureRequests?: number }).captureRequests)).toBe(1);
@@ -674,13 +735,16 @@ test('shows browser-visible output routing and clears a latched post-Master CLIP
   await page.goto('./');
   await page.getByRole('button', { name: 'Connect Input' }).click();
 
+  await openSection(page, 'Master');
   await page.getByLabel('Output device').selectOption('headphones');
   await expect.poll(() => page.evaluate(() => (window as Window & { selectedSink?: string }).selectedSink)).toBe('headphones');
+  await openSection(page, 'Compression');
   await expect(page.getByLabel('Compression reduction')).toHaveText('0.0 dB');
   await page.getByLabel('Enable Compression').check();
   await expect(page.getByLabel('Compression reduction')).toHaveText('4.0 dB');
   await page.getByLabel('Enable Compression').uncheck();
   await expect(page.getByLabel('Compression reduction')).toHaveText('0.0 dB');
+  await openSection(page, 'Master');
   await expect(page.locator('#clip-indicator')).toHaveAttribute('aria-hidden', 'false');
   await page.getByRole('button', { name: 'Clear CLIP' }).click();
   await expect(page.locator('#clip-indicator')).toHaveAttribute('aria-hidden', 'true');
@@ -755,6 +819,7 @@ test('does not restart monitoring across background and foreground suspension', 
 
   await page.evaluate(() => (window as Window & { simulateBackground?: () => void }).simulateBackground?.());
 
+  await openSection(page, 'Master');
   await expect(page.getByText('Audio was suspended by the browser')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Resume Monitoring' })).toBeVisible();
   await page.evaluate(() => (window as Window & { simulateForeground?: () => void }).simulateForeground?.());
@@ -770,6 +835,7 @@ test('requires an explicit output choice and monitoring action after output loss
   await installAudioBrowser(page, { outputSelection: true });
   await page.goto('./');
   await page.getByRole('button', { name: 'Connect Input' }).click();
+  await openSection(page, 'Master');
   await page.getByLabel('Output device').selectOption('headphones');
   await page.getByRole('button', { name: 'Enable Monitoring' }).click();
   await page.getByRole('button', { name: 'Checked — Enable Monitoring' }).click();
@@ -794,6 +860,7 @@ test('surfaces an actionable routing failure and remains muted', async ({ page }
   await page.goto('./');
   await page.getByRole('button', { name: 'Connect Input' }).click();
 
+  await openSection(page, 'Master');
   await page.getByLabel('Output device').selectOption('headphones');
 
   await expect(page.getByText('browser could not route audio to that output')).toBeVisible();
@@ -802,27 +869,21 @@ test('surfaces an actionable routing failure and remains muted', async ({ page }
   await expect(page.getByRole('button', { name: 'Choose Output Before Monitoring' })).toBeDisabled();
 });
 
-test('keeps exact controls keyboard-operable and in Amp Chain order on a narrow layout', async ({ page }) => {
+test('keeps exact controls keyboard-operable and section navigation usable on a narrow layout', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 900 });
   await page.goto('./');
 
+  await openSection(page, 'EQ');
   const studioEq = page.getByRole('region', { name: 'Studio EQ' });
   const lowSlider = studioEq.getByLabel('Low slider');
   await lowSlider.focus();
   await lowSlider.press('ArrowRight');
   await expect(studioEq.getByLabel('Low value')).toHaveValue('0.1');
 
-  await expect(page.locator('.panel[aria-label]')).toHaveCount(7);
-  await expect(page.locator('.panel[aria-label]').evaluateAll((panels) => panels.map((panel) => panel.getAttribute('aria-label')))).resolves.toEqual([
-    'Amp Model',
-    'Cabinet',
-    'Noise Suppression',
-    'Compression',
-    'Studio EQ',
-    'Reverb',
-    'Master Volume',
+  await expect(page.locator('.stage-link').evaluateAll((links) => links.map((link) => link.textContent?.trim()))).resolves.toEqual([
+    '1Input', '2Amp + Cabinet', '3Compression', '4EQ', '5Reverb', '6Master',
   ]);
-
+  await openSection(page, 'Compression');
   const amountBounds = await page.getByLabel('Amount value').boundingBox();
   expect(amountBounds).not.toBeNull();
   expect((amountBounds?.x ?? 0) + (amountBounds?.width ?? 0)).toBeLessThanOrEqual(320);

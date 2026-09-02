@@ -1,26 +1,51 @@
 import { AudioEngine } from './audio/AudioEngine';
 import type { AudioSnapshot, InputMeterSnapshot } from './audio/types';
-import { AMP_CONTROL_DEFINITIONS, AMP_MODELS, CABINET_MODELS, REVERB_PROFILES, isAmpModel, isCabinetModel, isReverbProfile, type AmpControlSettings, type ContinuousControlDefinition } from './controls';
-import { AMP_MODEL_CONTROLS, type AmpChoiceDefinition, type AmpKnobDefinition, type JazzAmpState } from './ampModels';
+import {
+  AMP_CONTROL_DEFINITIONS,
+  AMP_MODELS,
+  CABINET_MODELS,
+  REVERB_PROFILES,
+  isAmpModel,
+  isCabinetModel,
+  isReverbProfile,
+  type AmpControlSettings,
+  type ContinuousControlDefinition,
+} from './controls';
+import {
+  AMP_MODEL_CONTROLS,
+  type AmpChoiceDefinition,
+  type AmpKnobDefinition,
+  type JazzAmpState,
+} from './ampModels';
 import { WorkbenchPreferencesStore, resetControls, type StoredWorkbenchPreferences } from './settings';
-import { DEFAULT_REVERB_SETTINGS, reverbControlEntries, reverbParameters, type ReverbControlDefinition } from './reverbSettings';
+import {
+  DEFAULT_REVERB_SETTINGS,
+  reverbControlEntries,
+  reverbParameters,
+  type ReverbControlDefinition,
+} from './reverbSettings';
 import './style.css';
 
-// `panel`, `connection-state`, and the `#monitoring-state`/`#clip-indicator` ids below are kept as literal
-// hooks (unstyled by CSS) because tests/app.spec.ts selects elements by these exact class/id strings.
-const PANEL = 'panel p-2 my-4 bg-card text-card-foreground border border-border rounded-lg';
-const PANEL_HEADING = 'flex justify-between gap-2 items-center mb-3 max-[34rem]:items-start max-[34rem]:flex-col max-[34rem]:gap-2';
-const PANEL_TITLE = 'text-sm font-medium mb-0';
-const ACTIONS = 'flex justify-between gap-2 items-center max-[34rem]:items-start max-[34rem]:flex-col max-[34rem]:gap-2';
-const ACTION_BUTTON = 'max-[34rem]:w-full';
-const SECONDARY_BUTTON = 'bg-secondary text-secondary-foreground';
-const SECONDARY_ACTION_BUTTON = `${SECONDARY_BUTTON} ${ACTION_BUTTON}`;
-const COMPACT_SECONDARY_BUTTON = `${SECONDARY_BUTTON} h-7 px-2 text-xs`;
-const STAGE_TOGGLE = 'flex gap-[.6rem] items-center my-4 font-medium';
-const STAGE_TOGGLE_CHECKBOX = 'w-4 h-4 accent-primary';
-const FIELD = 'block mt-4 mb-[.35rem] font-medium text-sm';
-const FIELD_HELP = 'block mt-[.35rem] text-muted-foreground text-xs font-normal';
-const STATE_VALUE = 'text-positive font-semibold';
+type WorkspaceSection = 'input' | 'amp' | 'compression' | 'eq' | 'reverb' | 'master';
+
+interface SectionDefinition {
+  readonly id: WorkspaceSection;
+  readonly label: string;
+  readonly title: string;
+  readonly description: string;
+}
+
+const SECTIONS: readonly SectionDefinition[] = [
+  { id: 'input', label: 'Input', title: 'Start with a clean signal', description: 'Connect your guitar, set the input level, and quiet the gaps before shaping your tone.' },
+  { id: 'amp', label: 'Amp + Cabinet', title: 'Choose your voice', description: 'Pair an amp character with a cabinet response, then tune the model to your playing.' },
+  { id: 'compression', label: 'Compression', title: 'Control the dynamics', description: 'Bring quiet notes forward and smooth hard peaks without flattening your touch.' },
+  { id: 'eq', label: 'EQ', title: 'Shape the spectrum', description: 'Balance lows, focus the mids, and add or remove air from the finished amp sound.' },
+  { id: 'reverb', label: 'Reverb', title: 'Add some space', description: 'Choose a room, plate, spring, or hall and place your guitar inside it.' },
+  { id: 'master', label: 'Master', title: 'Set the final level', description: 'Choose the listening output, set the final volume, and check the signal before you play.' },
+] as const;
+
+const FIELD = 'field-label';
+const FIELD_HELP = 'field-help';
 
 const preferencesStore = new WorkbenchPreferencesStore(browserStorage());
 let workbenchPreferences = preferencesStore.load();
@@ -32,6 +57,7 @@ if (app === null) throw new Error('Application root is missing.');
 const root = app;
 
 let snapshot = engine.snapshot;
+let activeSection: WorkspaceSection = sectionFromHash();
 let guidanceOpen = false;
 let guidanceDismissed = workbenchPreferences.hardwareDirectMonitoringGuidanceDismissed;
 const reverbAccordionOpen = { main: true, advanced: false };
@@ -56,7 +82,7 @@ function render(next: AudioSnapshot): void {
 }
 
 function structureChanged(previous: AudioSnapshot, next: AudioSnapshot): boolean {
-  return root.querySelector('#connect') === null
+  return root.querySelector('#workspace-shell') === null
     || previous.lifecycle !== next.lifecycle
     || previous.monitoring !== next.monitoring
     || previous.devices !== next.devices
@@ -73,153 +99,281 @@ function structureChanged(previous: AudioSnapshot, next: AudioSnapshot): boolean
 }
 
 function renderStructure(current: AudioSnapshot): void {
-  const connected = current.lifecycle === 'connected-muted' || current.lifecycle === 'monitoring' || current.lifecycle === 'interrupted';
+  const connected = isConnected(current);
   const recovery = recoveryPresentation(current, connected);
+  const section = SECTIONS.find((item) => item.id === activeSection) ?? SECTIONS[0];
+
   root.innerHTML = `
-    <section class="w-[min(100%-2rem,46rem)] max-[34rem]:w-[min(100%-1.25rem,46rem)] mx-auto py-12 max-[34rem]:py-6" aria-labelledby="page-title">
-      <header class="mb-6">
-        <h1 id="page-title" class="text-[clamp(2rem,6vw,3.5rem)] mb-1">Browser Amp</h1>
-        <button id="reset-controls" type="button" class="${SECONDARY_BUTTON}">Reset Controls</button>
-      </header>
-
-      <section class="${PANEL}" aria-labelledby="input-title">
-        <div class="${PANEL_HEADING}">
-          <h2 id="input-title" class="${PANEL_TITLE}">Live Guitar Input</h2>
-          <output class="connection-state ${STATE_VALUE}" role="status">${connectionLabel(current)}</output>
-        </div>
-        <p id="connection-description">${connectionDescription(current)}</p>
-        <div class="${ACTIONS}">
-          <button id="connect" type="button" class="${ACTION_BUTTON}" ${current.lifecycle === 'connecting' ? 'disabled' : ''}>${recovery.connectButtonLabel}</button>
-          ${connected ? `<button id="disconnect" type="button" class="${SECONDARY_ACTION_BUTTON}">Disconnect</button>` : ''}
-        </div>
-        ${current.devices.length > 0 ? deviceSelector(current) : ''}
-        ${current.inputChannelCount > 1 ? channelSelector(current) : ''}
-        ${current.rawCaptureWarnings.map((warning) => `<p class="text-warning text-sm" role="alert">${escapeHtml(warning)}</p>`).join('')}
-        ${recovery.inputMessage === undefined ? '' : `<p class="text-destructive font-medium text-sm" role="alert">${escapeHtml(recovery.inputMessage)}</p>`}
-      </section>
-
-      <section class="${PANEL}" aria-labelledby="monitoring-title">
-        <div class="${PANEL_HEADING}"><h2 id="monitoring-title" class="${PANEL_TITLE}">Processed Monitoring</h2><strong id="monitoring-state" class="${STATE_VALUE}">${current.monitoring ? 'On' : 'Off'}</strong></div>
-        <p>${routingDescription(current)}</p>
-        <p id="latency-value" class="text-muted-foreground text-xs" ${current.latency === undefined ? 'hidden' : ''}>${latencyDescription(current.latency)}</p>
-        ${outputSelector(current, connected)}
-        ${current.outputRouting.error === undefined ? '' : `<p class="text-destructive font-medium text-sm" role="alert">${escapeHtml(current.outputRouting.error)}</p>`}
-        ${recovery.monitoringMessage === undefined ? '' : `<p class="text-destructive font-medium text-sm" role="alert">${escapeHtml(recovery.monitoringMessage)}</p>`}
-        <div class="${ACTIONS}">
-          ${recovery.retrySelectedOutput ? `<button id="retry-output" type="button" class="${SECONDARY_ACTION_BUTTON}">Retry Selected Output</button>` : ''}
-          <button id="monitoring-toggle" type="button" class="${ACTION_BUTTON}" ${recovery.monitoringDisabled ? 'disabled' : ''}>${recovery.monitoringButtonLabel}</button>
-        </div>
-        ${guidanceOpen ? hardwareGuidance() : ''}
-      </section>
-
-      ${meterPanel('input', 'Input Level Meter', current.meter, 'Live Guitar Input before Input Trim and the amp model. Connecting and metering remain silent until Processed Monitoring is enabled.')}
-
-      ${meterPanel('output', 'Output Level Meter', current.outputMeter, 'Post-Master signal before browser output.')}
-
-      <section class="${PANEL}" aria-label="Amp Model">
-        ${dbControl('input-trim', 'Input Trim', current.controls.inputTrimDb, AMP_CONTROL_DEFINITIONS.inputTrimDb)}
-        <div class="mb-3">
-          <label for="amp-model" class="block mb-[.35rem] font-medium text-sm">Amp Model</label>
-          <select id="amp-model" aria-describedby="amp-model-help">
-            ${Object.entries(AMP_MODELS).map(([id, model]) => `<option value="${id}" ${id === current.controls.ampModel ? 'selected' : ''}>${model.label}</option>`).join('')}
-          </select>
-          <span id="amp-model-help" class="${FIELD_HELP}">${AMP_MODELS[current.controls.ampModel].description}</span>
-        </div>
-        <div id="amp-model-controls" class="grid gap-3 mt-4" data-model="${current.controls.ampModel}">${ampModelControls(current.controls)}</div>
-      </section>
-
-      <section class="${PANEL}" aria-label="Cabinet">
-        <label for="cabinet-model" class="block mb-[.35rem] font-medium text-sm">Cabinet</label>
-        <select id="cabinet-model" aria-describedby="cabinet-model-help">
-          ${Object.entries(CABINET_MODELS).map(([id, model]) => `<option value="${id}" ${id === current.controls.cabinetModel ? 'selected' : ''}>${model.label}</option>`).join('')}
-        </select>
-        <span id="cabinet-model-help" class="${FIELD_HELP}">${CABINET_MODELS[current.controls.cabinetModel].description}</span>
-      </section>
-
-      <section class="${PANEL}" aria-label="Noise Suppression">
-        <label class="${STAGE_TOGGLE}" for="noise-gate-enabled">
-          <input id="noise-gate-enabled" type="checkbox" class="${STAGE_TOGGLE_CHECKBOX}" ${current.controls.noiseGateBypassed ? '' : 'checked'}>
-          Enable Noise Suppression
-        </label>
-        <div class="grid grid-cols-[minmax(0,1fr)_auto] gap-4 items-end max-[34rem]:grid-cols-1">
-          <div class="grid gap-4">
-            ${dbControl('noise-gate-threshold', 'Threshold', current.controls.noiseGateThresholdDb, AMP_CONTROL_DEFINITIONS.noiseGateThresholdDb)}
-            ${dbControl('noise-gate-range', 'Range', current.controls.noiseGateRangeDb, AMP_CONTROL_DEFINITIONS.noiseGateRangeDb)}
-            ${unitControl('noise-gate-release', 'Release', current.controls.noiseGateReleaseMs, AMP_CONTROL_DEFINITIONS.noiseGateReleaseMs, 'ms')}
-          </div>
-          <div class="min-w-24 rounded-md border border-border bg-input-fill px-3 py-2 text-right">
-            <span class="block text-xs text-muted-foreground">Reduction</span>
-            <span id="noise-gate-reduction" aria-label="Noise suppression reduction">${current.noiseGateReductionDb.toFixed(1)} dB</span>
-          </div>
-        </div>
-        <p class="${FIELD_HELP}">Threshold chooses when the gate opens. Range sets the maximum cut; Release controls how gradually it settles back into quiet gaps.</p>
-      </section>
-
-      <section class="${PANEL}" aria-label="Compression">
-        <label class="${STAGE_TOGGLE}" for="compression-enabled">
-          <input id="compression-enabled" type="checkbox" class="${STAGE_TOGGLE_CHECKBOX}" ${current.controls.compressionBypassed ? '' : 'checked'}>
-          Enable Compression
-        </label>
-        <div class="grid grid-cols-[minmax(0,1fr)_auto] gap-4 items-end max-[34rem]:grid-cols-1">
-          <div>${percentControl('compression-amount', 'Amount', current.controls.compressionAmount, AMP_CONTROL_DEFINITIONS.compressionAmount)}</div>
-          <div class="min-w-24 rounded-md border border-border bg-input-fill px-3 py-2 text-right">
-            <span class="block text-xs text-muted-foreground">Reduction</span>
-            <span id="compression-reduction" aria-label="Compression reduction">${current.compressionReductionDb.toFixed(1)} dB</span>
-          </div>
-        </div>
-        <label class="${STAGE_TOGGLE}" for="compression-level-match">
-          <input id="compression-level-match" type="checkbox" class="${STAGE_TOGGLE_CHECKBOX}" ${current.controls.compressionLevelMatch ? 'checked' : ''}>
-          Level Match
-        </label>
-      </section>
-
-      <section class="${PANEL}" aria-label="Studio EQ">
-        <label class="${STAGE_TOGGLE}" for="eq-enabled">
-          <input id="eq-enabled" type="checkbox" class="${STAGE_TOGGLE_CHECKBOX}" ${current.controls.eqBypassed ? '' : 'checked'}>
-          Enable Studio EQ
-        </label>
-        <div class="grid gap-4">
-          ${dbControl('low-shelf', 'Low', current.controls.lowShelfDb, AMP_CONTROL_DEFINITIONS.lowShelfDb)}
-          <div class="grid grid-cols-2 gap-4 max-[34rem]:grid-cols-1">
-            ${unitControl('low-mid-frequency', 'Low Mid Frequency', current.controls.lowMidFrequencyHz, AMP_CONTROL_DEFINITIONS.lowMidFrequencyHz, 'Hz')}
-            ${dbControl('low-mid', 'Low Mid', current.controls.lowMidDb, AMP_CONTROL_DEFINITIONS.lowMidDb)}
-          </div>
-          <div class="grid grid-cols-2 gap-4 max-[34rem]:grid-cols-1">
-            ${unitControl('upper-mid-frequency', 'Upper Mid Frequency', current.controls.upperMidFrequencyHz, AMP_CONTROL_DEFINITIONS.upperMidFrequencyHz, 'Hz')}
-            ${dbControl('upper-mid', 'Upper Mid', current.controls.upperMidDb, AMP_CONTROL_DEFINITIONS.upperMidDb)}
-          </div>
-          ${dbControl('high-shelf', 'High', current.controls.highShelfDb, AMP_CONTROL_DEFINITIONS.highShelfDb)}
-        </div>
-        <p class="${FIELD_HELP}">Low and High are broad shelves fixed at 120 Hz and 3.2 kHz. The two sweepable mid bands use a broad, fixed bandwidth.</p>
-      </section>
-
-      <section class="${PANEL}" aria-label="Reverb">
-        <div class="mb-3">
-          <div class="flex flex-wrap items-center justify-between gap-2 mb-[.35rem]">
-            <label for="reverb-profile" class="font-medium text-sm">Reverb Module</label>
-            <button id="reset-reverb" type="button" class="${COMPACT_SECONDARY_BUTTON}" title="Restore only this module's Main and Advanced settings. Amount and Enable Reverb stay unchanged.">Reset This Reverb</button>
-          </div>
-          <select id="reverb-profile" aria-describedby="reverb-profile-help">
-            ${Object.entries(REVERB_PROFILES).map(([id, profile]) => `<option value="${id}" ${id === current.controls.reverbProfile ? 'selected' : ''}>${profile.label}</option>`).join('')}
-          </select>
-          <span id="reverb-profile-help" class="${FIELD_HELP}">${REVERB_PROFILES[current.controls.reverbProfile].description}</span>
-        </div>
-        <label class="${STAGE_TOGGLE}" for="reverb-enabled">
-          <input id="reverb-enabled" type="checkbox" class="${STAGE_TOGGLE_CHECKBOX}" ${current.controls.reverbBypassed ? '' : 'checked'}>
-          Enable Reverb
-        </label>
-        <div id="reverb-settings" data-profile="${current.controls.reverbProfile}">${reverbAccordions(current.controls)}</div>
-      </section>
-
-      <section class="${PANEL}" aria-label="Master Volume">
-        ${dbControl('master-volume', 'Master', current.controls.masterVolumeDb, AMP_CONTROL_DEFINITIONS.masterVolumeDb)}
-      </section>
-    </section>`;
+    <div id="workspace-shell" class="workspace-shell">
+      ${topBar(current, recovery)}
+      <div class="workspace-body">
+        ${sidebar()}
+        <main class="workspace-main" aria-labelledby="section-title">
+          <section class="section-view" data-section="${section.id}">
+            <div class="section-heading">
+              <div>
+                <p class="section-kicker">${String(sectionNumber(section.id)).padStart(2, '0')} / ${String(SECTIONS.length).padStart(2, '0')}</p>
+                <h1 id="section-title">${section.title}</h1>
+                <p>${section.description}</p>
+              </div>
+              ${sectionAction(section.id, current, recovery)}
+            </div>
+            ${sectionContent(section.id, current, recovery)}
+            ${workspaceFooter(section.id)}
+          </section>
+        </main>
+      </div>
+      ${guidanceOpen ? hardwareGuidance() : ''}
+    </div>`;
 
   bindStructureEvents();
 }
 
+function topBar(current: AudioSnapshot, recovery: RecoveryPresentation): string {
+  return `<header class="topbar">
+    <div class="brand" aria-label="Browser Amp">
+      <span class="brand-art" aria-hidden="true">[img]</span>
+      <span>Browser Amp</span>
+    </div>
+    <div class="monitor-control">
+      <span>Monitoring <strong id="monitoring-state">${current.monitoring ? 'On' : 'Off'}</strong></span>
+      <button
+        id="monitoring-toggle"
+        type="button"
+        class="toggle-button ${current.monitoring ? 'is-on' : ''}"
+        aria-label="${recovery.monitoringButtonLabel}"
+        aria-pressed="${String(current.monitoring)}"
+        ${recovery.monitoringDisabled ? 'disabled' : ''}
+      ><span aria-hidden="true"></span></button>
+    </div>
+    <div class="topbar-meters">
+      ${topMeter('input', 'Input', current.meter)}
+      ${topMeter('output', 'Output', current.outputMeter)}
+    </div>
+  </header>`;
+}
+
+function topMeter(id: 'input' | 'output', label: string, reading: InputMeterSnapshot): string {
+  return `<section class="top-meter" aria-labelledby="${id}-meter-title">
+    <div class="top-meter-heading">
+      <h2 id="${id}-meter-title">${label}</h2>
+      <span id="${id}-meter-value">${reading.dbfs.toFixed(1)} dBFS</span>
+    </div>
+    <div id="${id}-meter" class="meter-track" aria-label="${label} level" aria-valuemin="-60" aria-valuemax="0" aria-valuenow="${reading.dbfs}" role="progressbar">
+      <div class="meter-scale" aria-hidden="true"></div>
+      <div id="${id}-meter-fill" class="meter-fill ${meterRegion(reading.dbfs)}" style="width: ${100 - meterPositionPercent(reading.dbfs)}%"></div>
+      <div id="${id}-meter-peak" class="meter-peak" style="left: ${meterPositionPercent(reading.peakDbfs)}%"></div>
+    </div>
+  </section>`;
+}
+
+function sidebar(): string {
+  return `<aside class="sidebar" aria-label="Amp sections">
+    <nav class="stage-nav">
+      ${SECTIONS.map((section, index) => `<button
+        type="button"
+        class="stage-link ${section.id === activeSection ? 'is-active' : ''}"
+        data-section-target="${section.id}"
+        aria-current="${section.id === activeSection ? 'step' : 'false'}"
+      ><span class="stage-marker" aria-hidden="true">${index + 1}</span><span>${section.label}</span></button>`).join('')}
+    </nav>
+  </aside>`;
+}
+
+function sectionAction(id: WorkspaceSection, current: AudioSnapshot, recovery: RecoveryPresentation): string {
+  if (id === 'input') {
+    return `<div class="section-action">
+      <output class="connection-state" role="status">${connectionLabel(current)}</output>
+      <button id="connect" type="button" class="primary-action" ${current.lifecycle === 'connecting' ? 'disabled' : ''}>${recovery.connectButtonLabel}</button>
+      ${isConnected(current) ? '<button id="disconnect" type="button" class="secondary-action">Disconnect</button>' : ''}
+    </div>`;
+  }
+  if (id === 'compression') return stageToggle('compression-enabled', 'Enable Compression', !current.controls.compressionBypassed);
+  if (id === 'eq') return stageToggle('eq-enabled', 'Enable Studio EQ', !current.controls.eqBypassed);
+  if (id === 'reverb') return stageToggle('reverb-enabled', 'Enable Reverb', !current.controls.reverbBypassed);
+  if (id === 'master') return '<button id="reset-controls" type="button" class="secondary-action">Reset Controls</button>';
+  return '<span class="always-on">Signal stage always on</span>';
+}
+
+function stageToggle(id: string, label: string, checked: boolean): string {
+  return `<label class="stage-toggle" for="${id}">
+    <span>${label}</span>
+    <input id="${id}" type="checkbox" ${checked ? 'checked' : ''}>
+    <span class="toggle-track" aria-hidden="true"><span></span></span>
+  </label>`;
+}
+
+function sectionContent(id: WorkspaceSection, current: AudioSnapshot, recovery: RecoveryPresentation): string {
+  switch (id) {
+    case 'input': return inputSection(current, recovery);
+    case 'amp': return ampSection(current.controls);
+    case 'compression': return compressionSection(current);
+    case 'eq': return eqSection(current.controls);
+    case 'reverb': return reverbSection(current.controls);
+    case 'master': return masterSection(current, recovery);
+  }
+}
+
+function inputSection(current: AudioSnapshot, recovery: RecoveryPresentation): string {
+  return `<div class="section-stack">
+    <section class="panel" aria-labelledby="input-title">
+      <div class="panel-heading">
+        <div><p class="panel-eyebrow">Source</p><h2 id="input-title">Live Guitar Input</h2></div>
+        <span class="placeholder-art" aria-hidden="true">[img]</span>
+      </div>
+      <p id="connection-description" class="panel-description">${connectionDescription(current)}</p>
+      <div class="select-grid">
+        <div>${deviceSelector(current)}</div>
+        ${current.inputChannelCount > 1 ? `<div>${channelSelector(current)}</div>` : ''}
+      </div>
+      ${current.rawCaptureWarnings.map((warning) => `<p class="message warning" role="alert">${escapeHtml(warning)}</p>`).join('')}
+      ${recovery.inputMessage === undefined ? '' : `<p class="message error" role="alert">${escapeHtml(recovery.inputMessage)}</p>`}
+    </section>
+
+    <section class="panel control-panel" aria-label="Input Trim">
+      <div class="panel-heading compact"><div><p class="panel-eyebrow">Level</p><h2>Input Trim</h2></div></div>
+      ${dbControl('input-trim', 'Input Trim', current.controls.inputTrimDb, AMP_CONTROL_DEFINITIONS.inputTrimDb, 'Set the level feeding the amp without clipping the input.')}
+    </section>
+
+    <section class="panel control-panel" aria-label="Noise Suppression">
+      <div class="panel-heading">
+        <div><p class="panel-eyebrow">Cleanup</p><h2>Noise Gate</h2></div>
+        ${stageToggle('noise-gate-enabled', 'Enable Noise Suppression', !current.controls.noiseGateBypassed)}
+      </div>
+      <div class="control-list">
+        ${dbControl('noise-gate-threshold', 'Threshold', current.controls.noiseGateThresholdDb, AMP_CONTROL_DEFINITIONS.noiseGateThresholdDb, 'Choose when the gate opens.')}
+        ${dbControl('noise-gate-range', 'Range', current.controls.noiseGateRangeDb, AMP_CONTROL_DEFINITIONS.noiseGateRangeDb, 'Set the maximum reduction during quiet passages.')}
+        ${unitControl('noise-gate-release', 'Release', current.controls.noiseGateReleaseMs, AMP_CONTROL_DEFINITIONS.noiseGateReleaseMs, 'ms', 'Control how gradually the gate settles.')}
+      </div>
+      <div class="live-readout"><span>Current reduction</span><strong id="noise-gate-reduction" aria-label="Noise suppression reduction">${current.noiseGateReductionDb.toFixed(1)} dB</strong></div>
+    </section>
+  </div>`;
+}
+
+function ampSection(controls: AmpControlSettings): string {
+  return `<div class="section-stack">
+    <section class="panel" aria-label="Amp Model">
+      <div class="panel-heading compact"><div><p class="panel-eyebrow">Amp model</p><h2>Pick an amplifier</h2></div></div>
+      ${choiceSelector('amp-model', 'Amp Model', controls.ampModel, AMP_MODELS)}
+      <span id="amp-model-help" class="choice-help">${AMP_MODELS[controls.ampModel].description}</span>
+      <div id="amp-model-controls" class="model-controls" data-model="${controls.ampModel}">${ampModelControls(controls)}</div>
+    </section>
+
+    <section class="panel" aria-label="Cabinet">
+      <div class="panel-heading compact"><div><p class="panel-eyebrow">Cabinet</p><h2>Choose the speaker response</h2></div></div>
+      ${choiceSelector('cabinet-model', 'Cabinet', controls.cabinetModel, CABINET_MODELS)}
+      <span id="cabinet-model-help" class="choice-help">${CABINET_MODELS[controls.cabinetModel].description}</span>
+    </section>
+  </div>`;
+}
+
+function compressionSection(current: AudioSnapshot): string {
+  return `<div class="section-stack">
+    <section class="panel hero-panel" aria-label="Compression">
+      <div class="hero-copy"><p class="panel-eyebrow">Studio compressor</p><h2>Even out the performance</h2><p>Move from transparent control to a more forward, sustained feel.</p></div>
+      <span class="placeholder-art large" aria-hidden="true">[img]</span>
+    </section>
+    <section class="panel control-panel" aria-label="Compression Controls">
+      <div class="control-list">
+        ${percentControl('compression-amount', 'Amount', current.controls.compressionAmount, AMP_CONTROL_DEFINITIONS.compressionAmount, 'Blend in more control and sustain.')}
+      </div>
+      <div class="option-row">
+        <label class="check-option" for="compression-level-match"><input id="compression-level-match" type="checkbox" ${current.controls.compressionLevelMatch ? 'checked' : ''}><span>Level Match</span></label>
+        <div class="live-readout"><span>Gain reduction</span><strong id="compression-reduction" aria-label="Compression reduction">${current.compressionReductionDb.toFixed(1)} dB</strong></div>
+      </div>
+    </section>
+  </div>`;
+}
+
+function eqSection(controls: AmpControlSettings): string {
+  return `<section class="panel control-panel" aria-label="Studio EQ">
+    <div class="panel-heading"><div><p class="panel-eyebrow">Four-band studio EQ</p><h2>Fine tune the tone</h2></div><span class="placeholder-art" aria-hidden="true">[img]</span></div>
+    <div class="control-list eq-controls">
+      ${dbControl('low-shelf', 'Low', controls.lowShelfDb, AMP_CONTROL_DEFINITIONS.lowShelfDb, 'Broad shelf fixed at 120 Hz.')}
+      ${unitControl('low-mid-frequency', 'Low Mid Frequency', controls.lowMidFrequencyHz, AMP_CONTROL_DEFINITIONS.lowMidFrequencyHz, 'Hz', 'Choose the center of the lower-mid band.')}
+      ${dbControl('low-mid', 'Low Mid', controls.lowMidDb, AMP_CONTROL_DEFINITIONS.lowMidDb, 'Cut mud or add body around the selected frequency.')}
+      ${unitControl('upper-mid-frequency', 'Upper Mid Frequency', controls.upperMidFrequencyHz, AMP_CONTROL_DEFINITIONS.upperMidFrequencyHz, 'Hz', 'Choose the center of the upper-mid band.')}
+      ${dbControl('upper-mid', 'Upper Mid', controls.upperMidDb, AMP_CONTROL_DEFINITIONS.upperMidDb, 'Shape presence around the selected frequency.')}
+      ${dbControl('high-shelf', 'High', controls.highShelfDb, AMP_CONTROL_DEFINITIONS.highShelfDb, 'Broad shelf fixed at 3.2 kHz.')}
+    </div>
+  </section>`;
+}
+
+function reverbSection(controls: AmpControlSettings): string {
+  return `<div class="section-stack">
+    <section class="panel reverb-choice-panel" aria-label="Reverb">
+      <div class="panel-heading compact">
+        <p class="panel-eyebrow">Reverb type</p>
+        <button id="reset-reverb" type="button" class="text-action" title="Restore only this module's Main and Advanced settings. Amount and Enable Reverb stay unchanged.">Reset This Reverb</button>
+      </div>
+      ${choiceSelector('reverb-profile', 'Reverb Module', controls.reverbProfile, REVERB_PROFILES)}
+      <span id="reverb-profile-help" class="choice-help">${REVERB_PROFILES[controls.reverbProfile].description}</span>
+    </section>
+    <section id="reverb-settings" class="panel control-panel reverb-control-panel" data-profile="${controls.reverbProfile}" aria-label="Reverb Controls">${reverbAccordions(controls)}</section>
+  </div>`;
+}
+
+function masterSection(current: AudioSnapshot, recovery: RecoveryPresentation): string {
+  const connected = isConnected(current);
+  return `<div class="section-stack">
+    <section class="panel" aria-labelledby="monitoring-title">
+      <div class="panel-heading"><div><p class="panel-eyebrow">Output routing</p><h2 id="monitoring-title">Processed Monitoring</h2></div><span class="placeholder-art" aria-hidden="true">[img]</span></div>
+      <p class="panel-description">${routingDescription(current)}</p>
+      ${outputSelector(current, connected)}
+      <p id="latency-value" class="${FIELD_HELP}" ${current.latency === undefined ? 'hidden' : ''}>${latencyDescription(current.latency)}</p>
+      ${current.outputRouting.error === undefined ? '' : `<p class="message error" role="alert">${escapeHtml(current.outputRouting.error)}</p>`}
+      ${recovery.monitoringMessage === undefined ? '' : `<p class="message error" role="alert">${escapeHtml(recovery.monitoringMessage)}</p>`}
+      ${recovery.retrySelectedOutput ? '<button id="retry-output" type="button" class="secondary-action">Retry Selected Output</button>' : ''}
+    </section>
+    <section class="panel control-panel" aria-label="Master Volume">
+      <div class="panel-heading compact"><div><p class="panel-eyebrow">Final gain</p><h2>Master Volume</h2></div></div>
+      ${dbControl('master-volume', 'Master', current.controls.masterVolumeDb, AMP_CONTROL_DEFINITIONS.masterVolumeDb, 'Set the final level sent to the browser output.')}
+      <div class="clip-row"><span id="clip-indicator" class="clip-indicator" role="status" aria-hidden="true">CLIP</span><button id="clear-clip" type="button" class="secondary-action compact" disabled>Clear CLIP</button></div>
+    </section>
+  </div>`;
+}
+
+function choiceSelector(
+  id: string,
+  label: string,
+  selected: string,
+  options: Readonly<Record<string, { readonly label: string; readonly description: string }>>,
+): string {
+  return `<label class="visually-hidden" for="${id}">${label}</label>
+    <select id="${id}" class="visually-hidden" aria-describedby="${id}-help">
+      ${Object.entries(options).map(([value, option]) => `<option value="${value}" ${value === selected ? 'selected' : ''}>${option.label}</option>`).join('')}
+    </select>
+    <div class="choice-grid" role="list" aria-label="${label} choices">
+      ${Object.entries(options).map(([value, option]) => `<button type="button" class="choice-card ${value === selected ? 'is-selected' : ''}" data-select-id="${id}" data-select-value="${value}" aria-pressed="${String(value === selected)}"><span class="choice-art" aria-hidden="true">[img]</span><span>${option.label}</span></button>`).join('')}
+    </div>`;
+}
+
+function workspaceFooter(id: WorkspaceSection): string {
+  const index = sectionNumber(id) - 1;
+  const previous = SECTIONS[index - 1];
+  const next = SECTIONS[index + 1];
+  return `<footer class="workspace-footer">
+    <div>${previous === undefined ? '' : `<button type="button" class="secondary-action footer-action" data-section-target="${previous.id}">Back: ${previous.label}</button>`}</div>
+    <div class="progress-dots" aria-label="Section progress">
+      ${SECTIONS.map((section) => `<button type="button" class="progress-dot ${section.id === id ? 'is-active' : ''}" data-section-target="${section.id}" aria-label="Go to ${section.label}" aria-current="${section.id === id ? 'step' : 'false'}"></button>`).join('')}
+    </div>
+    <div>${next === undefined ? '' : `<button type="button" class="primary-action footer-action" data-section-target="${next.id}">Next: ${next.label}</button>`}</div>
+  </footer>`;
+}
+
 function bindStructureEvents(): void {
+  root.querySelectorAll<HTMLButtonElement>('[data-section-target]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const target = button.dataset.sectionTarget;
+      if (!isWorkspaceSection(target) || target === activeSection) return;
+      activeSection = target;
+      window.history.replaceState(null, '', `#${target}`);
+      rerenderStructure();
+      root.querySelector<HTMLElement>('#section-title')?.focus({ preventScroll: true });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  });
+  bindChoiceCards();
   root.querySelector<HTMLButtonElement>('#reset-controls')?.addEventListener('click', () => {
     workbenchPreferences = resetControls(workbenchPreferences);
     preferencesStore.save(workbenchPreferences);
@@ -241,9 +395,7 @@ function bindStructureEvents(): void {
     const deviceId = (event.currentTarget as HTMLSelectElement).value;
     void engine.selectOutput(deviceId === '' ? undefined : deviceId);
   });
-  root.querySelector<HTMLButtonElement>('#retry-output')?.addEventListener('click', () => {
-    void engine.selectOutput(snapshot.outputRouting.selectedDeviceId);
-  });
+  root.querySelector<HTMLButtonElement>('#retry-output')?.addEventListener('click', () => void engine.selectOutput(snapshot.outputRouting.selectedDeviceId));
   bindContinuousControl('input-trim', (inputTrimDb) => engine.applyControls({ ...snapshot.controls, inputTrimDb }));
   root.querySelector<HTMLSelectElement>('#amp-model')?.addEventListener('change', (event) => {
     const ampModel = (event.currentTarget as HTMLSelectElement).value;
@@ -293,23 +445,29 @@ function bindStructureEvents(): void {
   });
   bindContinuousControl('master-volume', (masterVolumeDb) => engine.applyControls({ ...snapshot.controls, masterVolumeDb }));
   root.querySelector<HTMLButtonElement>('#monitoring-toggle')?.addEventListener('click', () => {
-    if (snapshot.monitoring) {
-      void engine.setMonitoring(false);
-    } else if (!guidanceDismissed) {
+    if (snapshot.monitoring) void engine.setMonitoring(false);
+    else if (!guidanceDismissed) {
       guidanceOpen = true;
       rerenderStructure();
-    } else {
-      void engine.setMonitoring(true);
-    }
+    } else void engine.setMonitoring(true);
   });
   root.querySelector<HTMLButtonElement>('#confirm-monitoring')?.addEventListener('click', () => {
     dismissGuidance();
     void engine.setMonitoring(true);
   });
-  root.querySelector<HTMLButtonElement>('#dismiss-guidance')?.addEventListener('click', () => {
-    dismissGuidance();
-  });
+  root.querySelector<HTMLButtonElement>('#dismiss-guidance')?.addEventListener('click', dismissGuidance);
   root.querySelector<HTMLButtonElement>('#clear-clip')?.addEventListener('click', () => engine.clearClip());
+}
+
+function bindChoiceCards(): void {
+  root.querySelectorAll<HTMLButtonElement>('[data-select-id]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const select = root.querySelector<HTMLSelectElement>(`#${button.dataset.selectId ?? ''}`);
+      if (select === null || button.dataset.selectValue === undefined) return;
+      select.value = button.dataset.selectValue;
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+  });
 }
 
 function bindContinuousControl(id: string, apply: (value: number) => void): void {
@@ -332,12 +490,7 @@ function ampModelControls(controls: AmpControlSettings): string {
     const id = `amp-control-${key}`;
     const value = state[key];
     if (definition.kind === 'knob') return knobControl(id, definition.label, value as number, definition);
-    return `<div>
-      <label for="${id}" class="${FIELD}">${definition.label}</label>
-      <select id="${id}" data-amp-control="${key}">
-        ${definition.options.map(([option, label]) => `<option value="${option}" ${option === value ? 'selected' : ''}>${label}</option>`).join('')}
-      </select>
-    </div>`;
+    return `<div class="select-control"><label for="${id}" class="${FIELD}">${definition.label}</label><select id="${id}" data-amp-control="${key}">${definition.options.map(([option, label]) => `<option value="${option}" ${option === value ? 'selected' : ''}>${label}</option>`).join('')}</select></div>`;
   }).join('');
 }
 
@@ -363,27 +516,17 @@ function bindAmpModelControls(): void {
 function reverbAccordions(controls: AmpControlSettings): string {
   const parameters = reverbParameters(controls.reverbProfile, controls.reverbSettings);
   return (['main', 'advanced'] as const).map((section) => `
-    <details id="reverb-${section}" class="border-t border-border py-2" ${reverbAccordionOpen[section] ? 'open' : ''}>
-      <summary class="cursor-pointer rounded-md py-2 text-sm font-medium">${section === 'main' ? 'Main Controls' : 'Advanced Controls'}</summary>
-      <div class="grid gap-4 pt-2 pb-3">
-        ${section === 'main' ? percentControl('reverb-amount', 'Reverb', controls.reverbAmount, AMP_CONTROL_DEFINITIONS.reverbAmount) : ''}
+    <details id="reverb-${section}" class="reverb-accordion" ${reverbAccordionOpen[section] ? 'open' : ''}>
+      <summary>${section === 'main' ? 'Main Controls' : 'Advanced Controls'}</summary>
+      <div class="control-list">
+        ${section === 'main' ? percentControl('reverb-amount', 'Reverb', controls.reverbAmount, AMP_CONTROL_DEFINITIONS.reverbAmount, 'Set how much ambience is mixed in.') : ''}
         ${reverbControlEntries(controls.reverbProfile, section).map(([key, definition]) => reverbParameterControl(`reverb-${key}`, parameters[key], definition)).join('')}
       </div>
     </details>`).join('');
 }
 
 function reverbParameterControl(id: string, value: number, definition: ReverbControlDefinition): string {
-  return `<div>
-    <div class="grid grid-cols-[1fr_auto] max-[34rem]:grid-cols-1 gap-x-4 items-center">
-      <label for="${id}-slider" class="col-span-2 max-[34rem]:col-span-1 font-medium text-sm">${definition.label}</label>
-      <input id="${id}-slider" aria-label="${definition.label} slider" aria-describedby="${id}-help" type="range" class="w-full accent-primary" min="${definition.minimum}" max="${definition.maximum}" step="${definition.step}" value="${value}">
-      <div class="flex items-center gap-[.35rem] max-[34rem]:justify-end">
-        <input id="${id}-value" aria-label="${definition.label} value" aria-describedby="${id}-help" type="number" inputmode="decimal" class="w-20 rounded-md border border-input bg-input-fill text-foreground text-right text-sm" min="${definition.minimum}" max="${definition.maximum}" step="${definition.step}" value="${value.toFixed(definition.fractionDigits)}">
-        <span aria-hidden="true">${definition.unit}</span>
-      </div>
-    </div>
-    <span id="${id}-help" class="${FIELD_HELP}">${definition.help} (${definition.unit})</span>
-  </div>`;
+  return continuousControl(id, definition.label, value, definition, definition.unit, definition.help);
 }
 
 function bindReverbControls(): void {
@@ -410,8 +553,7 @@ function renderControls(controls: AmpControlSettings): void {
   const ampModel = root.querySelector<HTMLSelectElement>('#amp-model');
   if (ampModel !== null && ampModel.value !== controls.ampModel) ampModel.value = controls.ampModel;
   const ampModelHelp = root.querySelector<HTMLElement>('#amp-model-help');
-  const modelDescription = AMP_MODELS[controls.ampModel].description;
-  if (ampModelHelp !== null && ampModelHelp.textContent !== modelDescription) ampModelHelp.textContent = modelDescription;
+  if (ampModelHelp !== null) ampModelHelp.textContent = AMP_MODELS[controls.ampModel].description;
   const ampControls = root.querySelector<HTMLElement>('#amp-model-controls');
   if (ampControls !== null && ampControls.dataset.model !== controls.ampModel) {
     ampControls.innerHTML = ampModelControls(controls);
@@ -429,16 +571,13 @@ function renderControls(controls: AmpControlSettings): void {
   }
   const cabinetModel = root.querySelector<HTMLSelectElement>('#cabinet-model');
   if (cabinetModel !== null && cabinetModel.value !== controls.cabinetModel) cabinetModel.value = controls.cabinetModel;
-  const cabinetModelHelp = root.querySelector<HTMLElement>('#cabinet-model-help');
-  const cabinetDescription = CABINET_MODELS[controls.cabinetModel].description;
-  if (cabinetModelHelp !== null && cabinetModelHelp.textContent !== cabinetDescription) cabinetModelHelp.textContent = cabinetDescription;
+  const cabinetHelp = root.querySelector<HTMLElement>('#cabinet-model-help');
+  if (cabinetHelp !== null) cabinetHelp.textContent = CABINET_MODELS[controls.cabinetModel].description;
   setControlValue('noise-gate-threshold', controls.noiseGateThresholdDb, AMP_CONTROL_DEFINITIONS.noiseGateThresholdDb);
   setControlValue('noise-gate-range', controls.noiseGateRangeDb, AMP_CONTROL_DEFINITIONS.noiseGateRangeDb);
   setControlValue('noise-gate-release', controls.noiseGateReleaseMs, AMP_CONTROL_DEFINITIONS.noiseGateReleaseMs);
-  const noiseGateEnabled = root.querySelector<HTMLInputElement>('#noise-gate-enabled');
-  if (noiseGateEnabled !== null) noiseGateEnabled.checked = !controls.noiseGateBypassed;
-  const eqEnabled = root.querySelector<HTMLInputElement>('#eq-enabled');
-  if (eqEnabled !== null) eqEnabled.checked = !controls.eqBypassed;
+  setCheckbox('noise-gate-enabled', !controls.noiseGateBypassed);
+  setCheckbox('eq-enabled', !controls.eqBypassed);
   setControlValue('low-shelf', controls.lowShelfDb, AMP_CONTROL_DEFINITIONS.lowShelfDb);
   setControlValue('low-mid-frequency', controls.lowMidFrequencyHz, AMP_CONTROL_DEFINITIONS.lowMidFrequencyHz);
   setControlValue('low-mid', controls.lowMidDb, AMP_CONTROL_DEFINITIONS.lowMidDb);
@@ -446,19 +585,14 @@ function renderControls(controls: AmpControlSettings): void {
   setControlValue('upper-mid', controls.upperMidDb, AMP_CONTROL_DEFINITIONS.upperMidDb);
   setControlValue('high-shelf', controls.highShelfDb, AMP_CONTROL_DEFINITIONS.highShelfDb);
   setControlValue('compression-amount', controls.compressionAmount, AMP_CONTROL_DEFINITIONS.compressionAmount);
-  const compressionEnabled = root.querySelector<HTMLInputElement>('#compression-enabled');
-  if (compressionEnabled !== null) compressionEnabled.checked = !controls.compressionBypassed;
-  const compressionLevelMatch = root.querySelector<HTMLInputElement>('#compression-level-match');
-  if (compressionLevelMatch !== null) compressionLevelMatch.checked = controls.compressionLevelMatch;
+  setCheckbox('compression-enabled', !controls.compressionBypassed);
+  setCheckbox('compression-level-match', controls.compressionLevelMatch);
   const reverbProfile = root.querySelector<HTMLSelectElement>('#reverb-profile');
   if (reverbProfile !== null && reverbProfile.value !== controls.reverbProfile) reverbProfile.value = controls.reverbProfile;
-  const reverbProfileHelp = root.querySelector<HTMLElement>('#reverb-profile-help');
-  const reverbDescription = REVERB_PROFILES[controls.reverbProfile].description;
-  if (reverbProfileHelp !== null && reverbProfileHelp.textContent !== reverbDescription) reverbProfileHelp.textContent = reverbDescription;
+  const reverbHelp = root.querySelector<HTMLElement>('#reverb-profile-help');
+  if (reverbHelp !== null) reverbHelp.textContent = REVERB_PROFILES[controls.reverbProfile].description;
   const reverbSettings = root.querySelector<HTMLElement>('#reverb-settings');
   if (reverbSettings !== null && reverbSettings.dataset.profile !== controls.reverbProfile) {
-    // Replace only the module's controls, keeping the selector, focus, meters,
-    // and capture UI mounted while preserving the accordion state.
     for (const section of ['main', 'advanced'] as const) {
       const details = root.querySelector<HTMLDetailsElement>(`#reverb-${section}`);
       if (details !== null) reverbAccordionOpen[section] = details.open;
@@ -468,13 +602,26 @@ function renderControls(controls: AmpControlSettings): void {
     bindReverbControls();
   }
   const parameters = reverbParameters(controls.reverbProfile, controls.reverbSettings);
-  for (const [key, definition] of reverbControlEntries(controls.reverbProfile)) {
-    setControlValue(`reverb-${key}`, parameters[key], definition);
-  }
+  for (const [key, definition] of reverbControlEntries(controls.reverbProfile)) setControlValue(`reverb-${key}`, parameters[key], definition);
   setControlValue('reverb-amount', controls.reverbAmount, AMP_CONTROL_DEFINITIONS.reverbAmount);
-  const reverbEnabled = root.querySelector<HTMLInputElement>('#reverb-enabled');
-  if (reverbEnabled !== null) reverbEnabled.checked = !controls.reverbBypassed;
+  setCheckbox('reverb-enabled', !controls.reverbBypassed);
   setControlValue('master-volume', controls.masterVolumeDb, AMP_CONTROL_DEFINITIONS.masterVolumeDb);
+  syncChoiceCards('amp-model', controls.ampModel);
+  syncChoiceCards('cabinet-model', controls.cabinetModel);
+  syncChoiceCards('reverb-profile', controls.reverbProfile);
+}
+
+function setCheckbox(id: string, checked: boolean): void {
+  const input = root.querySelector<HTMLInputElement>(`#${id}`);
+  if (input !== null) input.checked = checked;
+}
+
+function syncChoiceCards(id: string, value: string): void {
+  root.querySelectorAll<HTMLButtonElement>(`[data-select-id="${id}"]`).forEach((button) => {
+    const selected = button.dataset.selectValue === value;
+    button.classList.toggle('is-selected', selected);
+    button.setAttribute('aria-pressed', String(selected));
+  });
 }
 
 function setControlValue(id: string, value: number, definition: ContinuousControlDefinition): void {
@@ -489,15 +636,13 @@ function renderMeters(current: AudioSnapshot): void {
   updateMeter('input', current.meter);
   updateMeter('output', current.outputMeter);
   const noiseGateReduction = root.querySelector<HTMLElement>('#noise-gate-reduction');
-  const noiseGateReductionText = `${current.noiseGateReductionDb.toFixed(1)} dB`;
-  if (noiseGateReduction !== null && noiseGateReduction.textContent !== noiseGateReductionText) noiseGateReduction.textContent = noiseGateReductionText;
+  if (noiseGateReduction !== null) noiseGateReduction.textContent = `${current.noiseGateReductionDb.toFixed(1)} dB`;
   const compressionReduction = root.querySelector<HTMLElement>('#compression-reduction');
-  const reductionText = `${current.compressionReductionDb.toFixed(1)} dB`;
-  if (compressionReduction !== null && compressionReduction.textContent !== reductionText) compressionReduction.textContent = reductionText;
+  if (compressionReduction !== null) compressionReduction.textContent = `${current.compressionReductionDb.toFixed(1)} dB`;
   const indicator = root.querySelector<HTMLElement>('#clip-indicator');
   const clear = root.querySelector<HTMLButtonElement>('#clear-clip');
   if (indicator !== null) {
-    indicator.className = clipIndicatorClass(current.clipLatched);
+    indicator.classList.toggle('is-active', current.clipLatched);
     indicator.setAttribute('aria-hidden', String(!current.clipLatched));
   }
   if (clear !== null) clear.disabled = !current.clipLatched;
@@ -508,20 +653,6 @@ function renderMeters(current: AudioSnapshot): void {
   }
 }
 
-function latencyDescription(latency: AudioSnapshot['latency']): string {
-  if (latency === undefined) return '';
-  const baseMs = latency.baseSeconds * 1_000;
-  if (latency.outputSeconds === undefined) return `Browser output latency: ~${baseMs.toFixed(1)} ms processing buffer (device output latency not reported by this browser). Input capture latency is not measurable and adds to the total.`;
-  const outputMs = latency.outputSeconds * 1_000;
-  return `Browser output latency: ~${(baseMs + outputMs).toFixed(1)} ms (${baseMs.toFixed(1)} ms processing buffer + ${outputMs.toFixed(1)} ms device output). Input capture latency is not measurable and adds to the total.`;
-}
-
-function clipIndicatorClass(active: boolean): string {
-  return active
-    ? 'font-black tracking-[.08em] text-destructive [text-shadow:0_0_.7rem_oklch(0.704_0.191_22.216_/_70%)]'
-    : 'font-black tracking-[.08em] text-muted-foreground';
-}
-
 function updateMeter(id: string, reading: InputMeterSnapshot): void {
   const meter = root.querySelector<HTMLElement>(`#${id}-meter`);
   const fill = root.querySelector<HTMLElement>(`#${id}-meter-fill`);
@@ -529,80 +660,41 @@ function updateMeter(id: string, reading: InputMeterSnapshot): void {
   const value = root.querySelector<HTMLElement>(`#${id}-meter-value`);
   if (meter === null || fill === null || peak === null || value === null) return;
   meter.setAttribute('aria-valuenow', String(reading.dbfs));
-  fill.className = `${METER_FILL} ${meterRegion(reading.dbfs)}`;
+  fill.className = `meter-fill ${meterRegion(reading.dbfs)}`;
   fill.style.width = `${100 - meterPositionPercent(reading.dbfs)}%`;
   peak.style.left = `${meterPositionPercent(reading.peakDbfs)}%`;
   value.textContent = `${reading.dbfs.toFixed(1)} dBFS`;
 }
 
-const METER_FILL = 'absolute inset-y-0 right-0 bg-black/60';
-
-function meterPanel(id: 'input' | 'output', title: string, reading: InputMeterSnapshot, hint: string): string {
-  const clip = id === 'output' ? `
-    <div class="flex flex-none items-center gap-2">
-      <span id="clip-indicator" class="${clipIndicatorClass(false)}" role="status" aria-hidden="true">CLIP</span>
-      <button id="clear-clip" type="button" class="${COMPACT_SECONDARY_BUTTON}" disabled>Clear CLIP</button>
-    </div>` : '';
-  return `<section class="${PANEL}" aria-labelledby="${id}-meter-title">
-    <div class="${PANEL_HEADING}">
-      <h2 id="${id}-meter-title" class="${PANEL_TITLE}">${title}</h2>
-      <span id="${id}-meter-value" class="text-muted-foreground text-xs">${reading.dbfs.toFixed(1)} dBFS</span>
-    </div>
-    <div id="${id}-meter" class="relative h-2 overflow-hidden rounded-[.2rem] bg-[linear-gradient(90deg,#2b9b53_0_80%,#d4bb45_80%_95%,#df5252_95%)]" aria-label="${id === 'input' ? 'Input' : 'Output'} level" aria-valuemin="-60" aria-valuemax="0" aria-valuenow="${reading.dbfs}" role="progressbar">
-      <div id="${id}-meter-fill" class="${METER_FILL} ${meterRegion(reading.dbfs)}" style="width: ${100 - meterPositionPercent(reading.dbfs)}%"></div>
-      <div id="${id}-meter-peak" class="absolute top-0 bottom-0 w-[2px] bg-white" style="left: ${meterPositionPercent(reading.peakDbfs)}%"></div>
-    </div>
-    <div class="flex justify-between gap-4 items-center text-muted-foreground text-xs mt-1" aria-hidden="true"><span>−60</span><span>−12</span><span>−3</span><span>0 dBFS</span></div>
-    <div class="flex justify-between gap-4 items-end mt-3 max-[34rem]:items-start max-[34rem]:flex-col max-[34rem]:gap-2"><p class="text-muted-foreground text-xs">${hint}</p>${clip}</div>
-  </section>`;
+function dbControl(id: string, label: string, value: number, definition: ContinuousControlDefinition, help = ''): string {
+  return continuousControl(id, label, value, definition, 'dB', help);
 }
 
-function dbControl(id: string, label: string, value: number, definition: ContinuousControlDefinition): string {
-  return `<div class="grid grid-cols-[1fr_auto] max-[34rem]:grid-cols-1 gap-x-4 items-center">
-    <label for="${id}-slider" class="col-span-2 max-[34rem]:col-span-1 font-medium text-sm">${label}</label>
-    <input id="${id}-slider" aria-label="${label} slider" type="range" class="w-full accent-primary" min="${definition.minimum}" max="${definition.maximum}" step="${definition.step}" value="${value}">
-    <div class="flex items-center gap-[.35rem] max-[34rem]:justify-end">
-      <input id="${id}-value" aria-label="${label} value" type="number" inputmode="decimal" class="${NUMERIC_INPUT}" min="${definition.minimum}" max="${definition.maximum}" step="${definition.step}" value="${value.toFixed(definition.fractionDigits)}">
-      <span aria-hidden="true">dB</span>
-    </div>
-  </div>`;
+function unitControl(id: string, label: string, value: number, definition: ContinuousControlDefinition, unit: string, help = ''): string {
+  return continuousControl(id, label, value, definition, unit, help);
 }
 
-function unitControl(
+function percentControl(id: string, label: string, value: number, definition: ContinuousControlDefinition, help = ''): string {
+  return continuousControl(id, label, value, definition, '%', help);
+}
+
+function knobControl(id: string, label: string, value: number, definition: AmpKnobDefinition): string {
+  return continuousControl(id, label, value, definition, '', 'Tune this amplifier parameter.');
+}
+
+function continuousControl(
   id: string,
   label: string,
   value: number,
   definition: ContinuousControlDefinition,
   unit: string,
+  help: string,
 ): string {
-  return `<div class="grid grid-cols-[1fr_auto] max-[34rem]:grid-cols-1 gap-x-4 items-center">
-    <label for="${id}-slider" class="col-span-2 max-[34rem]:col-span-1 font-medium text-sm">${label}</label>
-    <input id="${id}-slider" aria-label="${label} slider" type="range" class="w-full accent-primary" min="${definition.minimum}" max="${definition.maximum}" step="${definition.step}" value="${value}">
-    <div class="flex items-center gap-[.35rem] max-[34rem]:justify-end">
-      <input id="${id}-value" aria-label="${label} value" type="number" inputmode="numeric" class="${NUMERIC_INPUT}" min="${definition.minimum}" max="${definition.maximum}" step="${definition.step}" value="${value.toFixed(definition.fractionDigits)}">
-      <span aria-hidden="true">${unit}</span>
-    </div>
-  </div>`;
-}
-
-function knobControl(id: string, label: string, value: number, definition: AmpKnobDefinition): string {
-  return `<div class="grid grid-cols-[1fr_auto] max-[34rem]:grid-cols-1 gap-x-4 items-center">
-    <label for="${id}-slider" class="col-span-2 max-[34rem]:col-span-1 font-medium text-sm">${label}</label>
-    <input id="${id}-slider" aria-label="${label} slider" type="range" class="w-full accent-primary" min="${definition.minimum}" max="${definition.maximum}" step="${definition.step}" value="${value}">
-    <input id="${id}-value" aria-label="${label} value" type="number" inputmode="decimal" class="${NUMERIC_INPUT}" min="${definition.minimum}" max="${definition.maximum}" step="${definition.step}" value="${value.toFixed(definition.fractionDigits)}">
-  </div>`;
-}
-
-const NUMERIC_INPUT = 'w-14 rounded-md border border-input bg-input-fill text-foreground text-right text-sm';
-
-function percentControl(id: string, label: string, value: number, definition: ContinuousControlDefinition): string {
-  return `<div class="grid grid-cols-[1fr_auto] max-[34rem]:grid-cols-1 gap-x-4 items-center">
-    <label for="${id}-slider" class="col-span-2 max-[34rem]:col-span-1 font-medium text-sm">${label}</label>
-    <input id="${id}-slider" aria-label="${label} slider" type="range" class="w-full accent-primary" min="${definition.minimum}" max="${definition.maximum}" step="${definition.step}" value="${value}">
-    <div class="flex items-center gap-[.35rem] max-[34rem]:justify-end">
-      <input id="${id}-value" aria-label="${label} value" type="number" inputmode="numeric" class="${NUMERIC_INPUT}" min="${definition.minimum}" max="${definition.maximum}" step="${definition.step}" value="${value.toFixed(definition.fractionDigits)}">
-      <span aria-hidden="true">%</span>
-    </div>
+  const helpId = `${id}-help`;
+  return `<div class="continuous-control">
+    <div class="control-copy"><label for="${id}-slider">${label}</label>${help === '' ? '' : `<span id="${helpId}">${help}</span>`}</div>
+    <input id="${id}-slider" aria-label="${label} slider" ${help === '' ? '' : `aria-describedby="${helpId}"`} type="range" min="${definition.minimum}" max="${definition.maximum}" step="${definition.step}" value="${value}">
+    <div class="value-field"><input id="${id}-value" aria-label="${label} value" ${help === '' ? '' : `aria-describedby="${helpId}"`} type="number" inputmode="decimal" min="${definition.minimum}" max="${definition.maximum}" step="${definition.step}" value="${value.toFixed(definition.fractionDigits)}"><span aria-hidden="true">${unit}</span></div>
   </div>`;
 }
 
@@ -642,32 +734,19 @@ function recoveryPresentation(current: AudioSnapshot, connected: boolean): Recov
     retrySelectedOutput: false,
   };
   if (current.recovery === undefined) return presentation;
-
   switch (current.recovery.action) {
-    case 'reconnect-input':
-      return {
-        ...presentation,
-        connectButtonLabel: current.recovery.code === 'permission-denied'
-          || current.recovery.code === 'no-input-devices'
-          || current.recovery.code === 'input-connection-failed'
-          ? 'Try Again'
-          : 'Reconnect Input',
-        inputMessage: current.recovery.message,
-      };
-    case 'resume-monitoring':
-      return {
-        ...presentation,
-        monitoringMessage: current.recovery.message,
-        monitoringButtonLabel: 'Resume Monitoring',
-      };
-    case 'choose-output':
-      return {
-        ...presentation,
-        monitoringButtonLabel: 'Choose Output Before Monitoring',
-        monitoringDisabled: true,
-        retrySelectedOutput: current.outputRouting.selectedDeviceId !== undefined
-          && current.outputRouting.devices.some((device) => device.id === current.outputRouting.selectedDeviceId),
-      };
+    case 'reconnect-input': return {
+      ...presentation,
+      connectButtonLabel: current.recovery.code === 'permission-denied' || current.recovery.code === 'no-input-devices' || current.recovery.code === 'input-connection-failed' ? 'Try Again' : 'Reconnect Input',
+      inputMessage: current.recovery.message,
+    };
+    case 'resume-monitoring': return { ...presentation, monitoringMessage: current.recovery.message, monitoringButtonLabel: 'Resume Monitoring' };
+    case 'choose-output': return {
+      ...presentation,
+      monitoringButtonLabel: 'Choose Output Before Monitoring',
+      monitoringDisabled: true,
+      retrySelectedOutput: current.outputRouting.selectedDeviceId !== undefined && current.outputRouting.devices.some((device) => device.id === current.outputRouting.selectedDeviceId),
+    };
   }
 }
 
@@ -680,7 +759,9 @@ function routingDescription(current: AudioSnapshot): string {
 function deviceSelector(current: AudioSnapshot): string {
   const selectedUnavailable = unavailableDeviceOption(current.selectedInputDeviceId, current.devices, 'input');
   const options = current.devices.map((device) => `<option value="${escapeHtml(device.id)}" ${device.id === current.selectedInputDeviceId ? 'selected' : ''}>${escapeHtml(device.label)}</option>`).join('');
-  return `<label class="${FIELD}" for="input-device">Input device</label><select id="input-device" aria-describedby="device-help"><option value="">System default</option>${selectedUnavailable}${options}</select><span id="device-help" class="${FIELD_HELP}">Choose a device to reconnect to it explicitly.</span>`;
+  const disabled = current.devices.length === 0 ? 'disabled' : '';
+  const firstLabel = current.devices.length === 0 ? 'Connect to discover inputs' : 'System default';
+  return `<label class="${FIELD}" for="input-device">Input device</label><select id="input-device" aria-describedby="device-help" ${disabled}><option value="">${firstLabel}</option>${selectedUnavailable}${options}</select><span id="device-help" class="${FIELD_HELP}">Choose the interface or microphone feeding the amp.</span>`;
 }
 
 function channelSelector(current: AudioSnapshot): string {
@@ -689,31 +770,33 @@ function channelSelector(current: AudioSnapshot): string {
 }
 
 function outputSelector(current: AudioSnapshot, connected: boolean): string {
-  if (!connected || current.outputRouting.mode !== 'selectable') return '';
+  if (!connected) return `<label class="${FIELD}" for="output-device">Output device</label><select id="output-device" disabled><option>Connect an input to choose an output</option></select>`;
+  if (current.outputRouting.mode !== 'selectable') return `<label class="${FIELD}" for="output-device">Output device</label><select id="output-device" disabled><option>System output (browser managed)</option></select>`;
   const selectedUnavailable = unavailableDeviceOption(current.outputRouting.selectedDeviceId, current.outputRouting.devices, 'output');
   const options = current.outputRouting.devices.map((device) => `<option value="${escapeHtml(device.id)}" ${device.id === current.outputRouting.selectedDeviceId ? 'selected' : ''}>${escapeHtml(device.label)}</option>`).join('');
   return `<label class="${FIELD}" for="output-device">Output device</label><select id="output-device"><option value="">System default</option>${selectedUnavailable}${options}</select>`;
 }
 
-function unavailableDeviceOption(
-  selectedDeviceId: string | undefined,
-  devices: readonly { readonly id: string }[],
-  kind: 'input' | 'output',
-): string {
+function unavailableDeviceOption(selectedDeviceId: string | undefined, devices: readonly { readonly id: string }[], kind: 'input' | 'output'): string {
   return selectedDeviceId !== undefined && !devices.some((device) => device.id === selectedDeviceId)
     ? `<option value="${escapeHtml(selectedDeviceId)}" selected>Unavailable ${kind} (selected)</option>`
     : '';
 }
 
+function latencyDescription(latency: AudioSnapshot['latency']): string {
+  if (latency === undefined) return '';
+  const baseMs = latency.baseSeconds * 1_000;
+  if (latency.outputSeconds === undefined) return `Browser output latency: ~${baseMs.toFixed(1)} ms processing buffer (device output latency not reported by this browser). Input capture latency is not measurable and adds to the total.`;
+  const outputMs = latency.outputSeconds * 1_000;
+  return `Browser output latency: ~${(baseMs + outputMs).toFixed(1)} ms (${baseMs.toFixed(1)} ms processing buffer + ${outputMs.toFixed(1)} ms device output). Input capture latency is not measurable and adds to the total.`;
+}
+
 function hardwareGuidance(): string {
-  return `<aside class="mt-4 p-4 border border-warning/30 rounded-lg bg-warning/10" aria-labelledby="guidance-title">
-    <h3 id="guidance-title" class="text-sm font-medium mb-3">Before you monitor</h3>
-    <p class="mb-3 text-sm">Disable Hardware Direct Monitoring on your audio interface so you hear the processed path, and use headphones.</p>
-    <div class="${ACTIONS}">
-      <button id="confirm-monitoring" type="button" class="${ACTION_BUTTON}">Checked — Enable Monitoring</button>
-      <button id="dismiss-guidance" type="button" class="${SECONDARY_ACTION_BUTTON}">Dismiss reminder</button>
-    </div>
-  </aside>`;
+  return `<div class="modal-backdrop" role="presentation"><aside class="guidance-modal" aria-labelledby="guidance-title">
+    <p class="panel-eyebrow">Quick check</p><h2 id="guidance-title">Before you monitor</h2>
+    <p>Disable Hardware Direct Monitoring on your audio interface so you hear the processed path, and use headphones.</p>
+    <div class="modal-actions"><button id="dismiss-guidance" type="button" class="secondary-action">Dismiss reminder</button><button id="confirm-monitoring" type="button" class="primary-action">Checked — Enable Monitoring</button></div>
+  </aside></div>`;
 }
 
 function dismissGuidance(): void {
@@ -729,17 +812,30 @@ function rerenderStructure(): void {
   renderMeters(snapshot);
 }
 
+function isConnected(current: AudioSnapshot): boolean {
+  return current.lifecycle === 'connected-muted' || current.lifecycle === 'monitoring' || current.lifecycle === 'interrupted';
+}
+
+function sectionNumber(id: WorkspaceSection): number {
+  return Math.max(0, SECTIONS.findIndex((section) => section.id === id)) + 1;
+}
+
+function isWorkspaceSection(value: unknown): value is WorkspaceSection {
+  return typeof value === 'string' && SECTIONS.some((section) => section.id === value);
+}
+
+function sectionFromHash(): WorkspaceSection {
+  const value = window.location.hash.slice(1);
+  return isWorkspaceSection(value) ? value : 'input';
+}
+
 function updateStoredPreferences(change: Partial<Omit<StoredWorkbenchPreferences, 'version'>>): void {
   workbenchPreferences = { ...workbenchPreferences, ...change };
   preferencesStore.save(workbenchPreferences);
 }
 
 function browserStorage(): Storage | undefined {
-  try {
-    return window.localStorage;
-  } catch {
-    return undefined;
-  }
+  try { return window.localStorage; } catch { return undefined; }
 }
 
 function escapeHtml(value: string): string {
