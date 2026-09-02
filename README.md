@@ -15,7 +15,7 @@ Input Trim → Amp Model → Cabinet → Noise Suppression
 - Four filtered [cabinet voicings](docs/jazz-cabinet-models-spec.md), plus Direct / Full Range
 - Configurable downward-expansion [noise suppression](docs/audio-path-spec.md#5-noise-suppression)
 - Level-matched [studio compression](docs/studio-compression-controls-spec.md) with reduction metering
-- Bypassable Studio EQ and seven saved [reverb modules](docs/reverb-modules.md)
+- Bypassable four-band, six-control [Studio EQ](docs/studio-eq-controls-spec.md) and seven saved [reverb modules](docs/reverb-modules.md)
 
 Controls persist locally. Input connections, device choices, and monitoring state do not. Amp, cabinet, and reverb changes use click-resistant [stage switching](docs/audio-stage-switching.md).
 

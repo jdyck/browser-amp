@@ -98,8 +98,16 @@ async function installAudioBrowser(page: Page, options: {
         return node({ gain });
       }
       createBiquadFilter() {
-        const gain = { value: 0, cancelScheduledValues: () => gain, setValueAtTime: (value: number) => { gain.value = value; return gain; }, linearRampToValueAtTime: (value: number) => { gain.value = value; return gain; } };
-        return node({ type: 'peaking', frequency: { value: 0 }, Q: { value: 0 }, gain });
+        const parameter = (initialValue: number) => {
+          const value = {
+            value: initialValue,
+            cancelScheduledValues: () => value,
+            setValueAtTime: (nextValue: number) => { value.value = nextValue; return value; },
+            linearRampToValueAtTime: (nextValue: number) => { value.value = nextValue; return value; },
+          };
+          return value;
+        };
+        return node({ type: 'peaking', frequency: parameter(0), Q: { value: 0 }, gain: parameter(0) });
       }
       createWaveShaper() { return node({ curve: null, oversample: 'none' }); }
       createConstantSource() { return node({ offset: { value: 1 }, start: () => undefined, stop: () => undefined, onended: null }); }
@@ -343,7 +351,9 @@ for (const [index, profile] of (Object.keys(REVERB_PROFILES) as ReverbProfile[])
       hardwareDirectMonitoringGuidanceDismissed: true,
       controls: {
         ...DEFAULT_AMP_CONTROLS,
-        ampModel: 'amp.blackface-combo-v1', inputTrimDb: 6, bassDb: -3, middleDb: 2, trebleDb: 4,
+        ampModel: 'amp.blackface-combo-v1', inputTrimDb: 6,
+        lowShelfDb: -3, lowMidFrequencyHz: 240, lowMidDb: -2,
+        upperMidFrequencyHz: 1_200, upperMidDb: 2, highShelfDb: 4,
         eqBypassed: true, compressionAmount: 72, compressionBypassed: false, masterVolumeDb: -12,
         reverbProfile: profile, reverbAmount: 63, reverbBypassed: index % 2 === 0,
         reverbSettings: Object.fromEntries((Object.keys(REVERB_PROFILES) as ReverbProfile[]).map((id) => [
@@ -473,10 +483,13 @@ test('synchronizes, clamps, and restores controls without restoring Processed Mo
   const inputTrim = page.getByLabel('Input Trim value');
   const inputTrimSlider = page.getByLabel('Input Trim slider');
   const studioEq = page.getByRole('region', { name: 'Studio EQ' });
-  const bass = studioEq.getByLabel('Bass value');
-  const bassSlider = studioEq.getByLabel('Bass slider');
-  const middle = studioEq.getByLabel('Middle value');
-  const treble = studioEq.getByLabel('Treble value');
+  const low = studioEq.getByLabel('Low value');
+  const lowSlider = studioEq.getByLabel('Low slider');
+  const lowMidFrequency = studioEq.getByLabel('Low Mid Frequency value');
+  const lowMid = studioEq.getByLabel('Low Mid value');
+  const upperMidFrequency = studioEq.getByLabel('Upper Mid Frequency value');
+  const upperMid = studioEq.getByLabel('Upper Mid value');
+  const high = studioEq.getByLabel('High value');
   const eqEnabled = page.getByLabel('Enable Studio EQ');
   const compressionAmount = page.getByLabel('Amount value');
   const compressionAmountSlider = page.getByLabel('Amount slider');
@@ -488,9 +501,12 @@ test('synchronizes, clamps, and restores controls without restoring Processed Mo
   const masterVolume = page.getByLabel('Master value');
 
   await expect(inputTrim).toHaveValue('0.0');
-  await expect(bass).toHaveValue('0.0');
-  await expect(middle).toHaveValue('0.0');
-  await expect(treble).toHaveValue('0.0');
+  await expect(low).toHaveValue('0.0');
+  await expect(lowMidFrequency).toHaveValue('300');
+  await expect(lowMid).toHaveValue('0.0');
+  await expect(upperMidFrequency).toHaveValue('1000');
+  await expect(upperMid).toHaveValue('0.0');
+  await expect(high).toHaveValue('0.0');
   await expect(eqEnabled).toBeChecked();
   await expect(compressionAmount).toHaveValue('25');
   await expect(compressionEnabled).not.toBeChecked();
@@ -501,12 +517,18 @@ test('synchronizes, clamps, and restores controls without restoring Processed Mo
 
   await inputTrim.fill('30');
   await inputTrim.press('Enter');
-  await bass.fill('20');
-  await bass.press('Enter');
-  await middle.fill('3.26');
-  await middle.press('Enter');
-  await treble.fill('-20');
-  await treble.press('Enter');
+  await low.fill('20');
+  await low.press('Enter');
+  await lowMidFrequency.fill('100');
+  await lowMidFrequency.press('Enter');
+  await lowMid.fill('-3.26');
+  await lowMid.press('Enter');
+  await upperMidFrequency.fill('2500');
+  await upperMidFrequency.press('Enter');
+  await upperMid.fill('3.26');
+  await upperMid.press('Enter');
+  await high.fill('-20');
+  await high.press('Enter');
   await compressionAmount.fill('101');
   await compressionAmount.press('Enter');
   await compressionEnabled.check();
@@ -519,10 +541,13 @@ test('synchronizes, clamps, and restores controls without restoring Processed Mo
 
   await expect(inputTrim).toHaveValue('24.0');
   await expect(inputTrimSlider).toHaveValue('24');
-  await expect(bass).toHaveValue('12.0');
-  await expect(bassSlider).toHaveValue('12');
-  await expect(middle).toHaveValue('3.3');
-  await expect(treble).toHaveValue('-12.0');
+  await expect(low).toHaveValue('12.0');
+  await expect(lowSlider).toHaveValue('12');
+  await expect(lowMidFrequency).toHaveValue('180');
+  await expect(lowMid).toHaveValue('-3.3');
+  await expect(upperMidFrequency).toHaveValue('2000');
+  await expect(upperMid).toHaveValue('3.3');
+  await expect(high).toHaveValue('-12.0');
   await expect(compressionAmount).toHaveValue('100');
   await expect(compressionAmountSlider).toHaveValue('100');
   await expect(reverbAmount).toHaveValue('0');
@@ -531,9 +556,12 @@ test('synchronizes, clamps, and restores controls without restoring Processed Mo
 
   await page.reload();
   await expect(page.getByLabel('Input Trim value')).toHaveValue('24.0');
-  await expect(studioEq.getByLabel('Bass value')).toHaveValue('12.0');
-  await expect(studioEq.getByLabel('Middle value')).toHaveValue('3.3');
-  await expect(studioEq.getByLabel('Treble value')).toHaveValue('-12.0');
+  await expect(studioEq.getByLabel('Low value')).toHaveValue('12.0');
+  await expect(studioEq.getByLabel('Low Mid Frequency value')).toHaveValue('180');
+  await expect(studioEq.getByLabel('Low Mid value')).toHaveValue('-3.3');
+  await expect(studioEq.getByLabel('Upper Mid Frequency value')).toHaveValue('2000');
+  await expect(studioEq.getByLabel('Upper Mid value')).toHaveValue('3.3');
+  await expect(studioEq.getByLabel('High value')).toHaveValue('-12.0');
   await expect(page.getByLabel('Amount value')).toHaveValue('100');
   await expect(compressionEnabled).toBeChecked();
   await expect(compressionLevelMatch).not.toBeChecked();
@@ -546,9 +574,10 @@ test('synchronizes, clamps, and restores controls without restoring Processed Mo
   expect(enabledSettings.controls).toMatchObject({ eqBypassed: false, compressionBypassed: false, compressionLevelMatch: false, reverbBypassed: false });
 
   await eqEnabled.uncheck();
-  await expect(bass).toHaveValue('12.0');
-  await expect(middle).toHaveValue('3.3');
-  await expect(treble).toHaveValue('-12.0');
+  await expect(low).toHaveValue('12.0');
+  await expect(lowMid).toHaveValue('-3.3');
+  await expect(upperMid).toHaveValue('3.3');
+  await expect(high).toHaveValue('-12.0');
   await compressionEnabled.uncheck();
   await expect(reverbEnabled).toBeChecked();
   await reverbEnabled.uncheck();
@@ -560,9 +589,10 @@ test('synchronizes, clamps, and restores controls without restoring Processed Mo
   await expect(compressionEnabled).not.toBeChecked();
   await expect(reverbEnabled).not.toBeChecked();
   await eqEnabled.check();
-  await expect(bass).toHaveValue('12.0');
-  await expect(middle).toHaveValue('3.3');
-  await expect(treble).toHaveValue('-12.0');
+  await expect(low).toHaveValue('12.0');
+  await expect(lowMid).toHaveValue('-3.3');
+  await expect(upperMid).toHaveValue('3.3');
+  await expect(high).toHaveValue('-12.0');
   const reenabledSettings = await page.evaluate(() => JSON.parse(localStorage.getItem('browser-amp.saved-control-settings') ?? 'null'));
   expect(reenabledSettings.controls.eqBypassed).toBe(false);
 });
@@ -591,7 +621,7 @@ test('Reset Controls restores sound defaults without changing connection, monito
   await installAudioBrowser(page);
   await page.goto('./');
   await page.getByLabel('Input Trim value').fill('9');
-  await page.getByRole('region', { name: 'Studio EQ' }).getByLabel('Bass value').fill('-4');
+  await page.getByRole('region', { name: 'Studio EQ' }).getByLabel('Low value').fill('-4');
   await page.getByLabel('Enable Studio EQ').uncheck();
   await page.getByLabel('Enable Compression').check();
   await page.getByLabel('Level Match').uncheck();
@@ -606,9 +636,12 @@ test('Reset Controls restores sound defaults without changing connection, monito
 
   await expect(page.getByLabel('Input Trim value')).toHaveValue('0.0');
   const studioEq = page.getByRole('region', { name: 'Studio EQ' });
-  await expect(studioEq.getByLabel('Bass value')).toHaveValue('0.0');
-  await expect(studioEq.getByLabel('Middle value')).toHaveValue('0.0');
-  await expect(studioEq.getByLabel('Treble value')).toHaveValue('0.0');
+  await expect(studioEq.getByLabel('Low value')).toHaveValue('0.0');
+  await expect(studioEq.getByLabel('Low Mid Frequency value')).toHaveValue('300');
+  await expect(studioEq.getByLabel('Low Mid value')).toHaveValue('0.0');
+  await expect(studioEq.getByLabel('Upper Mid Frequency value')).toHaveValue('1000');
+  await expect(studioEq.getByLabel('Upper Mid value')).toHaveValue('0.0');
+  await expect(studioEq.getByLabel('High value')).toHaveValue('0.0');
   await expect(page.getByLabel('Enable Studio EQ')).toBeChecked();
   await expect(page.getByLabel('Amount value')).toHaveValue('25');
   await expect(page.getByLabel('Enable Compression')).not.toBeChecked();
@@ -774,10 +807,10 @@ test('keeps exact controls keyboard-operable and in Amp Chain order on a narrow 
   await page.goto('./');
 
   const studioEq = page.getByRole('region', { name: 'Studio EQ' });
-  const bassSlider = studioEq.getByLabel('Bass slider');
-  await bassSlider.focus();
-  await bassSlider.press('ArrowRight');
-  await expect(studioEq.getByLabel('Bass value')).toHaveValue('0.1');
+  const lowSlider = studioEq.getByLabel('Low slider');
+  await lowSlider.focus();
+  await lowSlider.press('ArrowRight');
+  await expect(studioEq.getByLabel('Low value')).toHaveValue('0.1');
 
   await expect(page.locator('.panel[aria-label]')).toHaveCount(7);
   await expect(page.locator('.panel[aria-label]').evaluateAll((panels) => panels.map((panel) => panel.getAttribute('aria-label')))).resolves.toEqual([

@@ -61,8 +61,8 @@ One of six selectable jazz-oriented voicings. Each owns its gain staging, tone c
 _Avoid_: Preset, named amp replica, circuit-accurate simulation
 
 **Studio EQ**:
-The bypassable three-band EQ after Studio Compression, used for final polish rather than amp identity.
-_Avoid_: Parametric EQ, graphic EQ
+The bypassable four-band EQ after Studio Compression, used for broad final polish rather than amp identity. Low and High are fixed-frequency shelves; Low Mid and Upper Mid have sweepable frequencies and fixed broad bandwidth.
+_Avoid_: Surgical EQ, graphic EQ, amp tone stack
 
 **Studio Compression**:
 A bypassable post-cabinet stage with Amount, Level Match, and a live Reduction meter. Level Match is a stable trim, not signal-following gain.

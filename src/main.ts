@@ -178,11 +178,19 @@ function renderStructure(current: AudioSnapshot): void {
           <input id="eq-enabled" type="checkbox" class="${STAGE_TOGGLE_CHECKBOX}" ${current.controls.eqBypassed ? '' : 'checked'}>
           Enable Studio EQ
         </label>
-        <div class="grid gap-2">
-          ${dbControl('bass', 'Bass', current.controls.bassDb, AMP_CONTROL_DEFINITIONS.bassDb)}
-          ${dbControl('middle', 'Middle', current.controls.middleDb, AMP_CONTROL_DEFINITIONS.middleDb)}
-          ${dbControl('treble', 'Treble', current.controls.trebleDb, AMP_CONTROL_DEFINITIONS.trebleDb)}
+        <div class="grid gap-4">
+          ${dbControl('low-shelf', 'Low', current.controls.lowShelfDb, AMP_CONTROL_DEFINITIONS.lowShelfDb)}
+          <div class="grid grid-cols-2 gap-4 max-[34rem]:grid-cols-1">
+            ${unitControl('low-mid-frequency', 'Low Mid Frequency', current.controls.lowMidFrequencyHz, AMP_CONTROL_DEFINITIONS.lowMidFrequencyHz, 'Hz')}
+            ${dbControl('low-mid', 'Low Mid', current.controls.lowMidDb, AMP_CONTROL_DEFINITIONS.lowMidDb)}
+          </div>
+          <div class="grid grid-cols-2 gap-4 max-[34rem]:grid-cols-1">
+            ${unitControl('upper-mid-frequency', 'Upper Mid Frequency', current.controls.upperMidFrequencyHz, AMP_CONTROL_DEFINITIONS.upperMidFrequencyHz, 'Hz')}
+            ${dbControl('upper-mid', 'Upper Mid', current.controls.upperMidDb, AMP_CONTROL_DEFINITIONS.upperMidDb)}
+          </div>
+          ${dbControl('high-shelf', 'High', current.controls.highShelfDb, AMP_CONTROL_DEFINITIONS.highShelfDb)}
         </div>
+        <p class="${FIELD_HELP}">Low and High are broad shelves fixed at 120 Hz and 3.2 kHz. The two sweepable mid bands use a broad, fixed bandwidth.</p>
       </section>
 
       <section class="${PANEL}" aria-label="Reverb">
@@ -255,9 +263,12 @@ function bindStructureEvents(): void {
   root.querySelector<HTMLInputElement>('#eq-enabled')?.addEventListener('change', (event) => {
     engine.applyControls({ ...snapshot.controls, eqBypassed: !(event.currentTarget as HTMLInputElement).checked });
   });
-  bindContinuousControl('bass', (bassDb) => engine.applyControls({ ...snapshot.controls, bassDb }));
-  bindContinuousControl('middle', (middleDb) => engine.applyControls({ ...snapshot.controls, middleDb }));
-  bindContinuousControl('treble', (trebleDb) => engine.applyControls({ ...snapshot.controls, trebleDb }));
+  bindContinuousControl('low-shelf', (lowShelfDb) => engine.applyControls({ ...snapshot.controls, lowShelfDb }));
+  bindContinuousControl('low-mid-frequency', (lowMidFrequencyHz) => engine.applyControls({ ...snapshot.controls, lowMidFrequencyHz }));
+  bindContinuousControl('low-mid', (lowMidDb) => engine.applyControls({ ...snapshot.controls, lowMidDb }));
+  bindContinuousControl('upper-mid-frequency', (upperMidFrequencyHz) => engine.applyControls({ ...snapshot.controls, upperMidFrequencyHz }));
+  bindContinuousControl('upper-mid', (upperMidDb) => engine.applyControls({ ...snapshot.controls, upperMidDb }));
+  bindContinuousControl('high-shelf', (highShelfDb) => engine.applyControls({ ...snapshot.controls, highShelfDb }));
   bindContinuousControl('compression-amount', (compressionAmount) => engine.applyControls({ ...snapshot.controls, compressionAmount }));
   root.querySelector<HTMLInputElement>('#compression-enabled')?.addEventListener('change', (event) => {
     engine.applyControls({ ...snapshot.controls, compressionBypassed: !(event.currentTarget as HTMLInputElement).checked });
@@ -428,9 +439,12 @@ function renderControls(controls: AmpControlSettings): void {
   if (noiseGateEnabled !== null) noiseGateEnabled.checked = !controls.noiseGateBypassed;
   const eqEnabled = root.querySelector<HTMLInputElement>('#eq-enabled');
   if (eqEnabled !== null) eqEnabled.checked = !controls.eqBypassed;
-  setControlValue('bass', controls.bassDb, AMP_CONTROL_DEFINITIONS.bassDb);
-  setControlValue('middle', controls.middleDb, AMP_CONTROL_DEFINITIONS.middleDb);
-  setControlValue('treble', controls.trebleDb, AMP_CONTROL_DEFINITIONS.trebleDb);
+  setControlValue('low-shelf', controls.lowShelfDb, AMP_CONTROL_DEFINITIONS.lowShelfDb);
+  setControlValue('low-mid-frequency', controls.lowMidFrequencyHz, AMP_CONTROL_DEFINITIONS.lowMidFrequencyHz);
+  setControlValue('low-mid', controls.lowMidDb, AMP_CONTROL_DEFINITIONS.lowMidDb);
+  setControlValue('upper-mid-frequency', controls.upperMidFrequencyHz, AMP_CONTROL_DEFINITIONS.upperMidFrequencyHz);
+  setControlValue('upper-mid', controls.upperMidDb, AMP_CONTROL_DEFINITIONS.upperMidDb);
+  setControlValue('high-shelf', controls.highShelfDb, AMP_CONTROL_DEFINITIONS.highShelfDb);
   setControlValue('compression-amount', controls.compressionAmount, AMP_CONTROL_DEFINITIONS.compressionAmount);
   const compressionEnabled = root.querySelector<HTMLInputElement>('#compression-enabled');
   if (compressionEnabled !== null) compressionEnabled.checked = !controls.compressionBypassed;

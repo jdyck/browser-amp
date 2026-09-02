@@ -970,30 +970,42 @@ test('shared switching retires old graphs on audio deadlines without further con
   expect(result.maximumStep).toBeLessThan(0.001);
 });
 
-test('shapes Middle with a peaking EQ centered near 800 Hz', async ({ page }) => {
+test('shapes both broad mid bands at their selected frequencies', async ({ page }) => {
   await page.goto('./');
 
-  const flat = await renderAmp(page, { frequency: 800, controls: { masterVolumeDb: 0 } });
-  const boosted = await renderAmp(page, { frequency: 800, controls: { middleDb: 12, masterVolumeDb: 0 } });
-  const cut = await renderAmp(page, { frequency: 800, controls: { middleDb: -12, masterVolumeDb: 0 } });
+  const flatLowMid = await renderAmp(page, { frequency: 450, controls: { masterVolumeDb: 0 } });
+  const boostedLowMid = await renderAmp(page, {
+    frequency: 450,
+    controls: { lowMidFrequencyHz: 450, lowMidDb: 12, masterVolumeDb: 0 },
+  });
+  const cutLowMid = await renderAmp(page, {
+    frequency: 450,
+    controls: { lowMidFrequencyHz: 450, lowMidDb: -12, masterVolumeDb: 0 },
+  });
+  const flatUpperMid = await renderAmp(page, { frequency: 1_600, controls: { masterVolumeDb: 0 } });
+  const boostedUpperMid = await renderAmp(page, {
+    frequency: 1_600,
+    controls: { upperMidFrequencyHz: 1_600, upperMidDb: 12, masterVolumeDb: 0 },
+  });
 
-  expect(boosted / flat).toBeGreaterThan(3.7);
-  expect(cut / flat).toBeLessThan(0.3);
+  expect(boostedLowMid / flatLowMid).toBeGreaterThan(3.7);
+  expect(cutLowMid / flatLowMid).toBeLessThan(0.3);
+  expect(boostedUpperMid / flatUpperMid).toBeGreaterThan(3.7);
 });
 
-test('shapes Bass and Treble with shelves near 120 Hz and 3.2 kHz', async ({ page }) => {
+test('shapes Low and High with fixed shelves near 120 Hz and 3.2 kHz', async ({ page }) => {
   await page.goto('./');
 
   const flatBass = await renderAmp(page, { frequency: 40, controls: { masterVolumeDb: 0 } });
-  const boostedBass = await renderAmp(page, { frequency: 40, controls: { bassDb: 12, masterVolumeDb: 0 } });
+  const boostedBass = await renderAmp(page, { frequency: 40, controls: { lowShelfDb: 12, masterVolumeDb: 0 } });
   const flatTreble = await renderAmp(page, { frequency: 10_000, controls: { masterVolumeDb: 0 } });
-  const cutTreble = await renderAmp(page, { frequency: 10_000, controls: { trebleDb: -12, masterVolumeDb: 0 } });
+  const cutTreble = await renderAmp(page, { frequency: 10_000, controls: { highShelfDb: -12, masterVolumeDb: 0 } });
 
   expect(boostedBass / flatBass).toBeGreaterThan(3.5);
   expect(cutTreble / flatTreble).toBeLessThan(0.35);
 });
 
-for (const frequency of [40, 800, 10_000]) {
+for (const frequency of [40, 300, 1_000, 10_000]) {
   test(`bypasses and restores the whole EQ at ${frequency} Hz while retaining band settings`, async ({ page }) => {
     await page.goto('./');
 
@@ -1009,7 +1021,7 @@ for (const frequency of [40, 800, 10_000]) {
       inputGain.gain.value = 0.1;
       source.connect(inputGain);
       const engine = await connectOfflineEngine(context, inputGain, {
-        bassDb: 6, middleDb: 6, trebleDb: 6, eqBypassed: true, masterVolumeDb: 0,
+        lowShelfDb: 6, lowMidDb: 6, upperMidDb: 6, highShelfDb: 6, eqBypassed: true, masterVolumeDb: 0,
       });
 
       const enabled = context.suspend(0.2);
@@ -1026,7 +1038,13 @@ for (const frequency of [40, 800, 10_000]) {
       const retainedSettings = engine.snapshot.controls;
       await resumeRendering();
       await edited;
-      engine.applyControls({ ...engine.snapshot.controls, bassDb: 12, middleDb: 12, trebleDb: 12 });
+      engine.applyControls({
+        ...engine.snapshot.controls,
+        lowShelfDb: 12,
+        lowMidDb: 12,
+        upperMidDb: 12,
+        highShelfDb: 12,
+      });
       await resumeRendering();
       await reenabled;
       engine.applyControls({ ...engine.snapshot.controls, eqBypassed: false });
@@ -1043,7 +1061,9 @@ for (const frequency of [40, 800, 10_000]) {
       };
     }, frequency);
 
-    expect(levels.retainedSettings).toMatchObject({ bassDb: 6, middleDb: 6, trebleDb: 6, eqBypassed: true });
+    expect(levels.retainedSettings).toMatchObject({
+      lowShelfDb: 6, lowMidDb: 6, upperMidDb: 6, highShelfDb: 6, eqBypassed: true,
+    });
     expect(levels.initial).toBeCloseTo(0.1 / Math.sqrt(2), 2);
     expect(levels.enabled).toBeGreaterThan(levels.initial * 1.7);
     expect(levels.bypassed).toBeCloseTo(levels.initial, 4);
@@ -1141,7 +1161,7 @@ test('renders Input Trim before Compression, then EQ, Reverb, and Master Volume'
   const eqCompensated = await renderAmp(page, {
     frequency: 800,
     amplitude: 0.1,
-    controls: { middleDb: 12, compressionAmount: 100, compressionLevelMatch: false, compressionBypassed: false, reverbAmount: 100, reverbBypassed: false, masterVolumeDb: -12 },
+    controls: { upperMidFrequencyHz: 800, upperMidDb: 12, compressionAmount: 100, compressionLevelMatch: false, compressionBypassed: false, reverbAmount: 100, reverbBypassed: false, masterVolumeDb: -12 },
   });
   const reverbAtUnity = await renderAmp(page, {
     frequency: 800,

@@ -153,9 +153,10 @@ export class AudioEngine implements AudioEngineContract {
   #ampModel: AmpModelStage | undefined;
   #cabinetModel: CabinetModelStage | undefined;
   #noiseGate: NoiseGateStage | undefined;
-  #bassEq: BiquadFilterNode | undefined;
-  #middleEq: BiquadFilterNode | undefined;
-  #trebleEq: BiquadFilterNode | undefined;
+  #lowShelfEq: BiquadFilterNode | undefined;
+  #lowMidEq: BiquadFilterNode | undefined;
+  #upperMidEq: BiquadFilterNode | undefined;
+  #highShelfEq: BiquadFilterNode | undefined;
   #compressor: DynamicsCompressorNode | undefined;
   #compressionLevelMatchGain: GainNode | undefined;
   #compressionDryGain: GainNode | undefined;
@@ -224,9 +225,10 @@ export class AudioEngine implements AudioEngineContract {
       this.#inputAnalyser = this.#context.createAnalyser();
       this.#inputAnalyser.fftSize = 2048;
       this.#inputTrim = this.#context.createGain();
-      this.#bassEq = this.#context.createBiquadFilter();
-      this.#middleEq = this.#context.createBiquadFilter();
-      this.#trebleEq = this.#context.createBiquadFilter();
+      this.#lowShelfEq = this.#context.createBiquadFilter();
+      this.#lowMidEq = this.#context.createBiquadFilter();
+      this.#upperMidEq = this.#context.createBiquadFilter();
+      this.#highShelfEq = this.#context.createBiquadFilter();
       this.#compressor = this.#context.createDynamicsCompressor();
       this.#compressionLevelMatchGain = this.#context.createGain();
       this.#compressionDryGain = this.#context.createGain();
@@ -251,16 +253,20 @@ export class AudioEngine implements AudioEngineContract {
         }),
       );
       this.#inputTrim.gain.value = dbToLinearGain(this.#snapshot.controls.inputTrimDb);
-      this.#bassEq.type = 'lowshelf';
-      this.#bassEq.frequency.value = 120;
-      this.#bassEq.gain.value = this.#snapshot.controls.eqBypassed ? 0 : this.#snapshot.controls.bassDb;
-      this.#middleEq.type = 'peaking';
-      this.#middleEq.frequency.value = 800;
-      this.#middleEq.Q.value = 0.8;
-      this.#middleEq.gain.value = this.#snapshot.controls.eqBypassed ? 0 : this.#snapshot.controls.middleDb;
-      this.#trebleEq.type = 'highshelf';
-      this.#trebleEq.frequency.value = 3_200;
-      this.#trebleEq.gain.value = this.#snapshot.controls.eqBypassed ? 0 : this.#snapshot.controls.trebleDb;
+      this.#lowShelfEq.type = 'lowshelf';
+      this.#lowShelfEq.frequency.value = 120;
+      this.#lowShelfEq.gain.value = this.#snapshot.controls.eqBypassed ? 0 : this.#snapshot.controls.lowShelfDb;
+      this.#lowMidEq.type = 'peaking';
+      this.#lowMidEq.frequency.value = this.#snapshot.controls.lowMidFrequencyHz;
+      this.#lowMidEq.Q.value = 0.8;
+      this.#lowMidEq.gain.value = this.#snapshot.controls.eqBypassed ? 0 : this.#snapshot.controls.lowMidDb;
+      this.#upperMidEq.type = 'peaking';
+      this.#upperMidEq.frequency.value = this.#snapshot.controls.upperMidFrequencyHz;
+      this.#upperMidEq.Q.value = 0.8;
+      this.#upperMidEq.gain.value = this.#snapshot.controls.eqBypassed ? 0 : this.#snapshot.controls.upperMidDb;
+      this.#highShelfEq.type = 'highshelf';
+      this.#highShelfEq.frequency.value = 3_200;
+      this.#highShelfEq.gain.value = this.#snapshot.controls.eqBypassed ? 0 : this.#snapshot.controls.highShelfDb;
       const compression = compressionSettings(this.#snapshot.controls.compressionAmount);
       this.#compressor.threshold.value = compression.thresholdDb;
       this.#compressor.ratio.value = compression.ratio;
@@ -301,11 +307,12 @@ export class AudioEngine implements AudioEngineContract {
       this.#noiseGate.output.connect(this.#compressor);
       this.#compressor.connect(this.#compressionLevelMatchGain);
       this.#compressionLevelMatchGain.connect(this.#compressionWetGain);
-      this.#compressionDryGain.connect(this.#bassEq);
-      this.#compressionWetGain.connect(this.#bassEq);
-      this.#bassEq.connect(this.#middleEq);
-      this.#middleEq.connect(this.#trebleEq);
-      this.#trebleEq.connect(this.#reverb.input);
+      this.#compressionDryGain.connect(this.#lowShelfEq);
+      this.#compressionWetGain.connect(this.#lowShelfEq);
+      this.#lowShelfEq.connect(this.#lowMidEq);
+      this.#lowMidEq.connect(this.#upperMidEq);
+      this.#upperMidEq.connect(this.#highShelfEq);
+      this.#highShelfEq.connect(this.#reverb.input);
       this.#reverb.output.connect(this.#masterGain);
       this.#masterGain.connect(this.#outputAnalyser);
       this.#outputAnalyser.connect(this.#monitorGain);
@@ -402,9 +409,16 @@ export class AudioEngine implements AudioEngineContract {
       });
       if (this.#inputTrim !== undefined) smoothGainToDb(this.#inputTrim.gain, controls.inputTrimDb, this.#context.currentTime);
       // Zero-gain shelves and peaking filters pass the signal unchanged while preserving the saved band settings.
-      if (this.#bassEq !== undefined) smoothGainToValue(this.#bassEq.gain, controls.eqBypassed ? 0 : controls.bassDb, this.#context.currentTime);
-      if (this.#middleEq !== undefined) smoothGainToValue(this.#middleEq.gain, controls.eqBypassed ? 0 : controls.middleDb, this.#context.currentTime);
-      if (this.#trebleEq !== undefined) smoothGainToValue(this.#trebleEq.gain, controls.eqBypassed ? 0 : controls.trebleDb, this.#context.currentTime);
+      if (this.#lowShelfEq !== undefined) smoothGainToValue(this.#lowShelfEq.gain, controls.eqBypassed ? 0 : controls.lowShelfDb, this.#context.currentTime);
+      if (this.#lowMidEq !== undefined) {
+        smoothGainToValue(this.#lowMidEq.frequency, controls.lowMidFrequencyHz, this.#context.currentTime);
+        smoothGainToValue(this.#lowMidEq.gain, controls.eqBypassed ? 0 : controls.lowMidDb, this.#context.currentTime);
+      }
+      if (this.#upperMidEq !== undefined) {
+        smoothGainToValue(this.#upperMidEq.frequency, controls.upperMidFrequencyHz, this.#context.currentTime);
+        smoothGainToValue(this.#upperMidEq.gain, controls.eqBypassed ? 0 : controls.upperMidDb, this.#context.currentTime);
+      }
+      if (this.#highShelfEq !== undefined) smoothGainToValue(this.#highShelfEq.gain, controls.eqBypassed ? 0 : controls.highShelfDb, this.#context.currentTime);
       if (this.#compressor !== undefined && controls.compressionAmount !== previousControls.compressionAmount) {
         const compression = compressionSettings(controls.compressionAmount);
         smoothGainToValue(this.#compressor.threshold, compression.thresholdDb, this.#context.currentTime);
@@ -608,9 +622,10 @@ export class AudioEngine implements AudioEngineContract {
     this.#ampModel?.disconnect();
     this.#cabinetModel?.disconnect();
     this.#noiseGate?.disconnect();
-    this.#bassEq?.disconnect();
-    this.#middleEq?.disconnect();
-    this.#trebleEq?.disconnect();
+    this.#lowShelfEq?.disconnect();
+    this.#lowMidEq?.disconnect();
+    this.#upperMidEq?.disconnect();
+    this.#highShelfEq?.disconnect();
     this.#compressor?.disconnect();
     this.#compressionLevelMatchGain?.disconnect();
     this.#compressionDryGain?.disconnect();
@@ -634,9 +649,10 @@ export class AudioEngine implements AudioEngineContract {
     this.#ampModel = undefined;
     this.#cabinetModel = undefined;
     this.#noiseGate = undefined;
-    this.#bassEq = undefined;
-    this.#middleEq = undefined;
-    this.#trebleEq = undefined;
+    this.#lowShelfEq = undefined;
+    this.#lowMidEq = undefined;
+    this.#upperMidEq = undefined;
+    this.#highShelfEq = undefined;
     this.#compressor = undefined;
     this.#compressionLevelMatchGain = undefined;
     this.#compressionDryGain = undefined;

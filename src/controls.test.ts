@@ -93,6 +93,18 @@ describe('Amp Control Settings', () => {
     expect(normalizeAmpControlSettings({ bassDb: 6 }).eqBypassed).toBe(false);
   });
 
+  it('migrates the retired three-band EQ without changing a saved non-flat Middle center', () => {
+    expect(normalizeAmpControlSettings({ bassDb: -4, middleDb: 3, trebleDb: 2 })).toMatchObject({
+      lowShelfDb: -4,
+      lowMidFrequencyHz: 300,
+      lowMidDb: 0,
+      upperMidFrequencyHz: 800,
+      upperMidDb: 3,
+      highShelfDb: 2,
+    });
+    expect(normalizeAmpControlSettings({ middleDb: 0 }).upperMidFrequencyHz).toBe(1_000);
+  });
+
   it('normalizes every noise suppression control independently', () => {
     expect(normalizeAmpControlSettings({ noiseGateThresholdDb: -100 }).noiseGateThresholdDb).toBe(-80);
     expect(normalizeAmpControlSettings({ noiseGateThresholdDb: -37.26 }).noiseGateThresholdDb).toBe(-37.3);
@@ -117,14 +129,22 @@ describe('Amp Control Settings', () => {
     expect(normalizeAmpControlSettings({
       ...DEFAULT_AMP_CONTROLS,
       inputTrimDb: 24.08,
-      bassDb: -72,
-      middleDb: 3.26,
+      lowShelfDb: -72,
+      lowMidFrequencyHz: 120,
+      lowMidDb: -3.26,
+      upperMidFrequencyHz: 2_500,
+      upperMidDb: 3.26,
+      highShelfDb: 72,
       compressionAmount: 73.6,
       masterVolumeDb: -18.26,
     })).toMatchObject({
       inputTrimDb: 24,
-      bassDb: -12,
-      middleDb: 3.3,
+      lowShelfDb: -12,
+      lowMidFrequencyHz: 180,
+      lowMidDb: -3.3,
+      upperMidFrequencyHz: 2_000,
+      upperMidDb: 3.3,
+      highShelfDb: 12,
       compressionAmount: 74,
       masterVolumeDb: -18.3,
     });
