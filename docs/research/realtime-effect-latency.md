@@ -41,7 +41,7 @@ An arbitrary-curve **linear-phase FIR EQ** is different. A symmetric linear-phas
 | 2,049 | 21.33 ms |
 | 4,097 | 42.67 ms |
 
-Those values are arithmetic from `(taps - 1) / (2 × 48,000)` and exclude input/output buffering and any implementation-specific convolution pipeline. A minimum-phase FIR moves energy toward the beginning but gives up linear phase; for a live default, the existing research recommendation to use a fitted biquad bank is therefore also the safer latency choice ([Bézier EQ research](./bezier-drawn-eq.md)).
+Those values are arithmetic from `(taps - 1) / (2 × 48,000)` and exclude input/output buffering and any implementation-specific convolution pipeline. A minimum-phase FIR moves energy toward the beginning but gives up linear phase; for a live default, a fitted biquad bank is therefore also the safer latency choice.
 
 ### Compression
 

@@ -215,7 +215,7 @@ describe('Saved Control Settings', () => {
     const reverbSettings = {
       ...DEFAULT_REVERB_SETTINGS,
       'studio-plate': { ...DEFAULT_REVERB_SETTINGS['studio-plate'], decaySeconds: 2.4, damping: 80 },
-      'fender-spring': { ...DEFAULT_REVERB_SETTINGS['fender-spring'], dwell: 70, toneDb: -4 },
+      'bright-spring': { ...DEFAULT_REVERB_SETTINGS['bright-spring'], dwell: 70, toneDb: -4 },
       'digital-hall': { ...DEFAULT_REVERB_SETTINGS['digital-hall'], modulationDepth: 65, modulationRateHz: 0.7 },
     };
     store.save({ ...DEFAULT_STORED_WORKBENCH_PREFERENCES,

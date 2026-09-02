@@ -73,7 +73,7 @@ A bypassable Amp Chain stage with seven switchable modules and a shared Amount c
 _Avoid_: Circuit-accurate reverb, measured tank response
 
 **Reverb Module**:
-The selected reverb voice: Jazz Room, Studio Chamber, Studio Plate, Fender Spring, Polytone Spring, Digital Room, or Digital Hall. Each has its own saved parameters in Main Controls and Advanced Controls accordions. Selection and parameters remain saved while bypassed and do not change Amount, input capture, or monitoring. Only the selected module remains active after its switching transition.
+The selected reverb voice: Jazz Room, Studio Chamber, Studio Plate, Bright Spring, Dark Spring, Digital Room, or Digital Hall. Each has its own saved parameters in Main Controls and Advanced Controls accordions. Selection and parameters remain saved while bypassed and do not change Amount, input capture, or monitoring. Only the selected module remains active after its switching transition.
 _Avoid_: Amp Model, full-rig preset
 
 **Master Volume**:

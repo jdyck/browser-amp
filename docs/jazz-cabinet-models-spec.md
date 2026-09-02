@@ -134,7 +134,7 @@ Persist only the selected ID. Reset and unknown local IDs return to Compact 1×1
 
 ## Later
 
-- [Speaker dynamics](jazz-speaker-dynamics-spec.md)
+- Add speaker dynamics only if listening tests justify the added complexity.
 - Tweed 1×12 and British 2×12 voicings
 - Explicit `Use recommended cabinet`
 
@@ -142,4 +142,3 @@ Persist only the selected ID. Reset and unknown local IDs return to Compact 1×1
 
 - [Jazz amp models](jazz-amp-models-spec.md)
 - [Audio path](audio-path-spec.md)
-

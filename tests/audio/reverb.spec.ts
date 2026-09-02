@@ -144,10 +144,10 @@ test('Dwell changes spring drive and modulation depth/rate change only the hall 
       for (let index = 0; index < a.length; index += 1) energy += (a[index] - b[index]) ** 2;
       return Math.sqrt(energy / a.length);
     }
-    const cleanQuiet = await render('fender-spring', { dwell: 0 }, 0.02);
-    const cleanLoud = await render('fender-spring', { dwell: 0 }, 0.5);
-    const drivenQuiet = await render('fender-spring', { dwell: 100 }, 0.02);
-    const drivenLoud = await render('fender-spring', { dwell: 100 }, 0.5);
+    const cleanQuiet = await render('bright-spring', { dwell: 0 }, 0.02);
+    const cleanLoud = await render('bright-spring', { dwell: 0 }, 0.5);
+    const drivenQuiet = await render('bright-spring', { dwell: 100 }, 0.02);
+    const drivenLoud = await render('bright-spring', { dwell: 100 }, 0.5);
     const hall = await render('digital-hall', { modulationDepth: 0 });
     const inactiveRate = await render('digital-hall', { modulationDepth: 0, modulationRateHz: 5 });
     const modulated = await render('digital-hall', { modulationDepth: 70, modulationRateHz: 0.3 });
@@ -205,8 +205,8 @@ test('rapid parameter changes with drive and modulation preserve dry audio and r
       { time: 0.2, profile: 'digital-hall', parameters: { decaySeconds: 0.3, modulationDepth: 100 } },
       { time: 0.205, profile: 'digital-hall', parameters: { decaySeconds: 4, modulationDepth: 50 } },
       { time: 0.21, profile: 'digital-hall', parameters: { decaySeconds: 1, modulationDepth: 70, modulationRateHz: 2 } },
-      { time: 0.4, profile: 'fender-spring', parameters: { dwell: 100 } },
-      { time: 0.405, profile: 'fender-spring', parameters: { dwell: 35 } },
+      { time: 0.4, profile: 'bright-spring', parameters: { dwell: 100 } },
+      { time: 0.405, profile: 'bright-spring', parameters: { dwell: 35 } },
       { time: 0.6, profile: 'digital-hall', parameters: { modulationDepth: 100, modulationRateHz: 5 } },
       { time: 0.75, profile: 'digital-hall', parameters: { modulationDepth: 100, modulationRateHz: 5 }, bypassed: true },
       { time: 1, profile: 'digital-hall', parameters: { modulationDepth: 80 } },
@@ -330,8 +330,8 @@ for (const sampleRate of [44_100, 48_000, 96_000]) {
       expect(response.after, response.reverbProfile).toBeLessThan(0.000_001);
       expect(response.stereo, response.reverbProfile).toBeGreaterThan(0.000_1);
     }
-    const brightSpring = results.profiles.find(({ reverbProfile }) => reverbProfile === 'fender-spring')!;
-    const darkSpring = results.profiles.find(({ reverbProfile }) => reverbProfile === 'polytone-spring')!;
+    const brightSpring = results.profiles.find(({ reverbProfile }) => reverbProfile === 'bright-spring')!;
+    const darkSpring = results.profiles.find(({ reverbProfile }) => reverbProfile === 'dark-spring')!;
     expect(brightSpring.brightness).toBeGreaterThan(darkSpring.brightness * 1.5);
   });
 }
@@ -358,10 +358,10 @@ test('switching reverb modules fades old tails, keeps dry audio, and never reviv
       reverbProfile: 'digital-hall', reverbAmount: 100, reverbBypassed: false, masterVolumeDb: 0,
     });
     const switches: { time: number; reverbProfile: import('../../src/signalChain/settings').ReverbProfile }[] = [
-      { time: 0.3, reverbProfile: 'fender-spring' },
+      { time: 0.3, reverbProfile: 'bright-spring' },
       { time: 0.305, reverbProfile: 'studio-chamber' },
       { time: 0.31, reverbProfile: 'digital-hall' },
-      { time: 0.7, reverbProfile: 'polytone-spring' },
+      { time: 0.7, reverbProfile: 'dark-spring' },
       { time: 0.705, reverbProfile: 'jazz-room' },
       { time: 0.71, reverbProfile: 'digital-room' },
       { time: 0.85, reverbProfile: 'studio-plate' },

@@ -11,8 +11,8 @@ const IMPULSE_FACTORIES = {
   'jazz-room': (context, parameters) => createRoomImpulse(context, false, parameters),
   'studio-chamber': (context, parameters) => createRoomImpulse(context, true, parameters),
   'studio-plate': createPlateImpulse,
-  'fender-spring': (context, parameters) => createSpringImpulse(context, true, parameters),
-  'polytone-spring': (context, parameters) => createSpringImpulse(context, false, parameters),
+  'bright-spring': (context, parameters) => createSpringImpulse(context, true, parameters),
+  'dark-spring': (context, parameters) => createSpringImpulse(context, false, parameters),
   'digital-room': (context, parameters) => createDigitalImpulse(context, false, parameters),
   'digital-hall': (context, parameters) => createDigitalImpulse(context, true, parameters),
 } satisfies Record<ReverbProfile, (context: BaseAudioContext, parameters: ReverbParameters) => AudioBuffer>;

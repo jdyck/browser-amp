@@ -148,4 +148,4 @@ The complete control and persistence contract is in [Studio EQ controls](studio-
 
 - [Jazz amp models](jazz-amp-models-spec.md)
 - [Jazz cabinet models](jazz-cabinet-models-spec.md)
-- [Swappable module architecture](research/swappable-audio-module-architecture.md)
+- [Audio stage switching](audio-stage-switching.md)

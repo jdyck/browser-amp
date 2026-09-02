@@ -42,8 +42,8 @@ export const REVERB_CONTROLS = {
   'jazz-room': { main: { decaySeconds: decay(0.65), toneDb: tone }, advanced: { size, earlyLate } },
   'studio-chamber': { main: { decaySeconds: decay(1.4), preDelayMs: predelay(0), toneDb: tone }, advanced: { lowCutHz: lowCut, diffusion } },
   'studio-plate': { main: { decaySeconds: decay(1.5), preDelayMs: predelay(12), toneDb: tone }, advanced: { damping } },
-  'fender-spring': { main: { toneDb: tone, dwell }, advanced: { decaySeconds: decay(2.2) } },
-  'polytone-spring': { main: { toneDb: tone, decaySeconds: decay(1.3) }, advanced: { lowCutHz: lowCut } },
+  'bright-spring': { main: { toneDb: tone, dwell }, advanced: { decaySeconds: decay(2.2) } },
+  'dark-spring': { main: { toneDb: tone, decaySeconds: decay(1.3) }, advanced: { lowCutHz: lowCut } },
   'digital-room': { main: { decaySeconds: decay(0.85), size, toneDb: tone }, advanced: { preDelayMs: predelay(8), diffusion } },
   'digital-hall': { main: { decaySeconds: decay(2.8), preDelayMs: predelay(28), damping }, advanced: { size, modulationDepth, modulationRateHz } },
 } as const satisfies Record<ReverbProfile, { main: Partial<Record<ReverbParameter, ReverbControlDefinition>>; advanced: Partial<Record<ReverbParameter, ReverbControlDefinition>> }>;
@@ -71,10 +71,16 @@ function record(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
 
+const LEGACY_REVERB_SETTING_KEYS: Partial<Record<ReverbProfile, string>> = {
+  'bright-spring': 'fender-spring',
+  'dark-spring': 'polytone-spring',
+};
+
 export function normalizeReverbSettings(value: unknown, fallback: ReverbSettings = DEFAULT_REVERB_SETTINGS): ReverbSettings {
   const settings = record(value);
   return Object.fromEntries((Object.keys(REVERB_CONTROLS) as ReverbProfile[]).map((profile) => {
-    const values = record(settings[profile]);
+    const legacyKey = LEGACY_REVERB_SETTING_KEYS[profile];
+    const values = record(settings[profile] ?? (legacyKey === undefined ? undefined : settings[legacyKey]));
     const defaults = fallback[profile] as Partial<ReverbParameters>;
     return [profile, Object.fromEntries(reverbControlEntries(profile).map(([key, definition]) => {
       const raw = values[key];

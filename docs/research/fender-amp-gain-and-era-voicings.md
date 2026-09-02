@@ -261,7 +261,7 @@ Web Audio does not specify the exact WaveShaper up/downsampling filters and says
 
 ## Cabinet, reverb, and ordering in this repository
 
-The current chain is linear Gain -> three active EQs -> optional compressor -> synthetic plate-style reverb -> Master ([local AudioEngine](../../src/audio/AudioEngine.ts), [release plan](../../PLAN.md)). Saturation and authentic named modeling were intentionally out of first-release scope ([release plan](../../PLAN.md)); this proposal is a new milestone and should update that product decision explicitly rather than silently changing `cleanGainDb` semantics under saved settings.
+The shipped signal order is defined by the [audio-path specification](../audio-path-spec.md). This research predates the current six-model design; current behavior belongs in the [amp-model specification](../jazz-amp-models-spec.md), rather than changing legacy saved-settings semantics silently.
 
 **Implementation inference:** evolve the graph in compatible increments:
 

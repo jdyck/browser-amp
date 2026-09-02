@@ -285,15 +285,15 @@ describe('AudioEngine', () => {
     expect(engine.snapshot.monitoring).toBe(true);
     expect(engine.snapshot.controls.reverbAmount).toBe(64);
 
-    engine.applyControls({ ...engine.snapshot.controls, reverbProfile: 'fender-spring' });
-    engine.applyControls({ ...engine.snapshot.controls, reverbProfile: 'polytone-spring' });
+    engine.applyControls({ ...engine.snapshot.controls, reverbProfile: 'bright-spring' });
+    engine.applyControls({ ...engine.snapshot.controls, reverbProfile: 'dark-spring' });
     await engine.disconnectInput();
     expect(live()).toHaveLength(0);
     for (const { value } of vi.mocked(context.createConstantSource).mock.results) expect(value.onended).toBeNull();
     await engine.connectInput();
     expect(live()).toHaveLength(1);
-    expect(live()[0].buffer).not.toBe(buffers.get('polytone-spring'));
-    expect(engine.snapshot.controls.reverbProfile).toBe('polytone-spring');
+    expect(live()[0].buffer).not.toBe(buffers.get('dark-spring'));
+    expect(engine.snapshot.controls.reverbProfile).toBe('dark-spring');
     expect(engine.snapshot.monitoring).toBe(false);
     await engine.disconnectInput();
   });
@@ -342,9 +342,9 @@ describe('AudioEngine', () => {
     changeHall({ modulationDepth: 0 });
     finish();
     for (const { value } of vi.mocked(context.createOscillator).mock.results) expect(value.stop).toHaveBeenCalledOnce();
-    engine.applyControls({ ...engine.snapshot.controls, reverbProfile: 'fender-spring', reverbSettings: {
+    engine.applyControls({ ...engine.snapshot.controls, reverbProfile: 'bright-spring', reverbSettings: {
       ...engine.snapshot.controls.reverbSettings,
-      'fender-spring': { ...DEFAULT_REVERB_SETTINGS['fender-spring'], dwell: 90 },
+      'bright-spring': { ...DEFAULT_REVERB_SETTINGS['bright-spring'], dwell: 90 },
     } });
     finish();
     const shaper = vi.mocked(context.createWaveShaper).mock.results[0].value;

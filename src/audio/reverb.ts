@@ -83,7 +83,7 @@ export class ReverbStage {
     let output: AudioNode = convolver;
     let shaper: WaveShaperNode | undefined;
     let oscillator: OscillatorNode | undefined;
-    if (profile === 'fender-spring' && parameters.dwell > 0) {
+    if (profile === 'bright-spring' && parameters.dwell > 0) {
       const send = this.#context.createGain();
       send.gain.value = 1 / 8;
       shaper = this.#context.createWaveShaper();

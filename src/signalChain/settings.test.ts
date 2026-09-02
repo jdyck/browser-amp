@@ -41,6 +41,23 @@ describe('Amp Control Settings', () => {
     ).reverbProfile).toBe('jazz-room');
   });
 
+  it('migrates retired branded reverb IDs and their saved controls', () => {
+    expect(normalizeAmpControlSettings({
+      reverbProfile: 'fender-spring',
+      reverbSettings: {
+        'fender-spring': { toneDb: -3, dwell: 72, decaySeconds: 2.4 },
+        'polytone-spring': { toneDb: -5, decaySeconds: 1.1, lowCutHz: 140 },
+      },
+    })).toMatchObject({
+      reverbProfile: 'bright-spring',
+      reverbSettings: {
+        'bright-spring': { toneDb: -3, dwell: 72, decaySeconds: 2.4 },
+        'dark-spring': { toneDb: -5, decaySeconds: 1.1, lowCutHz: 140 },
+      },
+    });
+    expect(normalizeAmpControlSettings({ reverbProfile: 'polytone-spring' }).reverbProfile).toBe('dark-spring');
+  });
+
   it('accepts known amp models and safely defaults old or unknown selections', () => {
     for (const ampModel of Object.keys(AMP_MODELS)) expect(normalizeAmpControlSettings({ ampModel }).ampModel).toBe(ampModel);
     expect(normalizeAmpControlSettings({ ampModel: 'clean-voice' }).ampModel).toBe('amp.studio-clean-v1');

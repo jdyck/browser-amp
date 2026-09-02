@@ -26,13 +26,13 @@ export const REVERB_PROFILES = {
     label: 'Studio Plate',
     description: 'Smooth, diffuse stereo sustain. The original Browser Amp reverb.',
   },
-  'fender-spring': {
-    label: 'Fender Spring',
-    description: 'Bright, splashy spring-inspired response. A synthetic voice, not a measured Fender tank.',
+  'bright-spring': {
+    label: 'Bright Spring',
+    description: 'Bright, splashy synthetic spring response with adjustable drive.',
   },
-  'polytone-spring': {
-    label: 'Polytone Spring',
-    description: 'Darker, restrained spring-inspired response. A synthetic voice, not a measured Polytone tank.',
+  'dark-spring': {
+    label: 'Dark Spring',
+    description: 'Dark, restrained synthetic spring response with a compact decay.',
   },
   'digital-room': {
     label: 'Digital Room',
@@ -45,6 +45,11 @@ export const REVERB_PROFILES = {
 } as const;
 
 export type ReverbProfile = keyof typeof REVERB_PROFILES;
+
+const LEGACY_REVERB_PROFILES: Readonly<Record<string, ReverbProfile>> = {
+  'fender-spring': 'bright-spring',
+  'polytone-spring': 'dark-spring',
+};
 
 export function isReverbProfile(value: unknown): value is ReverbProfile {
   return typeof value === 'string' && Object.hasOwn(REVERB_PROFILES, value);
@@ -228,7 +233,11 @@ export function normalizeAmpControlSettings(
     compressionBypassed: typeof controls.compressionBypassed === 'boolean'
       ? controls.compressionBypassed
       : fallback.compressionBypassed,
-    reverbProfile: isReverbProfile(controls.reverbProfile) ? controls.reverbProfile : fallback.reverbProfile,
+    reverbProfile: isReverbProfile(controls.reverbProfile)
+      ? controls.reverbProfile
+      : typeof controls.reverbProfile === 'string' && Object.hasOwn(LEGACY_REVERB_PROFILES, controls.reverbProfile)
+        ? LEGACY_REVERB_PROFILES[controls.reverbProfile]
+        : fallback.reverbProfile,
     reverbSettings: normalizeReverbSettings(controls.reverbSettings, fallback.reverbSettings),
     reverbAmount: reverbAmount === undefined
       ? fallback.reverbAmount

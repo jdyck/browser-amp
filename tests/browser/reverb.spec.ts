@@ -12,14 +12,14 @@ test('switches all reverb modules, remembers bypassed selections, and resets wit
   const enabled = page.getByLabel('Enable Reverb');
   await expect(module).toHaveValue('studio-plate');
   await expect(module.locator('option')).toHaveText([
-    'Jazz Room', 'Studio Chamber', 'Studio Plate', 'Fender Spring', 'Polytone Spring', 'Digital Room', 'Digital Hall',
+    'Jazz Room', 'Studio Chamber', 'Studio Plate', 'Bright Spring', 'Dark Spring', 'Digital Room', 'Digital Hall',
   ]);
-  await module.selectOption('polytone-spring');
+  await module.selectOption('dark-spring');
   await page.getByLabel('Reverb value').fill('63');
   await expect(enabled).not.toBeChecked();
-  await expect(page.locator('#reverb-profile-help')).toContainText('Darker, restrained');
+  await expect(page.locator('#reverb-profile-help')).toContainText('Dark, restrained');
   await page.reload();
-  await expect(module).toHaveValue('polytone-spring');
+  await expect(module).toHaveValue('dark-spring');
   await expect(enabled).not.toBeChecked();
   await openSection(page, 'Input');
   await page.getByRole('button', { name: 'Connect Input', exact: true }).click();
@@ -28,7 +28,7 @@ test('switches all reverb modules, remembers bypassed selections, and resets wit
   await enabled.check();
   await page.getByRole('button', { name: 'Enable Monitoring', exact: true }).click();
   await page.getByRole('button', { name: 'Checked — Enable Monitoring' }).click();
-  for (const id of ['jazz-room', 'studio-chamber', 'studio-plate', 'fender-spring', 'polytone-spring', 'digital-room', 'digital-hall']) {
+  for (const id of ['jazz-room', 'studio-chamber', 'studio-plate', 'bright-spring', 'dark-spring', 'digital-room', 'digital-hall']) {
     await module.selectOption(id);
     await expect(module).toHaveValue(id);
     await expect(enabled).toBeChecked();
@@ -131,8 +131,8 @@ test('shows module-specific accordions, keeps edits focused, and restores every 
     { id: 'jazz-room', main: ['Reverb', 'Decay', 'Tone'], advanced: ['Size', 'Early/Late'], edit: 'Size', value: '73' },
     { id: 'studio-chamber', main: ['Reverb', 'Decay', 'Pre-delay', 'Tone'], advanced: ['Low Cut', 'Diffusion'], edit: 'Low Cut', value: '240' },
     { id: 'studio-plate', main: ['Reverb', 'Decay', 'Pre-delay', 'Tone'], advanced: ['Damping'], edit: 'Damping', value: '81' },
-    { id: 'fender-spring', main: ['Reverb', 'Tone', 'Dwell'], advanced: ['Decay'], edit: 'Dwell', value: '70' },
-    { id: 'polytone-spring', main: ['Reverb', 'Tone', 'Decay'], advanced: ['Low Cut'], edit: 'Tone', value: '-4.0' },
+    { id: 'bright-spring', main: ['Reverb', 'Tone', 'Dwell'], advanced: ['Decay'], edit: 'Dwell', value: '70' },
+    { id: 'dark-spring', main: ['Reverb', 'Tone', 'Decay'], advanced: ['Low Cut'], edit: 'Tone', value: '-4.0' },
     { id: 'digital-room', main: ['Reverb', 'Decay', 'Size', 'Tone'], advanced: ['Pre-delay', 'Diffusion'], edit: 'Diffusion', value: '42' },
     { id: 'digital-hall', main: ['Reverb', 'Decay', 'Pre-delay', 'Damping'], advanced: ['Size', 'Modulation Depth', 'Modulation Rate'], edit: 'Modulation Depth', value: '63' },
   ];
@@ -180,7 +180,7 @@ test('shows module-specific accordions, keeps edits focused, and restores every 
   await expect.poll(() => page.evaluate(() => (window as Window & { captureRequests?: number }).captureRequests)).toBe(1);
   await resetControlsFrom(page, 'Reverb');
   await expect(page.getByLabel('Decay value')).toHaveValue('1.50');
-  await module.selectOption('fender-spring');
+  await module.selectOption('bright-spring');
   await expect(page.getByLabel('Dwell value')).toHaveValue('0');
   await module.selectOption('digital-hall');
   await expect(page.getByLabel('Modulation Depth value')).toHaveValue('0');
