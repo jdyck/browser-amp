@@ -6,7 +6,7 @@ Status: research and implementation proposal, 2026-08-11
 
 How can Browser Amp's Gain control retain a clean Fender-style response at low settings, move progressively into compression and saturation as it is raised, and offer meaningfully different Fender-inspired voices from several decades?
 
-The current Gain cannot saturate. It is a `GainNode` whose value is only the linear multiplier `10^(dB/20)`, and its unit and offline tests expressly require a linear result “without adding a nonlinear transfer” and “without saturation” ([local gain implementation](../../src/audio/gain.ts), [unit test](../../src/audio/gain.test.ts), [offline test](../../tests/offline-audio.spec.ts)). The current three-band EQ is also three independent, active Web Audio filters—120 Hz low shelf, 800 Hz peaking EQ, and 3.2 kHz high shelf—rather than a passive, interactive Fender tone stack ([local graph construction](../../src/audio/AudioEngine.ts)). Raising Gain can therefore make the browser signal exceed full scale, but it cannot create a controlled transition into tube-like compression or harmonic distortion.
+The current Gain cannot saturate. It is a `GainNode` whose value is only the linear multiplier `10^(dB/20)`, and its unit and offline tests expressly require a linear result “without adding a nonlinear transfer” and “without saturation” ([local gain implementation](../../src/audio/gain.ts), [unit test](../../src/audio/gain.test.ts), [offline test](../../tests/audio/amp-cabinet.spec.ts)). The current three-band EQ is also three independent, active Web Audio filters—120 Hz low shelf, 800 Hz peaking EQ, and 3.2 kHz high shelf—rather than a passive, interactive Fender tone stack ([local graph construction](../../src/audio/AudioEngine.ts)). Raising Gain can therefore make the browser signal exceed full scale, but it cannot create a controlled transition into tube-like compression or harmonic distortion.
 
 The recommended design is:
 
@@ -293,7 +293,7 @@ Add offline tests before changing the UI:
 - **Transitions:** profile, Bright, low-input, and bypass changes must stay below an agreed maximum sample step and preserve reverb-tail policy.
 - **Level safety:** Master at its default and every factory preset must remain below the output clip threshold for the calibrated reference performance; extreme user settings may clip visibly but must not create NaN/Infinity.
 
-The existing `OfflineAudioContext` harness already measures gain, frequency response, reverb determinism, and transition steps ([offline tests](../../tests/offline-audio.spec.ts), [harness](../../tests/offlineAudioHarness.ts)). Extend that harness rather than creating a second DSP test route.
+The existing `OfflineAudioContext` harness already measures gain, frequency response, reverb determinism, and transition steps ([amp and cabinet tests](../../tests/audio/amp-cabinet.spec.ts), [harness](../../tests/support/offlineAudioHarness.ts)). Extend that harness rather than creating a second DSP test route.
 
 ### Listening and measurement pass
 

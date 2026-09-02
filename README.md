@@ -37,4 +37,6 @@ npm run test:production
 
 `test:browser` covers the local UI and offline audio behavior. `test:production` repeats the UI suite against the built app. CI runs `test:deployed` against the live HTTPS release.
 
+See [tests/README.md](tests/README.md) for the unit, browser, audio, production, and support-file organization convention.
+
 See [RELEASE_NOTES.md](RELEASE_NOTES.md) for supported scope and [docs/release-validation.md](docs/release-validation.md) for the Chrome macOS production and hardware sign-off record.

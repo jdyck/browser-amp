@@ -1,5 +1,5 @@
-import type { ReverbProfile } from '../controls';
-import { reverbParameters, type ReverbParameters } from '../reverbSettings';
+import type { ReverbProfile } from '../signalChain/settings';
+import { reverbParameters, type ReverbParameters } from '../signalChain/reverbProfiles';
 
 const IMPULSE_DURATION_SECONDS = 1.5;
 const IMPULSE_GAIN = 0.22;

@@ -4,7 +4,7 @@ test('the AudioWorklet opens, holds, closes, applies hysteresis, and bypasses de
   await page.goto('./');
   const result = await page.evaluate(async () => {
     const stagePath = './src/audio/noiseGate.ts';
-    const { NoiseGateStage } = await import(stagePath) as typeof import('../src/audio/noiseGate');
+    const { NoiseGateStage } = await import(stagePath) as typeof import('../../src/audio/noiseGate');
     const sampleRate = 48_000;
 
     async function render(
@@ -26,7 +26,7 @@ test('the AudioWorklet opens, holds, closes, applies hysteresis, and bypasses de
         context,
         {
           createAudioWorkletNode: (workletContext, name, options) => new AudioWorkletNode(workletContext, name, options),
-        } as import('../src/audio/browserAudio').BrowserAudio,
+        } as import('../../src/audio/browserAudio').BrowserAudio,
         { thresholdDb: -40, rangeDb, releaseSeconds, bypassed },
         () => undefined,
       );

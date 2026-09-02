@@ -1,4 +1,4 @@
-import type { ContinuousControlDefinition, ReverbProfile } from './controls';
+import type { ContinuousControlDefinition, ReverbProfile } from './settings';
 
 export interface ReverbParameters {
   readonly decaySeconds: number;

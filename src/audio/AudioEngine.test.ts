@@ -1,8 +1,8 @@
-import { DEFAULT_REVERB_SETTINGS } from '../reverbSettings';
+import { DEFAULT_REVERB_SETTINGS } from '../signalChain/reverbProfiles';
 import { describe, expect, it, vi } from 'vitest';
 import { AudioEngine } from './AudioEngine';
 import type { BrowserAudio } from './browserAudio';
-import { DEFAULT_AMP_CONTROLS, REVERB_PROFILES, type ReverbProfile } from '../controls';
+import { DEFAULT_AMP_CONTROLS, REVERB_PROFILES, type ReverbProfile } from '../signalChain/settings';
 
 function audioNode(properties: Record<string, unknown> = {}): AudioNode {
   return { connect: vi.fn(), disconnect: vi.fn(), ...properties } as unknown as AudioNode;

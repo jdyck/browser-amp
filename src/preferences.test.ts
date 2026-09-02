@@ -1,6 +1,6 @@
-import { DEFAULT_REVERB_SETTINGS } from './reverbSettings';
+import { DEFAULT_REVERB_SETTINGS } from './signalChain/reverbProfiles';
 import { describe, expect, it } from 'vitest';
-import { CABINET_MODELS, DEFAULT_AMP_CONTROLS, REVERB_PROFILES, type JazzCabinetId, type ReverbProfile } from './controls';
+import { CABINET_MODELS, DEFAULT_AMP_CONTROLS, REVERB_PROFILES, type JazzCabinetId, type ReverbProfile } from './signalChain/settings';
 import {
   DEFAULT_STORED_WORKBENCH_PREFERENCES,
   LEGACY_CONTROLS_STORAGE_KEY,
@@ -8,7 +8,7 @@ import {
   SAVED_CONTROL_SETTINGS_STORAGE_KEY,
   WorkbenchPreferencesStore,
   resetControls,
-} from './settings';
+} from './preferences';
 
 class MemoryStorage {
   readonly values = new Map<string, string>();

@@ -1,9 +1,9 @@
 import { browserAudio, type BrowserAudio } from './browserAudio';
-import { DEFAULT_AMP_CONTROLS, normalizeAmpControlSettings, normalizePercentAmount } from '../controls';
+import { DEFAULT_AMP_CONTROLS, normalizeAmpControlSettings, normalizePercentAmount } from '../signalChain/settings';
 import { dbToLinearGain, smoothGainToDb, smoothGainToValue } from './gain';
 import { meterReadingFromSamples, METER_FLOOR_DBFS, nextPeakHold, type PeakHold } from './meter';
 import { ReverbStage } from './reverb';
-import { reverbParameters } from '../reverbSettings';
+import { reverbParameters } from '../signalChain/reverbProfiles';
 import { AmpModelStage } from './ampModel';
 import { CabinetModelStage } from './cabinetModel';
 import { NoiseGateStage } from './noiseGate';

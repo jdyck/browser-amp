@@ -1,4 +1,4 @@
-import { DEFAULT_AMP_CONTROLS, normalizeAmpControlSettings, type AmpControlSettings } from './controls';
+import { DEFAULT_AMP_CONTROLS, normalizeAmpControlSettings, type AmpControlSettings } from './signalChain/settings';
 
 export const SAVED_CONTROL_SETTINGS_STORAGE_KEY = 'browser-amp.saved-control-settings';
 export const LEGACY_CONTROLS_STORAGE_KEY = 'browser-amp.controls';

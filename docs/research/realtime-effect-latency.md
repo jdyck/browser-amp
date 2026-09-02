@@ -4,7 +4,7 @@ Date: 2026-08-11
 
 ## Short answer
 
-The current low latency is credible, especially with the default settings. Compression and Reverb default to bypassed, the three EQ bands default to 0 dB, and the monitored path is therefore gain plus an effectively identity biquad cascade and direct gain paths; there is no intentional effect delay in that default path ([control defaults](../../src/controls.ts), [current audio graph](../../src/audio/AudioEngine.ts#L204-L273)). Web Audio also gives a no-options `AudioContext` the default `"interactive"` latency category, defined as the lowest output latency possible without glitching ([Web Audio `latencyHint`](https://webaudio.github.io/web-audio-api/#dom-audiocontextoptions-latencyhint)).
+The current low latency is credible, especially with the default settings. Compression and Reverb default to bypassed, the three EQ bands default to 0 dB, and the monitored path is therefore gain plus an effectively identity biquad cascade and direct gain paths; there is no intentional effect delay in that default path ([control defaults](../../src/signalChain/settings.ts), [current audio graph](../../src/audio/AudioEngine.ts#L204-L273)). Web Audio also gives a no-options `AudioContext` the default `"interactive"` latency category, defined as the lowest output latency possible without glitching ([Web Audio `latencyHint`](https://webaudio.github.io/web-audio-api/#dom-audiocontextoptions-latencyhint)).
 
 The important exception is **Compression**. Web Audio normatively defines `DynamicsCompressorNode` with a fixed 6 ms lookahead delay, independent of its attack and release settings. Enabling this project's compressor therefore adds 6 ms to the monitored main path ([Web Audio compressor processing](https://webaudio.github.io/web-audio-api/#DynamicsCompressorNode), [project compressor routing](../../src/audio/AudioEngine.ts#L233-L264)).
 
@@ -47,7 +47,7 @@ Those values are arithmetic from `(taps - 1) / (2 × 48,000)` and exclude input/
 
 The specification requires fixed lookahead and describes the compressor internally with a `DelayNode` whose `delayTime` is exactly `0.006` seconds. Attack and release control the gain-reduction envelope; changing this project's 10 ms attack or 150 ms release does **not** change the fixed 6 ms signal delay ([Web Audio compressor algorithm](https://webaudio.github.io/web-audio-api/#DynamicsCompressorNode), [project parameter mapping](../../src/audio/AudioEngine.ts#L22-L40)). Even Amount 0, which maps to threshold 0 dB and ratio 1:1, retains the delay when the compressor branch is active because the node's lookahead is fixed. At 48 kHz, 6 ms is 288 samples.
 
-The project bypasses Compression by crossfading over 20 ms between a direct path and the compressor path ([gain smoothing](../../src/audio/gain.ts), [bypass routing and automation](../../src/audio/AudioEngine.ts#L260-L264), [bypass crossfade](../../src/audio/AudioEngine.ts#L367-L373)). **Inference:** while that fade is in progress, the mix contains the same signal at 0 ms and 6 ms offsets. This can smear a transient and creates a comb response for steady broadband content (null/peak spacing based on `1 / 0.006 ≈ 166.7 Hz`). The existing test limits clicks, but it does not test this time alignment ([current bypass test](../../tests/offline-audio.spec.ts)).
+The project bypasses Compression by crossfading over 20 ms between a direct path and the compressor path ([gain smoothing](../../src/audio/gain.ts), [bypass routing and automation](../../src/audio/AudioEngine.ts#L260-L264), [bypass crossfade](../../src/audio/AudioEngine.ts#L367-L373)). **Inference:** while that fade is in progress, the mix contains the same signal at 0 ms and 6 ms offsets. This can smear a transient and creates a comb response for steady broadband content (null/peak spacing based on `1 / 0.006 ≈ 166.7 Hz`). The existing test limits clicks, but it does not test this time alignment ([current bypass test](../../tests/audio/studio-chain.spec.ts)).
 
 Practical choices are:
 
@@ -100,7 +100,7 @@ The proposed amp research includes oversampled `WaveShaperNode` nonlinear stages
 
 ### Deterministic per-stage tests
 
-Extend the existing `OfflineAudioContext` harness, which already renders stage behavior deterministically ([offline harness](../../tests/offlineAudioHarness.ts), [offline tests](../../tests/offline-audio.spec.ts)):
+Extend the existing `OfflineAudioContext` harness, which already renders stage behavior deterministically ([offline harness](../../tests/support/offlineAudioHarness.ts), [studio-chain tests](../../tests/audio/studio-chain.spec.ts)):
 
 1. Render an impulse through a baseline graph and through each stage/mode independently at 44.1 and 48 kHz.
 2. Record first sample above a defined threshold, impulse peak time, and cross-correlation offset. Assert 0-sample dry reverb onset, 12 ms wet onset, and 6 ms active compressor offset.

@@ -23,8 +23,8 @@ For the current codebase, the lowest-risk first profile processor is the existin
 
 The current code is close to a portable data model, but not yet a portable sound implementation:
 
-- [`AmpControlSettings`](../../src/controls.ts) is a complete, finite set of nine sound-control fields. Its normalizer clamps numeric ranges, rounds to control precision, and rejects non-finite values by falling back.
-- [`StoredWorkbenchPreferences`](../../src/settings.ts) already has a top-level version and correctly separates saved controls from unsafe live session state. It also contains the local-only direct-monitoring guidance preference, which must not enter a tone profile.
+- [`AmpControlSettings`](../../src/signalChain/settings.ts) is a complete, finite set of nine sound-control fields. Its normalizer clamps numeric ranges, rounds to control precision, and rejects non-finite values by falling back.
+- [`StoredWorkbenchPreferences`](../../src/preferences.ts) already has a top-level version and correctly separates saved controls from unsafe live session state. It also contains the local-only direct-monitoring guidance preference, which must not enter a tone profile.
 - [`AudioEngine.applyControls()`](../../src/audio/AudioEngine.ts) takes a complete control object and schedules 20 ms parameter ramps rather than exposing nodes to the UI. This is the right shape for an atomic `applyToneProfile()` operation.
 - The actual sound depends on implementation details outside `AmpControlSettings`: EQ filter types/frequencies/Q, compression mapping, dry/wet topology, reverb maximum wet gain, the seeded impulse generator, and stage order all live in [`AudioEngine.ts`](../../src/audio/AudioEngine.ts), [`reverb.ts`](../../src/audio/reverb.ts), and [`gain.ts`](../../src/audio/gain.ts).
 - The architecture decision explicitly keeps Web Audio topology behind a deep engine interface ([ADR 0001](../adr/0001-keep-web-audio-behind-a-deep-audio-engine.md)). A public package should preserve that boundary rather than export raw internal nodes or invite consumers to reconstruct the graph.
@@ -56,7 +56,7 @@ A selected profile plus player changes. This is the future copy/paste or save/sh
 
 ### 3. `WorkbenchPreferences`
 
-Browser-local state. It stores the last patch and local UI preferences, while continuing to exclude devices and monitoring. The existing [`StoredWorkbenchPreferences`](../../src/settings.ts) is this category.
+Browser-local state. It stores the last patch and local UI preferences, while continuing to exclude devices and monitoring. The existing [`StoredWorkbenchPreferences`](../../src/preferences.ts) is this category.
 
 Keep the user's final **Master Volume** outside `ToneProfile`. A profile may carry a calibrated `outputTrimDb` inside the processor to loudness-match A/B/C and preserve headroom, but selecting a tone should not unexpectedly raise the listener's safety/comfort setting. The current `masterVolumeDb` can remain a host control after the processor output. This is an implementation recommendation, not a Web Audio requirement.
 

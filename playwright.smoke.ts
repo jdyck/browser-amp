@@ -1,4 +1,4 @@
 export const productionSmokeTests = {
   testDir: './tests',
-  testMatch: ['app.spec.ts', 'production-assets.spec.ts'],
+  testMatch: ['browser/**/*.spec.ts', 'production/**/*.spec.ts'],
 };

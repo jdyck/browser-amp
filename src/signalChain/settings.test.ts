@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { CABINET_MODELS, DEFAULT_AMP_CONTROLS, REVERB_PROFILES, normalizeAmpControlSettings } from './controls';
+import { CABINET_MODELS, DEFAULT_AMP_CONTROLS, REVERB_PROFILES, normalizeAmpControlSettings } from './settings';
 import { AMP_MODELS, DEFAULT_JAZZ_AMP_SETTINGS } from './ampModels';
-import { DEFAULT_REVERB_SETTINGS, reverbControlEntries, type ReverbParameters } from './reverbSettings';
+import { DEFAULT_REVERB_SETTINGS, reverbControlEntries, type ReverbParameters } from './reverbProfiles';
 
 describe('Amp Control Settings', () => {
   it('normalizes every module parameter without keeping unsupported fields', () => {

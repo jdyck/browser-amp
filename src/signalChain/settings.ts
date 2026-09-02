@@ -1,4 +1,4 @@
-import { DEFAULT_REVERB_SETTINGS, normalizeReverbSettings, type ReverbSettings } from './reverbSettings';
+import { DEFAULT_REVERB_SETTINGS, normalizeReverbSettings, type ReverbSettings } from './reverbProfiles';
 import {
   DEFAULT_JAZZ_AMP_SETTINGS,
   isAmpModel,

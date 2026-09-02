@@ -1,0 +1,156 @@
+.workspace-shell {
+  min-height: 100vh;
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: grid;
+  grid-template-columns: minmax(210px, 1fr) auto minmax(400px, 1.45fr);
+  align-items: center;
+  gap: 34px;
+  min-height: 102px;
+  padding: 20px 30px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(5, 8, 20, 0.92);
+  backdrop-filter: blur(20px);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--ice);
+  font-size: 21px;
+  font-weight: 760;
+  letter-spacing: -0.03em;
+}
+
+.brand-art {
+  display: grid;
+  place-items: center;
+  min-width: 50px;
+  min-height: 38px;
+  border: 1px solid rgba(126, 223, 227, 0.3);
+  border-radius: var(--radius-sm);
+  background: rgba(57, 199, 212, 0.08);
+  color: var(--cyan-soft);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.monitor-control {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: var(--muted-strong);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.monitor-control strong {
+  color: var(--ice);
+  font-weight: 700;
+}
+
+.toggle-button {
+  position: relative;
+  width: 48px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: #122535;
+  transition: border-color 160ms ease, background 160ms ease;
+}
+
+.toggle-button > span {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--muted-strong);
+  transition: transform 160ms ease, background 160ms ease;
+}
+
+.toggle-button.is-on {
+  border-color: var(--cyan);
+  background: rgba(57, 199, 212, 0.2);
+}
+
+.toggle-button.is-on > span {
+  transform: translateX(22px);
+  background: var(--cyan-soft);
+}
+
+.topbar-meters {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 22px;
+}
+
+.top-meter {
+  min-width: 0;
+}
+
+.top-meter-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.top-meter h2,
+.top-meter span {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.top-meter h2 {
+  color: var(--ice);
+  font-weight: 700;
+}
+
+.top-meter span {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.meter-track {
+  position: relative;
+  height: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(126, 223, 227, 0.14);
+  border-radius: 2px;
+  background: rgba(126, 223, 227, 0.08);
+}
+
+.meter-scale {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: rgba(126, 223, 227, 0.72);
+}
+
+.meter-fill {
+  position: absolute;
+  inset: 0 0 0 auto;
+  z-index: 1;
+  background: rgba(5, 8, 20, 0.82);
+}
+
+.meter-peak {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 2;
+  width: 2px;
+  background: var(--orange);
+}
+

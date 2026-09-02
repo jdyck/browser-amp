@@ -1,5 +1,5 @@
-import type { ReverbProfile } from '../controls';
-import { reverbParameters, type ReverbParameters } from '../reverbSettings';
+import type { ReverbProfile } from '../signalChain/settings';
+import { reverbParameters, type ReverbParameters } from '../signalChain/reverbProfiles';
 import { createReverbImpulse } from './reverbImpulses';
 import { smoothGainToValue } from './gain';
 import { StageSwitcher, type StagePath } from './stageSwitcher';

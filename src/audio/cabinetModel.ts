@@ -1,4 +1,4 @@
-import type { JazzCabinetId } from '../cabinetModels';
+import type { JazzCabinetId } from '../signalChain/cabinetModels';
 import { StageSwitcher, type StagePath } from './stageSwitcher';
 
 const BUTTERWORTH_Q_DB = 20 * Math.log10(Math.SQRT1_2);

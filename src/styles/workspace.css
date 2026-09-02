@@ -1,0 +1,155 @@
+.workspace-body {
+  display: grid;
+  grid-template-columns: 268px minmax(0, 1fr);
+  min-height: calc(100vh - 102px);
+}
+
+.sidebar {
+  position: sticky;
+  top: 102px;
+  align-self: start;
+  height: calc(100vh - 102px);
+  padding: 40px 24px 40px 30px;
+  border-right: 1px solid var(--line);
+  background: rgba(8, 22, 36, 0.44);
+}
+
+.stage-nav {
+  position: relative;
+  display: grid;
+  gap: 8px;
+}
+
+.stage-nav::before {
+  content: "";
+  position: absolute;
+  top: 25px;
+  bottom: 25px;
+  left: 19px;
+  width: 1px;
+  background: rgba(126, 223, 227, 0.2);
+}
+
+.stage-link {
+  position: relative;
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  align-items: center;
+  gap: 16px;
+  min-height: 68px;
+  padding: 8px 12px 8px 0;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--muted-strong);
+  text-align: left;
+  transition: color 160ms ease, background 160ms ease;
+}
+
+.stage-link:hover {
+  color: var(--ice);
+  background: rgba(126, 223, 227, 0.05);
+}
+
+.stage-link.is-active {
+  color: var(--text);
+  background: rgba(57, 199, 212, 0.08);
+}
+
+.stage-marker {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid rgba(126, 223, 227, 0.36);
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+}
+
+.stage-link.is-active .stage-marker {
+  border-color: var(--orange);
+  background: var(--orange);
+  color: var(--ink);
+  box-shadow: 0 0 24px rgba(255, 138, 42, 0.22);
+}
+
+.workspace-main {
+  min-width: 0;
+  padding: 38px clamp(28px, 5vw, 78px) 54px;
+}
+
+.section-view {
+  width: min(100%, 980px);
+  margin: 0 auto;
+}
+
+.section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 32px;
+  margin-bottom: 32px;
+}
+
+.section-heading > div:first-child {
+  max-width: 680px;
+}
+
+.section-kicker,
+.panel-eyebrow {
+  margin: 0 0 8px;
+  color: var(--cyan);
+  font-size: 11px;
+  font-weight: 760;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.section-heading h1 {
+  margin: 0;
+  color: var(--text);
+  font-size: clamp(34px, 4.2vw, 52px);
+  font-weight: 760;
+  letter-spacing: -0.045em;
+  line-height: 1.03;
+}
+
+.section-heading > div > p:last-child {
+  max-width: 640px;
+  margin: 13px 0 0;
+  color: var(--muted-strong);
+  font-size: 15px;
+}
+
+.section-action {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  max-width: 340px;
+}
+
+.connection-state {
+  width: 100%;
+  color: var(--cyan-soft);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: right;
+}
+
+.always-on {
+  padding: 8px 12px;
+  border: 1px solid rgba(126, 223, 227, 0.18);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
