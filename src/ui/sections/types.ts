@@ -6,7 +6,6 @@ export interface SectionDefinition {
   readonly id: WorkspaceSection;
   readonly label: string;
   readonly title: string;
-  readonly description: string;
 }
 
 export interface RecoveryPresentation {

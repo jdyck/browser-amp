@@ -5,15 +5,17 @@ import { installAudioBrowser, openSection } from '../support/audioBrowser';
 test('synchronizes, clamps, and restores controls without restoring Processed Monitoring', async ({ page }) => {
   await page.goto('./');
 
-  const inputTrim = page.getByLabel('Input Trim value');
-  const inputTrimSlider = page.getByLabel('Input Trim slider');
+  await expect(page.getByText('Tune this amplifier parameter.')).toHaveCount(0);
+
+  const inputTrim = page.getByLabel('Level value');
+  const inputTrimSlider = page.getByLabel('Level slider');
   await expect(inputTrim).toHaveValue('0.0');
   await inputTrim.fill('30');
   await inputTrim.press('Enter');
   await expect(inputTrim).toHaveValue('24.0');
   await expect(inputTrimSlider).toHaveValue('24');
 
-  await openSection(page, 'EQ');
+  await openSection(page, 'Equalizer');
   const studioEq = page.getByRole('region', { name: 'Studio EQ' });
   const low = studioEq.getByLabel('Low value');
   const lowSlider = studioEq.getByLabel('Low slider');
@@ -51,7 +53,7 @@ test('synchronizes, clamps, and restores controls without restoring Processed Mo
   await expect(upperMid).toHaveValue('3.3');
   await expect(high).toHaveValue('-12.0');
 
-  await openSection(page, 'Compression');
+  await openSection(page, 'Compressor');
   const compressionAmount = page.getByLabel('Amount value');
   const compressionAmountSlider = page.getByLabel('Amount slider');
   const compressionEnabled = page.getByLabel('Enable Compression');
@@ -89,15 +91,15 @@ test('synchronizes, clamps, and restores controls without restoring Processed Mo
   await expect(page.getByLabel('Master value')).toHaveValue('-12.3');
   await expect(page.getByRole('button', { name: 'Enable Monitoring' })).toBeDisabled();
   await openSection(page, 'Input');
-  await expect(page.getByLabel('Input Trim value')).toHaveValue('24.0');
-  await openSection(page, 'EQ');
+  await expect(page.getByLabel('Level value')).toHaveValue('24.0');
+  await openSection(page, 'Equalizer');
   await expect(studioEq.getByLabel('Low value')).toHaveValue('12.0');
   await expect(studioEq.getByLabel('Low Mid Frequency value')).toHaveValue('180');
   await expect(studioEq.getByLabel('Low Mid value')).toHaveValue('-3.3');
   await expect(studioEq.getByLabel('Upper Mid Frequency value')).toHaveValue('2000');
   await expect(studioEq.getByLabel('Upper Mid value')).toHaveValue('3.3');
   await expect(studioEq.getByLabel('High value')).toHaveValue('-12.0');
-  await openSection(page, 'Compression');
+  await openSection(page, 'Compressor');
   await expect(page.getByLabel('Amount value')).toHaveValue('100');
   await expect(compressionEnabled).toBeChecked();
   await expect(compressionLevelMatch).not.toBeChecked();
@@ -108,13 +110,13 @@ test('synchronizes, clamps, and restores controls without restoring Processed Mo
   const enabledSettings = await page.evaluate(() => JSON.parse(localStorage.getItem('browser-amp.saved-control-settings') ?? 'null'));
   expect(enabledSettings.controls).toMatchObject({ eqBypassed: false, compressionBypassed: false, compressionLevelMatch: false, reverbBypassed: false });
 
-  await openSection(page, 'EQ');
+  await openSection(page, 'Equalizer');
   await eqEnabled.uncheck();
   await expect(low).toHaveValue('12.0');
   await expect(lowMid).toHaveValue('-3.3');
   await expect(upperMid).toHaveValue('3.3');
   await expect(high).toHaveValue('-12.0');
-  await openSection(page, 'Compression');
+  await openSection(page, 'Compressor');
   await compressionEnabled.uncheck();
   await openSection(page, 'Reverb');
   await expect(reverbEnabled).toBeChecked();
@@ -124,9 +126,9 @@ test('synchronizes, clamps, and restores controls without restoring Processed Mo
 
   await page.reload();
   await expect(reverbEnabled).not.toBeChecked();
-  await openSection(page, 'Compression');
+  await openSection(page, 'Compressor');
   await expect(compressionEnabled).not.toBeChecked();
-  await openSection(page, 'EQ');
+  await openSection(page, 'Equalizer');
   await expect(eqEnabled).not.toBeChecked();
   await eqEnabled.check();
   await expect(low).toHaveValue('12.0');
@@ -162,11 +164,11 @@ test('requires a separate monitoring action and remembers dismissed Hardware Dir
 test('Reset Controls restores sound defaults without changing connection, monitoring, or dismissed guidance', async ({ page }) => {
   await installAudioBrowser(page);
   await page.goto('./');
-  await page.getByLabel('Input Trim value').fill('9');
-  await openSection(page, 'EQ');
+  await page.getByLabel('Level value').fill('9');
+  await openSection(page, 'Equalizer');
   await page.getByRole('region', { name: 'Studio EQ' }).getByLabel('Low value').fill('-4');
   await page.getByLabel('Enable Studio EQ').uncheck();
-  await openSection(page, 'Compression');
+  await openSection(page, 'Compressor');
   await page.getByLabel('Enable Compression').check();
   await page.getByLabel('Level Match').uncheck();
   await openSection(page, 'Reverb');
@@ -183,8 +185,8 @@ test('Reset Controls restores sound defaults without changing connection, monito
   await page.getByRole('button', { name: 'Reset Controls' }).click();
 
   await openSection(page, 'Input');
-  await expect(page.getByLabel('Input Trim value')).toHaveValue('0.0');
-  await openSection(page, 'EQ');
+  await expect(page.getByLabel('Level value')).toHaveValue('0.0');
+  await openSection(page, 'Equalizer');
   const studioEq = page.getByRole('region', { name: 'Studio EQ' });
   await expect(studioEq.getByLabel('Low value')).toHaveValue('0.0');
   await expect(studioEq.getByLabel('Low Mid Frequency value')).toHaveValue('300');
@@ -193,7 +195,7 @@ test('Reset Controls restores sound defaults without changing connection, monito
   await expect(studioEq.getByLabel('Upper Mid value')).toHaveValue('0.0');
   await expect(studioEq.getByLabel('High value')).toHaveValue('0.0');
   await expect(page.getByLabel('Enable Studio EQ')).toBeChecked();
-  await openSection(page, 'Compression');
+  await openSection(page, 'Compressor');
   await expect(page.getByLabel('Amount value')).toHaveValue('25');
   await expect(page.getByLabel('Enable Compression')).not.toBeChecked();
   await expect(page.getByLabel('Level Match')).toBeChecked();

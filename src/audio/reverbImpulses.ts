@@ -8,14 +8,21 @@ const LOW_PASS_MEMORY = 0.72;
 // Adjustable, original voices. Only the selected impulse is generated, and live DSP
 // stays in a native convolver. These are not captured spaces or hardware models.
 const IMPULSE_FACTORIES = {
-  'jazz-room': (context, parameters) => createRoomImpulse(context, false, parameters),
-  'studio-chamber': (context, parameters) => createRoomImpulse(context, true, parameters),
+  'jazz-room': (context, parameters) =>
+    createRoomImpulse(context, false, parameters),
+  'studio-chamber': (context, parameters) =>
+    createRoomImpulse(context, true, parameters),
   'studio-plate': createPlateImpulse,
-  'bright-spring': (context, parameters) => createSpringImpulse(context, true, parameters),
-  'dark-spring': (context, parameters) => createSpringImpulse(context, false, parameters),
-  'digital-room': (context, parameters) => createDigitalImpulse(context, false, parameters),
-  'digital-hall': (context, parameters) => createDigitalImpulse(context, true, parameters),
-} satisfies Record<ReverbProfile, (context: BaseAudioContext, parameters: ReverbParameters) => AudioBuffer>;
+  'bright-spring': (context, parameters) =>
+    createSpringImpulse(context, true, parameters),
+  'dark-spring': (context, parameters) =>
+    createSpringImpulse(context, false, parameters),
+  'digital-room': (context, parameters) =>
+    createDigitalImpulse(context, false, parameters),
+  'digital-hall': (context, parameters) =>
+    createDigitalImpulse(context, true, parameters),
+} satisfies Record<ReverbProfile, (context: BaseAudioContext, parameters: ReverbParameters) =>
+  AudioBuffer>;
 
 export function createReverbImpulse(
   context: BaseAudioContext,

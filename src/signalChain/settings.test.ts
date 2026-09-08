@@ -93,8 +93,8 @@ describe('Amp Control Settings', () => {
         'amp.small-tweed-combo-v1': { volume: 8.88, tone: 2.22, input: 'low', middle: 10 },
       },
     });
-    expect(controls.ampSettings['amp.studio-clean-v1']).toEqual({ gain: 10, bass: 0, middle: 5.3, treble: 5, headroom: 'high' });
-    expect(controls.ampSettings['amp.small-tweed-combo-v1']).toEqual({ volume: 8.9, tone: 2.2, input: 'low' });
+    expect(controls.ampSettings['amp.studio-clean-v1']).toEqual({ gain: 10, bass: 0, middle: 5.3, treble: 5, maximumHeadroom: false });
+    expect(controls.ampSettings['amp.small-tweed-combo-v1']).toEqual({ volume: 8.9, tone: 2.2, lowInput: true });
     expect(controls.ampSettings['amp.british-chime-v1']).toEqual(DEFAULT_JAZZ_AMP_SETTINGS['amp.british-chime-v1']);
     expect(normalizeAmpControlSettings({ ampModel: 'clean-voice', cleanGainDb: 12 })).toMatchObject({
       ampModel: 'amp.studio-clean-v1',

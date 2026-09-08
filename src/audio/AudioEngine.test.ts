@@ -448,7 +448,7 @@ describe('AudioEngine', () => {
       ampModel: 'amp.small-tweed-combo-v1',
       ampSettings: {
         ...engine.snapshot.controls.ampSettings,
-        'amp.small-tweed-combo-v1': { volume: 30, tone: 3.26, input: 'low' },
+        'amp.small-tweed-combo-v1': { volume: 30, tone: 3.26, lowInput: true },
       },
       lowShelfDb: -20,
       lowMidFrequencyHz: 100,
@@ -474,7 +474,7 @@ describe('AudioEngine', () => {
       ampModel: 'amp.small-tweed-combo-v1',
       ampSettings: {
         ...DEFAULT_AMP_CONTROLS.ampSettings,
-        'amp.small-tweed-combo-v1': { volume: 10, tone: 3.3, input: 'low' },
+        'amp.small-tweed-combo-v1': { volume: 10, tone: 3.3, lowInput: true },
       },
       lowShelfDb: -12,
       lowMidFrequencyHz: 180,

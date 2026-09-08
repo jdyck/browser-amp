@@ -182,7 +182,7 @@ describe('Saved Control Settings', () => {
         inputTrimDb: 12,
         ampSettings: {
           ...DEFAULT_AMP_CONTROLS.ampSettings,
-          'amp.small-tweed-combo-v1': { volume: 8, tone: 7, input: 'low' },
+          'amp.small-tweed-combo-v1': { volume: 8, tone: 7, lowInput: true },
         },
         lowShelfDb: -4,
         lowMidFrequencyHz: 240,

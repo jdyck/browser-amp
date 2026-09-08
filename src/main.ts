@@ -11,22 +11,28 @@ import {
 import { bindChoiceCards } from './ui/sections/shared';
 import './styles/index.css';
 
+// Initialize preferences and audio engine
 const preferencesStore = new WorkbenchPreferencesStore(browserStorage());
 let workbenchPreferences = preferencesStore.load();
+
 const engine = new AudioEngine();
 engine.applyControls(workbenchPreferences.controls);
 
+// Set up root element
 const app = document.querySelector<HTMLElement>('#app');
 if (app === null) throw new Error('Application root is missing.');
 const root = app;
 
+// Initialize sections and state
 const sectionModules = createWorkspaceSections();
 const sections = [...sectionModules.values()];
+
 let snapshot = engine.snapshot;
 let activeSection = sectionFromHash();
 let guidanceOpen = false;
 let guidanceDismissed = workbenchPreferences.hardwareDirectMonitoringGuidanceDismissed;
 
+// Runtime context passed to section modules
 const sectionRuntime: SectionRuntime = {
   root,
   engine,
@@ -47,20 +53,31 @@ function render(next: AudioSnapshot): void {
 }
 
 function structureChanged(previous: AudioSnapshot, next: AudioSnapshot): boolean {
-  return root.querySelector('#workspace-shell') === null
-    || previous.lifecycle !== next.lifecycle
-    || previous.monitoring !== next.monitoring
-    || previous.devices !== next.devices
-    || previous.selectedInputDeviceId !== next.selectedInputDeviceId
-    || previous.inputChannel !== next.inputChannel
-    || previous.inputChannelCount !== next.inputChannelCount
-    || previous.rawCaptureWarnings !== next.rawCaptureWarnings
-    || previous.outputRouting.mode !== next.outputRouting.mode
-    || previous.outputRouting.devices !== next.outputRouting.devices
-    || previous.outputRouting.selectedDeviceId !== next.outputRouting.selectedDeviceId
-    || previous.outputRouting.error !== next.outputRouting.error
-    || previous.error !== next.error
-    || previous.recovery !== next.recovery;
+  // Check if DOM structure needs rebuilding
+  if (root.querySelector('#workspace-shell') === null) return true;
+
+  // Check lifecycle and connection state
+  if (previous.lifecycle !== next.lifecycle) return true;
+  if (previous.monitoring !== next.monitoring) return true;
+  if (previous.devices !== next.devices) return true;
+
+  // Check input settings
+  if (previous.selectedInputDeviceId !== next.selectedInputDeviceId) return true;
+  if (previous.inputChannel !== next.inputChannel) return true;
+  if (previous.inputChannelCount !== next.inputChannelCount) return true;
+  if (previous.rawCaptureWarnings !== next.rawCaptureWarnings) return true;
+
+  // Check output routing
+  if (previous.outputRouting.mode !== next.outputRouting.mode) return true;
+  if (previous.outputRouting.devices !== next.outputRouting.devices) return true;
+  if (previous.outputRouting.selectedDeviceId !== next.outputRouting.selectedDeviceId) return true;
+  if (previous.outputRouting.error !== next.outputRouting.error) return true;
+
+  // Check errors and recovery state
+  if (previous.error !== next.error) return true;
+  if (previous.recovery !== next.recovery) return true;
+
+  return false;
 }
 
 function renderStructure(current: AudioSnapshot): void {
@@ -77,9 +94,7 @@ function renderStructure(current: AudioSnapshot): void {
           <section class="section-view" data-section="${definition.id}">
             <div class="section-heading">
               <div>
-                <p class="section-kicker">${String(sectionNumber(definition.id)).padStart(2, '0')} / ${String(sections.length).padStart(2, '0')}</p>
                 <h1 id="section-title">${definition.title}</h1>
-                <p>${definition.description}</p>
               </div>
               ${section.action(current, recovery)}
             </div>
@@ -121,69 +136,148 @@ function topBar(current: AudioSnapshot): string {
   </header>`;
 }
 
-function topMeter(id: 'input' | 'output', label: string, reading: InputMeterSnapshot): string {
-  return `<section class="top-meter" aria-labelledby="${id}-meter-title">
-    <div class="top-meter-heading">
-      <h2 id="${id}-meter-title">${label}</h2>
-      <span id="${id}-meter-value">${reading.dbfs.toFixed(1)} dBFS</span>
-    </div>
-    <div id="${id}-meter" class="meter-track" aria-label="${label} level" aria-valuemin="-60" aria-valuemax="0" aria-valuenow="${reading.dbfs}" role="progressbar">
-      <div class="meter-scale" aria-hidden="true"></div>
-      <div id="${id}-meter-fill" class="meter-fill ${meterRegion(reading.dbfs)}" style="width: ${100 - meterPositionPercent(reading.dbfs)}%"></div>
-      <div id="${id}-meter-peak" class="meter-peak" style="left: ${meterPositionPercent(reading.peakDbfs)}%"></div>
-    </div>
-  </section>`;
+function topMeter(
+  id: 'input' | 'output',
+  label: string,
+  reading: InputMeterSnapshot
+): string {
+  const dbValue = reading.dbfs.toFixed(1);
+  const fillWidth = 100 - meterPositionPercent(reading.dbfs);
+  const peakPosition = meterPositionPercent(reading.peakDbfs);
+  const region = meterRegion(reading.dbfs);
+
+  return `
+    <section class="top-meter" aria-labelledby="${id}-meter-title">
+      <div class="top-meter-heading">
+        <h2 id="${id}-meter-title">${label}</h2>
+        <span id="${id}-meter-value">${dbValue} dBFS</span>
+      </div>
+      <div
+        id="${id}-meter"
+        class="meter-track"
+        aria-label="${label} level"
+        aria-valuemin="-60"
+        aria-valuemax="0"
+        aria-valuenow="${reading.dbfs}"
+        role="progressbar"
+      >
+        <div class="meter-scale" aria-hidden="true"></div>
+        <div
+          id="${id}-meter-fill"
+          class="meter-fill ${region}"
+          style="width: ${fillWidth}%"
+        ></div>
+        <div
+          id="${id}-meter-peak"
+          class="meter-peak"
+          style="left: ${peakPosition}%"
+        ></div>
+      </div>
+    </section>
+  `.trim();
 }
 
 function sidebar(): string {
-  return `<aside class="sidebar" aria-label="Amp sections">
-    <nav class="stage-nav">
-      ${sections.map((section, index) => `<button
-        type="button"
-        class="stage-link ${section.definition.id === activeSection ? 'is-active' : ''}"
-        data-section-target="${section.definition.id}"
-        aria-current="${section.definition.id === activeSection ? 'step' : 'false'}"
-      ><span class="stage-marker" aria-hidden="true">${index + 1}</span><span>${section.definition.label}</span></button>`).join('')}
-    </nav>
-  </aside>`;
+  const navButtons = sections
+    .map((section, index) => {
+      const isActive = section.definition.id === activeSection;
+      return `
+        <button
+          type="button"
+          class="stage-link ${isActive ? 'is-active' : ''}"
+          data-section-target="${section.definition.id}"
+          aria-current="${isActive ? 'step' : 'false'}"
+        >
+          <span class="stage-marker" aria-hidden="true">${index + 1}</span>
+          <span>${section.definition.label}</span>
+        </button>
+      `.trim();
+    })
+    .join('\n    ');
+
+  return `
+    <aside class="sidebar" aria-label="Amp sections">
+      <nav class="stage-nav">
+        ${navButtons}
+      </nav>
+    </aside>
+  `.trim();
 }
 
 function workspaceFooter(id: WorkspaceSection): string {
   const index = sectionNumber(id) - 1;
   const previous = sections[index - 1]?.definition;
   const next = sections[index + 1]?.definition;
-  return `<footer class="workspace-footer">
-    <div>${previous === undefined ? '' : `<button type="button" class="secondary-action footer-action" data-section-target="${previous.id}">Back: ${previous.label}</button>`}</div>
-    <div class="progress-dots" aria-label="Section progress">
-      ${sections.map(({ definition }) => `<button type="button" class="progress-dot ${definition.id === id ? 'is-active' : ''}" data-section-target="${definition.id}" aria-label="Go to ${definition.label}" aria-current="${definition.id === id ? 'step' : 'false'}"></button>`).join('')}
-    </div>
-    <div>${next === undefined ? '' : `<button type="button" class="primary-action footer-action" data-section-target="${next.id}">Next: ${next.label}</button>`}</div>
-  </footer>`;
+
+  const backButton = previous === undefined
+    ? ''
+    : `<button type="button" class="secondary-action footer-action" data-section-target="${previous.id}">Back: ${previous.label}</button>`;
+
+  const progressDots = sections
+    .map(({ definition }) => {
+      const isActive = definition.id === id;
+      return `
+        <button
+          type="button"
+          class="progress-dot ${isActive ? 'is-active' : ''}"
+          data-section-target="${definition.id}"
+          aria-label="Go to ${definition.label}"
+          aria-current="${isActive ? 'step' : 'false'}"
+        ></button>
+      `.trim();
+    })
+    .join('\n      ');
+
+  const nextButton = next === undefined
+    ? ''
+    : `<button type="button" class="primary-action footer-action" data-section-target="${next.id}">Next: ${next.label}</button>`;
+
+  return `
+    <footer class="workspace-footer">
+      <div>${backButton}</div>
+      <div class="progress-dots" aria-label="Section progress">
+        ${progressDots}
+      </div>
+      <div>${nextButton}</div>
+    </footer>
+  `.trim();
 }
 
 function bindShellEvents(): void {
+  // Section navigation buttons
   root.querySelectorAll<HTMLButtonElement>('[data-section-target]').forEach((button) => {
     button.addEventListener('click', () => {
       const target = button.dataset.sectionTarget;
       if (!isWorkspaceSection(target) || target === activeSection) return;
+
       activeSection = target;
       window.history.replaceState(null, '', `#${target}`);
       rerenderStructure();
+
       root.querySelector<HTMLElement>('#section-title')?.focus({ preventScroll: true });
       window.scrollTo({ top: 0, behavior: 'smooth' });
     });
   });
+
+  // Monitoring toggle
   root.querySelector<HTMLButtonElement>('#monitoring-toggle')?.addEventListener('click', () => {
-    if (snapshot.monitoring) void engine.setMonitoring(false);
-    else if (!guidanceDismissed) {
+    if (snapshot.monitoring) {
+      void engine.setMonitoring(false);
+    } else if (!guidanceDismissed) {
       guidanceOpen = true;
       rerenderStructure();
-    } else void engine.setMonitoring(true);
+    } else {
+      void engine.setMonitoring(true);
+    }
   });
+
+  // Monitoring guidance confirmation
   root.querySelector<HTMLButtonElement>('#confirm-monitoring')?.addEventListener('click', () => {
     dismissGuidance();
     void engine.setMonitoring(true);
   });
+
+  // Guidance dismissal
   root.querySelector<HTMLButtonElement>('#dismiss-guidance')?.addEventListener('click', dismissGuidance);
 }
 
@@ -216,11 +310,19 @@ function meterPositionPercent(dbfs: number): number {
 }
 
 function hardwareGuidance(): string {
-  return `<div class="modal-backdrop" role="presentation"><aside class="guidance-modal" aria-labelledby="guidance-title">
-    <p class="panel-eyebrow">Quick check</p><h2 id="guidance-title">Before you monitor</h2>
-    <p>Disable Hardware Direct Monitoring on your audio interface so you hear the processed path, and use headphones.</p>
-    <div class="modal-actions"><button id="dismiss-guidance" type="button" class="secondary-action">Dismiss reminder</button><button id="confirm-monitoring" type="button" class="primary-action">Checked — Enable Monitoring</button></div>
-  </aside></div>`;
+  return `
+    <div class="modal-backdrop" role="presentation">
+      <aside class="guidance-modal" aria-labelledby="guidance-title">
+        <p class="panel-eyebrow">Quick check</p>
+        <h2 id="guidance-title">Before you monitor</h2>
+        <p>Disable Hardware Direct Monitoring on your audio interface so you hear the processed path, and use headphones.</p>
+        <div class="modal-actions">
+            <button id="dismiss-guidance" type="button" class="secondary-action">Dismiss reminder</button>
+            <button id="confirm-monitoring" type="button" class="primary-action">Checked — Enable Monitoring</button>
+        </div>
+      </aside>
+    </div>
+  `;
 }
 
 function dismissGuidance(): void {

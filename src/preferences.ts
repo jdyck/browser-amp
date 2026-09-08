@@ -1,4 +1,8 @@
-import { DEFAULT_AMP_CONTROLS, normalizeAmpControlSettings, type AmpControlSettings } from './signalChain/settings';
+import {
+  DEFAULT_AMP_CONTROLS,
+  normalizeAmpControlSettings,
+  type AmpControlSettings
+} from './signalChain/settings';
 
 export const SAVED_CONTROL_SETTINGS_STORAGE_KEY = 'browser-amp.saved-control-settings';
 export const LEGACY_CONTROLS_STORAGE_KEY = 'browser-amp.controls';
@@ -30,9 +34,11 @@ export function resetControls(preferences: StoredWorkbenchPreferences): StoredWo
 }
 
 function parseStoredWorkbenchPreferences(value: unknown): StoredWorkbenchPreferences {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return DEFAULT_STORED_WORKBENCH_PREFERENCES;
+  if (typeof value !== 'object' || value === null || Array.isArray(value))
+    return DEFAULT_STORED_WORKBENCH_PREFERENCES;
   const settings = value as Record<string, unknown>;
-  if (settings.version !== 1) return DEFAULT_STORED_WORKBENCH_PREFERENCES;
+  if (settings.version !== 1)
+    return DEFAULT_STORED_WORKBENCH_PREFERENCES;
   return {
     version: 1,
     controls: normalizeAmpControlSettings(settings.controls),

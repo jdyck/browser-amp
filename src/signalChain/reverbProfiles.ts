@@ -22,31 +22,174 @@ export interface ReverbControlDefinition extends ContinuousControlDefinition {
   readonly defaultValue: number;
 }
 
-function control(label: string, unit: string, minimum: number, maximum: number, step: number, defaultValue: number, help: string): ReverbControlDefinition {
-  return { label, unit, minimum, maximum, step, defaultValue, fractionDigits: step === 0.01 ? 2 : step === 0.1 ? 1 : 0, help };
+function control(
+  label: string,
+  unit: string,
+  minimum: number,
+  maximum: number,
+  step: number,
+  defaultValue: number,
+  help: string
+): ReverbControlDefinition {
+  return {
+    label,
+    unit,
+    minimum,
+    maximum,
+    step,
+    defaultValue,
+    fractionDigits: step === 0.01 ? 2 : step === 0.1 ? 1 : 0,
+    help
+  };
 }
 
-const decay = (value: number) => control('Decay', 's', 0.2, 6, 0.01, value, 'Length of the reverb tail; independent of Amount.');
-const predelay = (value: number) => control('Pre-delay', 'ms', 0, 200, 1, value, 'Delay before the wet response, leaving the dry attack unchanged.');
-const tone = control('Tone', 'dB', -12, 12, 0.1, 0, 'Darken or brighten the wet sound above 3.2 kHz.');
-const lowCut = control('Low Cut', 'Hz', 20, 800, 1, 90, 'Remove bass from the reverb to reduce muddiness.');
-const damping = control('Damping', '%', 0, 100, 1, 50, 'Higher values make high frequencies fade faster.');
-const size = control('Size', '%', 0, 100, 1, 50, 'Change reflection spacing without setting the decay time.');
-const earlyLate = control('Early/Late', '%', 0, 100, 1, 50, '0% is early reflections only; 100% is the late tail only.');
-const diffusion = control('Diffusion', '%', 0, 100, 1, 70, 'Move from distinct echoes toward a dense, smooth tail.');
-const dwell = control('Dwell', '%', 0, 100, 1, 0, 'Drive the spring send into soft saturation; 0% preserves the clean response.');
-const modulationDepth = control('Modulation Depth', '%', 0, 100, 1, 0, 'Add stereo pitch movement to the wet tail; 0% disables modulation.');
-const modulationRateHz = control('Modulation Rate', 'Hz', 0.05, 5, 0.01, 0.3, 'Speed of the wet-tail movement when Modulation Depth is above zero.');
+const decay = (value: number) =>
+  control(
+    'Decay',
+    's',
+    0.2,
+    6,
+    0.01,
+    value,
+    'Length of the reverb tail; independent of Amount.'
+  );
+
+const predelay = (value: number) =>
+  control(
+    'Pre-delay',
+    'ms',
+    0,
+    200,
+    1,
+    value,
+    'Delay before the wet response, leaving the dry attack unchanged.'
+  );
+
+const tone = control(
+  'Tone',
+  'dB',
+  -12,
+  12,
+  0.1,
+  0,
+  'Darken or brighten the wet sound above 3.2 kHz.'
+);
+
+const lowCut = control(
+  'Low Cut',
+  'Hz',
+  20,
+  800,
+  1,
+  90,
+  'Remove bass from the reverb to reduce muddiness.'
+);
+
+const damping = control(
+  'Damping',
+  '%',
+  0,
+  100,
+  1,
+  50,
+  'Higher values make high frequencies fade faster.'
+);
+
+const size = control(
+  'Size',
+  '%',
+  0,
+  100,
+  1,
+  50,
+  'Change reflection spacing without setting the decay time.'
+);
+
+const earlyLate = control(
+  'Early/Late',
+  '%',
+  0,
+  100,
+  1,
+  50,
+  '0% is early reflections only; 100% is the late tail only.'
+);
+
+const diffusion = control(
+  'Diffusion',
+  '%',
+  0,
+  100,
+  1,
+  70,
+  'Move from distinct echoes toward a dense, smooth tail.'
+);
+
+const dwell = control(
+  'Dwell',
+  '%',
+  0,
+  100,
+  1,
+  0,
+  'Drive the spring send into soft saturation; 0% preserves the clean response.'
+);
+
+const modulationDepth = control(
+  'Modulation Depth',
+  '%',
+  0,
+  100,
+  1,
+  0,
+  'Add stereo pitch movement to the wet tail; 0% disables modulation.'
+);
+
+const modulationRateHz = control(
+  'Modulation Rate',
+  'Hz',
+  0.05,
+  5,
+  0.01,
+  0.3,
+  'Speed of the wet-tail movement when Modulation Depth is above zero.'
+);
 
 export const REVERB_CONTROLS = {
-  'jazz-room': { main: { decaySeconds: decay(0.65), toneDb: tone }, advanced: { size, earlyLate } },
-  'studio-chamber': { main: { decaySeconds: decay(1.4), preDelayMs: predelay(0), toneDb: tone }, advanced: { lowCutHz: lowCut, diffusion } },
-  'studio-plate': { main: { decaySeconds: decay(1.5), preDelayMs: predelay(12), toneDb: tone }, advanced: { damping } },
-  'bright-spring': { main: { toneDb: tone, dwell }, advanced: { decaySeconds: decay(2.2) } },
-  'dark-spring': { main: { toneDb: tone, decaySeconds: decay(1.3) }, advanced: { lowCutHz: lowCut } },
-  'digital-room': { main: { decaySeconds: decay(0.85), size, toneDb: tone }, advanced: { preDelayMs: predelay(8), diffusion } },
-  'digital-hall': { main: { decaySeconds: decay(2.8), preDelayMs: predelay(28), damping }, advanced: { size, modulationDepth, modulationRateHz } },
-} as const satisfies Record<ReverbProfile, { main: Partial<Record<ReverbParameter, ReverbControlDefinition>>; advanced: Partial<Record<ReverbParameter, ReverbControlDefinition>> }>;
+  'jazz-room': {
+    main: { decaySeconds: decay(0.65), toneDb: tone },
+    advanced: { size, earlyLate }
+  },
+  'studio-chamber': {
+    main: { decaySeconds: decay(1.4), preDelayMs: predelay(0), toneDb: tone },
+    advanced: { lowCutHz: lowCut, diffusion }
+  },
+  'studio-plate': {
+    main: { decaySeconds: decay(1.5), preDelayMs: predelay(12), toneDb: tone },
+    advanced: { damping }
+  },
+  'bright-spring': {
+    main: { toneDb: tone, dwell },
+    advanced: { decaySeconds: decay(2.2) }
+  },
+  'dark-spring': {
+    main: { toneDb: tone, decaySeconds: decay(1.3) },
+    advanced: { lowCutHz: lowCut }
+  },
+  'digital-room': {
+    main: { decaySeconds: decay(0.85), size, toneDb: tone },
+    advanced: { preDelayMs: predelay(8), diffusion }
+  },
+  'digital-hall': {
+    main: { decaySeconds: decay(2.8), preDelayMs: predelay(28), damping },
+    advanced: { size, modulationDepth, modulationRateHz }
+  },
+} as const satisfies Record<
+  ReverbProfile, {
+    main: Partial<Record<ReverbParameter, ReverbControlDefinition>>;
+    advanced: Partial<Record<ReverbParameter, ReverbControlDefinition>>
+  }
+>;
 
 export type ReverbSettings = {
   readonly [Profile in ReverbProfile]: {

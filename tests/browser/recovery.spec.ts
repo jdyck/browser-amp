@@ -9,7 +9,7 @@ test('shows browser-visible output routing and clears a latched post-Master CLIP
   await openSection(page, 'Master');
   await page.getByLabel('Output device').selectOption('headphones');
   await expect.poll(() => page.evaluate(() => (window as Window & { selectedSink?: string }).selectedSink)).toBe('headphones');
-  await openSection(page, 'Compression');
+  await openSection(page, 'Compressor');
   await expect(page.getByLabel('Compression reduction')).toHaveText('0.0 dB');
   await page.getByLabel('Enable Compression').check();
   await expect(page.getByLabel('Compression reduction')).toHaveText('4.0 dB');
@@ -55,7 +55,7 @@ test('offers a keyboard-accessible retry after permission denial on a narrow lay
 test('stays muted through active-input unplug and replug until explicit reconnection', async ({ page }) => {
   await installAudioBrowser(page);
   await page.goto('./');
-  await page.getByLabel('Input Trim value').fill('7');
+  await page.getByLabel('Level value').fill('7');
   await page.getByRole('button', { name: 'Connect Input' }).click();
   await page.getByRole('button', { name: 'Enable Monitoring' }).click();
   await page.getByRole('button', { name: 'Checked — Enable Monitoring' }).click();
@@ -66,7 +66,7 @@ test('stays muted through active-input unplug and replug until explicit reconnec
   await expect(page.getByRole('alert')).toContainText('active input device was disconnected');
   await expect(page.getByRole('button', { name: 'Reconnect Input' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Enable Monitoring' })).toBeDisabled();
-  await expect(page.getByLabel('Input Trim value')).toHaveValue('7.0');
+  await expect(page.getByLabel('Level value')).toHaveValue('7.0');
   await expect.poll(() => page.evaluate(() => (window as Window & { captureRequests?: number }).captureRequests)).toBe(1);
 
   await page.evaluate(() => (window as Window & { setInputConnected?: (connected: boolean) => void }).setInputConnected?.(true));
@@ -76,7 +76,7 @@ test('stays muted through active-input unplug and replug until explicit reconnec
 
   await expect(page.getByRole('status')).toContainText('Connected — muted');
   await expect(page.getByRole('button', { name: 'Enable Monitoring' })).toBeEnabled();
-  await expect(page.getByLabel('Input Trim value')).toHaveValue('7.0');
+  await expect(page.getByLabel('Level value')).toHaveValue('7.0');
   await expect.poll(() => page.evaluate(() => (window as Window & { captureRequests?: number }).captureRequests)).toBe(2);
 });
 
@@ -144,17 +144,18 @@ test('keeps exact controls keyboard-operable and section navigation usable on a 
   await page.setViewportSize({ width: 320, height: 900 });
   await page.goto('./');
 
-  await openSection(page, 'EQ');
+  await openSection(page, 'Equalizer');
   const studioEq = page.getByRole('region', { name: 'Studio EQ' });
   const lowSlider = studioEq.getByLabel('Low slider');
   await lowSlider.focus();
   await lowSlider.press('ArrowRight');
   await expect(studioEq.getByLabel('Low value')).toHaveValue('0.1');
 
-  await expect(page.locator('.stage-link').evaluateAll((links) => links.map((link) => link.textContent?.trim()))).resolves.toEqual([
-    '1Input', '2Amp + Cabinet', '3Compression', '4EQ', '5Reverb', '6Master',
+  await expect(page.locator('.stage-link').evaluateAll((links) =>
+    links.map((link) => link.textContent?.replace(/\s+/g, ' ').trim()))).resolves.toEqual([
+    '1 Input', '2 Amplifier', '3 Compressor', '4 Equalizer', '5 Reverb', '6 Master',
   ]);
-  await openSection(page, 'Compression');
+  await openSection(page, 'Compressor');
   const amountBounds = await page.getByLabel('Amount value').boundingBox();
   expect(amountBounds).not.toBeNull();
   expect((amountBounds?.x ?? 0) + (amountBounds?.width ?? 0)).toBeLessThanOrEqual(320);
