@@ -5,9 +5,8 @@ import type { WorkspaceSectionModule } from './types';
 export const compressionSection: WorkspaceSectionModule = {
   definition: {
     id: 'compression',
-    label: 'Compression',
-    title: 'Control the dynamics',
-    description: 'Bring quiet notes forward and smooth hard peaks without flattening your touch.',
+    label: 'Compressor',
+    title: 'Compressor',
   },
 
   action(snapshot) {
@@ -35,21 +34,52 @@ export const compressionSection: WorkspaceSectionModule = {
   bind(runtime) {
     const current = () => runtime.engine.snapshot;
     const restore = () => this.sync(runtime, current());
-    bindContinuousControl(runtime.root, 'compression-amount', (compressionAmount) => runtime.engine.applyControls({ ...current().controls, compressionAmount }), restore);
+
+    // Compression amount slider
+    bindContinuousControl(
+      runtime.root,
+      'compression-amount',
+      (compressionAmount) =>
+        runtime.engine.applyControls({ ...current().controls, compressionAmount }),
+      restore
+    );
+
+    // Compression enable toggle
     runtime.root.querySelector<HTMLInputElement>('#compression-enabled')?.addEventListener('change', (event) => {
-      runtime.engine.applyControls({ ...current().controls, compressionBypassed: !(event.currentTarget as HTMLInputElement).checked });
+      runtime.engine.applyControls({
+        ...current().controls,
+        compressionBypassed: !(event.currentTarget as HTMLInputElement).checked,
+      });
     });
+
+    // Level match checkbox
     runtime.root.querySelector<HTMLInputElement>('#compression-level-match')?.addEventListener('change', (event) => {
-      runtime.engine.applyControls({ ...current().controls, compressionLevelMatch: (event.currentTarget as HTMLInputElement).checked });
+      runtime.engine.applyControls({
+        ...current().controls,
+        compressionLevelMatch: (event.currentTarget as HTMLInputElement).checked,
+      });
     });
   },
 
   sync(runtime, snapshot) {
     const { root } = runtime;
-    setControlValue(root, 'compression-amount', snapshot.controls.compressionAmount, AMP_CONTROL_DEFINITIONS.compressionAmount);
+
+    // Update compression amount
+    setControlValue(
+      root,
+      'compression-amount',
+      snapshot.controls.compressionAmount,
+      AMP_CONTROL_DEFINITIONS.compressionAmount
+    );
+
+    // Update compression state
     setCheckbox(root, 'compression-enabled', !snapshot.controls.compressionBypassed);
     setCheckbox(root, 'compression-level-match', snapshot.controls.compressionLevelMatch);
+
+    // Update reduction meter
     const reduction = root.querySelector<HTMLElement>('#compression-reduction');
-    if (reduction !== null) reduction.textContent = `${snapshot.compressionReductionDb.toFixed(1)} dB`;
+    if (reduction !== null) {
+      reduction.textContent = `${snapshot.compressionReductionDb.toFixed(1)} dB`;
+    }
   },
 };

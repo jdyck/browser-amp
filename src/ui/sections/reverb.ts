@@ -1,4 +1,8 @@
-import { AMP_CONTROL_DEFINITIONS, REVERB_PROFILES, isReverbProfile } from '../../signalChain/settings';
+import {
+    AMP_CONTROL_DEFINITIONS,
+    REVERB_PROFILES,
+    isReverbProfile
+} from '../../signalChain/settings';
 import {
   DEFAULT_REVERB_SETTINGS,
   reverbControlEntries,
@@ -29,21 +33,45 @@ export function createReverbSection(): WorkspaceSectionModule {
 
   function bindControls(runtime: SectionRuntime): void {
     const current = () => runtime.engine.snapshot;
-    bindContinuousControl(runtime.root, 'reverb-amount', (reverbAmount) => runtime.engine.applyControls({ ...current().controls, reverbAmount }), () => module.sync(runtime, current()));
+
+    // Reverb amount control
+    bindContinuousControl(
+      runtime.root,
+      'reverb-amount',
+      (reverbAmount) => runtime.engine.applyControls({ ...current().controls, reverbAmount }),
+      () => module.sync(runtime, current())
+    );
+
+    // Accordion toggle tracking
     for (const section of ['main', 'advanced'] as const) {
       const details = runtime.root.querySelector<HTMLDetailsElement>(`#reverb-${section}`);
       details?.addEventListener('toggle', () => {
-        if (details.isConnected) accordionOpen[section] = details.open;
+        if (details.isConnected) {
+          accordionOpen[section] = details.open;
+        }
       });
     }
+
+    // Bind reverb profile-specific controls
     for (const [key] of reverbControlEntries(current().controls.reverbProfile)) {
-      bindContinuousControl(runtime.root, `reverb-${key}`, (value) => {
-        const controls = current().controls;
-        runtime.engine.applyControls({ ...controls, reverbSettings: {
-          ...controls.reverbSettings,
-          [controls.reverbProfile]: { ...controls.reverbSettings[controls.reverbProfile], [key]: value },
-        } });
-      }, () => module.sync(runtime, current()));
+      bindContinuousControl(
+        runtime.root,
+        `reverb-${key}`,
+        (value) => {
+          const controls = current().controls;
+          runtime.engine.applyControls({
+            ...controls,
+            reverbSettings: {
+              ...controls.reverbSettings,
+              [controls.reverbProfile]: {
+                ...controls.reverbSettings[controls.reverbProfile],
+                [key]: value,
+              },
+            },
+          });
+        },
+        () => module.sync(runtime, current())
+      );
     }
   }
 
@@ -51,8 +79,7 @@ export function createReverbSection(): WorkspaceSectionModule {
     definition: {
       id: 'reverb',
       label: 'Reverb',
-      title: 'Add some space',
-      description: 'Choose a room, plate, spring, or hall and place your guitar inside it.',
+      title: 'Reverb',
     },
 
     action(snapshot) {
@@ -64,7 +91,7 @@ export function createReverbSection(): WorkspaceSectionModule {
       return `<div class="section-stack">
         <section class="panel reverb-choice-panel" aria-label="Reverb">
           <div class="panel-heading compact">
-            <p class="panel-eyebrow">Reverb type</p>
+<!--            <p class="panel-eyebrow">Reverb type</p>-->
             <button id="reset-reverb" type="button" class="text-action" title="Restore only this module's Main and Advanced settings. Amount and Enable Reverb stay unchanged.">Reset This Reverb</button>
           </div>
           ${choiceSelector('reverb-profile', 'Reverb Module', controls.reverbProfile, REVERB_PROFILES)}
@@ -76,44 +103,85 @@ export function createReverbSection(): WorkspaceSectionModule {
 
     bind(runtime) {
       const current = () => runtime.engine.snapshot;
+
+      // Reverb profile selection
       runtime.root.querySelector<HTMLSelectElement>('#reverb-profile')?.addEventListener('change', (event) => {
         const reverbProfile = (event.currentTarget as HTMLSelectElement).value;
-        if (isReverbProfile(reverbProfile)) runtime.engine.applyControls({ ...current().controls, reverbProfile });
+        if (isReverbProfile(reverbProfile)) {
+          runtime.engine.applyControls({ ...current().controls, reverbProfile });
+        }
       });
+
+      // Reset reverb settings button
       runtime.root.querySelector<HTMLButtonElement>('#reset-reverb')?.addEventListener('click', () => {
         const controls = current().controls;
-        runtime.engine.applyControls({ ...controls, reverbSettings: {
-          ...controls.reverbSettings,
-          [controls.reverbProfile]: { ...DEFAULT_REVERB_SETTINGS[controls.reverbProfile] },
-        } });
+        runtime.engine.applyControls({
+          ...controls,
+          reverbSettings: {
+            ...controls.reverbSettings,
+            [controls.reverbProfile]: { ...DEFAULT_REVERB_SETTINGS[controls.reverbProfile] },
+          },
+        });
       });
+
+      // Reverb enable toggle
       runtime.root.querySelector<HTMLInputElement>('#reverb-enabled')?.addEventListener('change', (event) => {
-        runtime.engine.applyControls({ ...current().controls, reverbBypassed: !(event.currentTarget as HTMLInputElement).checked });
+        runtime.engine.applyControls({
+          ...current().controls,
+          reverbBypassed: !(event.currentTarget as HTMLInputElement).checked,
+        });
       });
+
+      // Bind individual reverb controls
       bindControls(runtime);
     },
 
     sync(runtime, snapshot) {
       const { root } = runtime;
       const controls = snapshot.controls;
+
+      // Update reverb profile selector
       const profile = root.querySelector<HTMLSelectElement>('#reverb-profile');
-      if (profile !== null && profile.value !== controls.reverbProfile) profile.value = controls.reverbProfile;
+      if (profile !== null && profile.value !== controls.reverbProfile) {
+        profile.value = controls.reverbProfile;
+      }
+
+      // Update profile help text
       const help = root.querySelector<HTMLElement>('#reverb-profile-help');
-      if (help !== null) help.textContent = REVERB_PROFILES[controls.reverbProfile].description;
+      if (help !== null) {
+        help.textContent = REVERB_PROFILES[controls.reverbProfile].description;
+      }
+
+      // Rebuild controls if profile changed
       const settings = root.querySelector<HTMLElement>('#reverb-settings');
       if (settings !== null && settings.dataset.profile !== controls.reverbProfile) {
+        // Save accordion states before rebuilding
         for (const section of ['main', 'advanced'] as const) {
           const details = root.querySelector<HTMLDetailsElement>(`#reverb-${section}`);
-          if (details !== null) accordionOpen[section] = details.open;
+          if (details !== null) {
+            accordionOpen[section] = details.open;
+          }
         }
+
+        // Rebuild controls UI
         settings.innerHTML = accordions(controls);
         settings.dataset.profile = controls.reverbProfile;
         bindControls(runtime);
       }
+
+      // Update control values
       const parameters = reverbParameters(controls.reverbProfile, controls.reverbSettings);
-      for (const [key, definition] of reverbControlEntries(controls.reverbProfile)) setControlValue(root, `reverb-${key}`, parameters[key], definition);
+      for (const [key, definition] of reverbControlEntries(controls.reverbProfile)) {
+        setControlValue(root, `reverb-${key}`, parameters[key], definition);
+      }
+
+      // Update reverb amount
       setControlValue(root, 'reverb-amount', controls.reverbAmount, AMP_CONTROL_DEFINITIONS.reverbAmount);
+
+      // Update reverb enable state
       setCheckbox(root, 'reverb-enabled', !controls.reverbBypassed);
+
+      // Sync choice card appearance
       syncChoiceCards(root, 'reverb-profile', controls.reverbProfile);
     },
   };

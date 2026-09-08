@@ -28,8 +28,7 @@ export const masterSection: WorkspaceSectionModule = {
   definition: {
     id: 'master',
     label: 'Master',
-    title: 'Set the final level',
-    description: 'Choose the listening output, set the final volume, and check the signal before you play.',
+    title: 'Master',
   },
 
   action() {
@@ -39,7 +38,7 @@ export const masterSection: WorkspaceSectionModule = {
   content(snapshot, recovery) {
     return `<div class="section-stack">
       <section class="panel" aria-labelledby="monitoring-title">
-        <div class="panel-heading"><div><p class="panel-eyebrow">Output routing</p><h2 id="monitoring-title">Processed Monitoring</h2></div><span class="placeholder-art" aria-hidden="true">[img]</span></div>
+<!--        <div class="panel-heading"><div><p class="panel-eyebrow">Output routing</p><h2 id="monitoring-title">Processed Monitoring</h2></div><span class="placeholder-art" aria-hidden="true">[img]</span></div>-->
         <p class="panel-description">${routingDescription(snapshot)}</p>
         ${outputSelector(snapshot)}
         <p id="latency-value" class="${FIELD_HELP}" ${snapshot.latency === undefined ? 'hidden' : ''}>${latencyDescription(snapshot.latency)}</p>
@@ -57,26 +56,60 @@ export const masterSection: WorkspaceSectionModule = {
 
   bind(runtime) {
     const current = () => runtime.engine.snapshot;
+
+    // Reset controls button
     runtime.root.querySelector<HTMLButtonElement>('#reset-controls')?.addEventListener('click', runtime.resetControls);
+
+    // Output device selection
     runtime.root.querySelector<HTMLSelectElement>('#output-device')?.addEventListener('change', (event) => {
       const deviceId = (event.currentTarget as HTMLSelectElement).value;
       void runtime.engine.selectOutput(deviceId === '' ? undefined : deviceId);
     });
-    runtime.root.querySelector<HTMLButtonElement>('#retry-output')?.addEventListener('click', () => void runtime.engine.selectOutput(current().outputRouting.selectedDeviceId));
-    bindContinuousControl(runtime.root, 'master-volume', (masterVolumeDb) => runtime.engine.applyControls({ ...current().controls, masterVolumeDb }), () => this.sync(runtime, current()));
-    runtime.root.querySelector<HTMLButtonElement>('#clear-clip')?.addEventListener('click', () => runtime.engine.clearClip());
+
+    // Retry output selection
+    runtime.root.querySelector<HTMLButtonElement>('#retry-output')?.addEventListener('click', () =>
+      void runtime.engine.selectOutput(current().outputRouting.selectedDeviceId)
+    );
+
+    // Master volume control
+    bindContinuousControl(
+      runtime.root,
+      'master-volume',
+      (masterVolumeDb) => runtime.engine.applyControls({ ...current().controls, masterVolumeDb }),
+      () => this.sync(runtime, current())
+    );
+
+    // Clear clip button
+    runtime.root.querySelector<HTMLButtonElement>('#clear-clip')?.addEventListener('click', () =>
+      runtime.engine.clearClip()
+    );
   },
 
   sync(runtime, snapshot) {
     const { root } = runtime;
-    setControlValue(root, 'master-volume', snapshot.controls.masterVolumeDb, AMP_CONTROL_DEFINITIONS.masterVolumeDb);
+
+    // Update master volume
+    setControlValue(
+      root,
+      'master-volume',
+      snapshot.controls.masterVolumeDb,
+      AMP_CONTROL_DEFINITIONS.masterVolumeDb
+    );
+
+    // Update clip indicator
     const indicator = root.querySelector<HTMLElement>('#clip-indicator');
-    const clear = root.querySelector<HTMLButtonElement>('#clear-clip');
     if (indicator !== null) {
       indicator.classList.toggle('is-active', snapshot.clipLatched);
       indicator.setAttribute('aria-hidden', String(!snapshot.clipLatched));
     }
-    if (clear !== null) clear.disabled = !snapshot.clipLatched;
+
+    // Update clear clip button
+    const clear = root.querySelector<HTMLButtonElement>('#clear-clip');
+    if (clear !== null) {
+      clear.disabled = !snapshot.clipLatched;
+    }
+
+    // Update latency display
     const latency = root.querySelector<HTMLElement>('#latency-value');
     if (latency !== null) {
       latency.hidden = snapshot.latency === undefined;

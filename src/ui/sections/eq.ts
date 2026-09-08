@@ -5,9 +5,8 @@ import type { WorkspaceSectionModule } from './types';
 export const eqSection: WorkspaceSectionModule = {
   definition: {
     id: 'eq',
-    label: 'EQ',
-    title: 'Shape the spectrum',
-    description: 'Balance lows, focus the mids, and add or remove air from the finished amp sound.',
+    label: 'Equalizer',
+    title: 'Equalizer',
   },
 
   action(snapshot) {
@@ -32,25 +31,76 @@ export const eqSection: WorkspaceSectionModule = {
   bind(runtime) {
     const current = () => runtime.engine.snapshot;
     const restore = () => this.sync(runtime, current());
+
+    // EQ enable toggle
     runtime.root.querySelector<HTMLInputElement>('#eq-enabled')?.addEventListener('change', (event) => {
-      runtime.engine.applyControls({ ...current().controls, eqBypassed: !(event.currentTarget as HTMLInputElement).checked });
+      runtime.engine.applyControls({
+        ...current().controls,
+        eqBypassed: !(event.currentTarget as HTMLInputElement).checked,
+      });
     });
-    bindContinuousControl(runtime.root, 'low-shelf', (lowShelfDb) => runtime.engine.applyControls({ ...current().controls, lowShelfDb }), restore);
-    bindContinuousControl(runtime.root, 'low-mid-frequency', (lowMidFrequencyHz) => runtime.engine.applyControls({ ...current().controls, lowMidFrequencyHz }), restore);
-    bindContinuousControl(runtime.root, 'low-mid', (lowMidDb) => runtime.engine.applyControls({ ...current().controls, lowMidDb }), restore);
-    bindContinuousControl(runtime.root, 'upper-mid-frequency', (upperMidFrequencyHz) => runtime.engine.applyControls({ ...current().controls, upperMidFrequencyHz }), restore);
-    bindContinuousControl(runtime.root, 'upper-mid', (upperMidDb) => runtime.engine.applyControls({ ...current().controls, upperMidDb }), restore);
-    bindContinuousControl(runtime.root, 'high-shelf', (highShelfDb) => runtime.engine.applyControls({ ...current().controls, highShelfDb }), restore);
+
+    // Bind each EQ control
+    bindContinuousControl(
+      runtime.root,
+      'low-shelf',
+      (lowShelfDb) => runtime.engine.applyControls({ ...current().controls, lowShelfDb }),
+      restore
+    );
+    bindContinuousControl(
+      runtime.root,
+      'low-mid-frequency',
+      (lowMidFrequencyHz) => runtime.engine.applyControls({ ...current().controls, lowMidFrequencyHz }),
+      restore
+    );
+    bindContinuousControl(
+      runtime.root,
+      'low-mid',
+      (lowMidDb) => runtime.engine.applyControls({ ...current().controls, lowMidDb }),
+      restore
+    );
+    bindContinuousControl(
+      runtime.root,
+      'upper-mid-frequency',
+      (upperMidFrequencyHz) => runtime.engine.applyControls({ ...current().controls, upperMidFrequencyHz }),
+      restore
+    );
+    bindContinuousControl(
+      runtime.root,
+      'upper-mid',
+      (upperMidDb) => runtime.engine.applyControls({ ...current().controls, upperMidDb }),
+      restore
+    );
+    bindContinuousControl(
+      runtime.root,
+      'high-shelf',
+      (highShelfDb) => runtime.engine.applyControls({ ...current().controls, highShelfDb }),
+      restore
+    );
   },
 
   sync(runtime, snapshot) {
     const { root } = runtime;
     const controls = snapshot.controls;
+
+    // Update EQ enable state
     setCheckbox(root, 'eq-enabled', !controls.eqBypassed);
+
+    // Update all EQ control values
     setControlValue(root, 'low-shelf', controls.lowShelfDb, AMP_CONTROL_DEFINITIONS.lowShelfDb);
-    setControlValue(root, 'low-mid-frequency', controls.lowMidFrequencyHz, AMP_CONTROL_DEFINITIONS.lowMidFrequencyHz);
+    setControlValue(
+      root,
+      'low-mid-frequency',
+      controls.lowMidFrequencyHz,
+      AMP_CONTROL_DEFINITIONS.lowMidFrequencyHz
+    );
     setControlValue(root, 'low-mid', controls.lowMidDb, AMP_CONTROL_DEFINITIONS.lowMidDb);
-    setControlValue(root, 'upper-mid-frequency', controls.upperMidFrequencyHz, AMP_CONTROL_DEFINITIONS.upperMidFrequencyHz);
+    setControlValue(
+      root,
+      'upper-mid-frequency',
+      controls.upperMidFrequencyHz,
+      AMP_CONTROL_DEFINITIONS.upperMidFrequencyHz
+    );
     setControlValue(root, 'upper-mid', controls.upperMidDb, AMP_CONTROL_DEFINITIONS.upperMidDb);
     setControlValue(root, 'high-shelf', controls.highShelfDb, AMP_CONTROL_DEFINITIONS.highShelfDb);
   },

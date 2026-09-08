@@ -117,34 +117,50 @@ export interface AmpChoiceDefinition {
 
 export type AmpControlDefinition = AmpKnobDefinition | AmpChoiceDefinition;
 
-const knob = (label: string): AmpKnobDefinition => ({ kind: 'knob', label, minimum: 0, maximum: 10, step: 0.1, fractionDigits: 1 });
+const knob = (label: string): AmpKnobDefinition =>
+  ({ kind: 'knob', label, minimum: 0, maximum: 10, step: 0.1, fractionDigits: 1 });
 const choice = (label: string, options: ReadonlyArray<readonly [string, string]>): AmpChoiceDefinition => ({ kind: 'choice', label, options });
 
 export const AMP_MODEL_CONTROLS = {
   'amp.studio-clean-v1': {
-    gain: knob('Gain'), bass: knob('Bass'), middle: knob('Middle'), treble: knob('Treble'),
+    gain: knob('Gain'),
+    bass: knob('Bass'),
+    middle: knob('Middle'),
+    treble: knob('Treble'),
     headroom: choice('Headroom', [['high', 'High'], ['maximum', 'Maximum']]),
   },
   'amp.warm-jazz-combo-v1': {
-    volume: knob('Volume'), bass: knob('Bass'), middle: knob('Middle'), treble: knob('Treble'),
+    volume: knob('Volume'),
+    bass: knob('Bass'),
+    middle: knob('Middle'),
+    treble: knob('Treble'),
     color: choice('Color', [['dark', 'Dark'], ['normal', 'Normal'], ['bright', 'Bright']]),
     input: choice('Input', [['normal', 'Normal'], ['low', 'Low']]),
   },
   'amp.blackface-combo-v1': {
-    volume: knob('Volume'), bass: knob('Bass'), treble: knob('Treble'),
+    volume: knob('Volume'),
+    bass: knob('Bass'),
+    treble: knob('Treble'),
     bright: choice('Bright', [['off', 'Off'], ['on', 'On']]),
   },
   'amp.high-headroom-american-v1': {
-    volume: knob('Volume'), bass: knob('Bass'), middle: knob('Middle'), treble: knob('Treble'),
+    volume: knob('Volume'),
+    bass: knob('Bass'),
+    middle: knob('Middle'),
+    treble: knob('Treble'),
     bright: choice('Bright', [['off', 'Off'], ['on', 'On']]),
     headroom: choice('Headroom', [['normal', 'Normal'], ['ultra', 'Ultra']]),
   },
   'amp.small-tweed-combo-v1': {
-    volume: knob('Volume'), tone: knob('Tone'),
+    volume: knob('Volume'),
+    tone: knob('Tone'),
     input: choice('Input', [['normal', 'Normal'], ['low', 'Low']]),
   },
   'amp.british-chime-v1': {
-    volume: knob('Volume'), bass: knob('Bass'), treble: knob('Treble'), cut: knob('Cut'),
+    volume: knob('Volume'),
+    bass: knob('Bass'),
+    treble: knob('Treble'),
+    cut: knob('Cut'),
     channel: choice('Channel', [['normal', 'Normal'], ['top-boost', 'Top Boost']]),
   },
 } as const satisfies { readonly [Id in JazzAmpId]: Readonly<Record<keyof JazzAmpSettings[Id], AmpControlDefinition>> };

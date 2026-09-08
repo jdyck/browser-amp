@@ -44,8 +44,7 @@ export const inputSection: WorkspaceSectionModule = {
   definition: {
     id: 'input',
     label: 'Input',
-    title: 'Start with a clean signal',
-    description: 'Connect your guitar, set the input level, and quiet the gaps before shaping your tone.',
+    title: 'Input',
   },
 
   action(snapshot, recovery) {
@@ -59,11 +58,11 @@ export const inputSection: WorkspaceSectionModule = {
   content(snapshot, recovery) {
     return `<div class="section-stack">
       <section class="panel" aria-labelledby="input-title">
-        <div class="panel-heading">
-          <div><p class="panel-eyebrow">Source</p><h2 id="input-title">Live Guitar Input</h2></div>
-          <span class="placeholder-art" aria-hidden="true">[img]</span>
-        </div>
-        <p id="connection-description" class="panel-description">${connectionDescription(snapshot)}</p>
+<!--        <div class="panel-heading">-->
+<!--          <div><p class="panel-eyebrow">Source</p><h2 id="input-title">Live Guitar Input</h2></div>-->
+<!--          <span class="placeholder-art" aria-hidden="true">[img]</span>-->
+<!--        </div>-->
+<!--        <p id="connection-description" class="panel-description">${connectionDescription(snapshot)}</p>-->
         <div class="select-grid">
           <div>${deviceSelector(snapshot)}</div>
           ${snapshot.inputChannelCount > 1 ? `<div>${channelSelector(snapshot)}</div>` : ''}
@@ -73,14 +72,16 @@ export const inputSection: WorkspaceSectionModule = {
       </section>
 
       <section class="panel control-panel" aria-label="Input Trim">
-        <div class="panel-heading compact"><div><p class="panel-eyebrow">Level</p><h2>Input Trim</h2></div></div>
-        ${dbControl('input-trim', 'Input Trim', snapshot.controls.inputTrimDb, AMP_CONTROL_DEFINITIONS.inputTrimDb, 'Set the level feeding the amp without clipping the input.')}
+<!--        <div class="panel-heading compact"><div><p class="panel-eyebrow">Level</p><h2>Input Trim</h2></div></div>-->
+        ${dbControl('input-trim', 'Level', snapshot.controls.inputTrimDb, AMP_CONTROL_DEFINITIONS.inputTrimDb, 'Set the level feeding the amp without clipping the input.')}
       </section>
 
       <section class="panel control-panel" aria-label="Noise Suppression">
         <div class="panel-heading">
-          <div><p class="panel-eyebrow">Cleanup</p><h2>Noise Gate</h2></div>
-          ${stageToggle('noise-gate-enabled', 'Enable Noise Suppression', !snapshot.controls.noiseGateBypassed)}
+          <div>
+<!--          <p class="panel-eyebrow">Cleanup</p>-->
+          <h2>Noise Gate</h2></div>
+          ${stageToggle('noise-gate-enabled', '', !snapshot.controls.noiseGateBypassed)}
         </div>
         <div class="control-list">
           ${dbControl('noise-gate-threshold', 'Threshold', snapshot.controls.noiseGateThresholdDb, AMP_CONTROL_DEFINITIONS.noiseGateThresholdDb, 'Choose when the gate opens.')}
@@ -95,35 +96,104 @@ export const inputSection: WorkspaceSectionModule = {
   bind(runtime) {
     const current = () => runtime.engine.snapshot;
     const restore = () => this.sync(runtime, current());
-    runtime.root.querySelector<HTMLButtonElement>('#connect')?.addEventListener('click', () => void runtime.engine.connectInput({ deviceId: current().selectedInputDeviceId }));
-    runtime.root.querySelector<HTMLButtonElement>('#disconnect')?.addEventListener('click', () => void runtime.engine.disconnectInput());
+
+    // Connection buttons
+    runtime.root.querySelector<HTMLButtonElement>('#connect')?.addEventListener('click', () =>
+      void runtime.engine.connectInput({ deviceId: current().selectedInputDeviceId })
+    );
+    runtime.root.querySelector<HTMLButtonElement>('#disconnect')?.addEventListener('click', () =>
+      void runtime.engine.disconnectInput()
+    );
+
+    // Input device selection
     runtime.root.querySelector<HTMLSelectElement>('#input-device')?.addEventListener('change', (event) => {
       const deviceId = (event.currentTarget as HTMLSelectElement).value;
       void runtime.engine.connectInput({ deviceId: deviceId === '' ? undefined : deviceId });
     });
+
+    // Input channel selection
     runtime.root.querySelector<HTMLSelectElement>('#input-channel')?.addEventListener('change', (event) => {
       runtime.engine.applySettings({
         selectedInputDeviceId: current().selectedInputDeviceId,
         inputChannel: Number((event.currentTarget as HTMLSelectElement).value),
       });
     });
-    bindContinuousControl(runtime.root, 'input-trim', (inputTrimDb) => runtime.engine.applyControls({ ...current().controls, inputTrimDb }), restore);
-    bindContinuousControl(runtime.root, 'noise-gate-threshold', (noiseGateThresholdDb) => runtime.engine.applyControls({ ...current().controls, noiseGateThresholdDb }), restore);
-    bindContinuousControl(runtime.root, 'noise-gate-range', (noiseGateRangeDb) => runtime.engine.applyControls({ ...current().controls, noiseGateRangeDb }), restore);
-    bindContinuousControl(runtime.root, 'noise-gate-release', (noiseGateReleaseMs) => runtime.engine.applyControls({ ...current().controls, noiseGateReleaseMs }), restore);
+
+    // Input level control
+    bindContinuousControl(
+      runtime.root,
+      'input-trim',
+      (inputTrimDb) => runtime.engine.applyControls({ ...current().controls, inputTrimDb }),
+      restore
+    );
+
+    // Noise gate controls
+    bindContinuousControl(
+      runtime.root,
+      'noise-gate-threshold',
+      (noiseGateThresholdDb) => runtime.engine.applyControls({ ...current().controls, noiseGateThresholdDb }),
+      restore
+    );
+    bindContinuousControl(
+      runtime.root,
+      'noise-gate-range',
+      (noiseGateRangeDb) => runtime.engine.applyControls({ ...current().controls, noiseGateRangeDb }),
+      restore
+    );
+    bindContinuousControl(
+      runtime.root,
+      'noise-gate-release',
+      (noiseGateReleaseMs) => runtime.engine.applyControls({ ...current().controls, noiseGateReleaseMs }),
+      restore
+    );
+
+    // Noise gate enable toggle
     runtime.root.querySelector<HTMLInputElement>('#noise-gate-enabled')?.addEventListener('change', (event) => {
-      runtime.engine.applyControls({ ...current().controls, noiseGateBypassed: !(event.currentTarget as HTMLInputElement).checked });
+      runtime.engine.applyControls({
+        ...current().controls,
+        noiseGateBypassed: !(event.currentTarget as HTMLInputElement).checked,
+      });
     });
   },
 
   sync(runtime, snapshot) {
     const { root } = runtime;
-    setControlValue(root, 'input-trim', snapshot.controls.inputTrimDb, AMP_CONTROL_DEFINITIONS.inputTrimDb);
-    setControlValue(root, 'noise-gate-threshold', snapshot.controls.noiseGateThresholdDb, AMP_CONTROL_DEFINITIONS.noiseGateThresholdDb);
-    setControlValue(root, 'noise-gate-range', snapshot.controls.noiseGateRangeDb, AMP_CONTROL_DEFINITIONS.noiseGateRangeDb);
-    setControlValue(root, 'noise-gate-release', snapshot.controls.noiseGateReleaseMs, AMP_CONTROL_DEFINITIONS.noiseGateReleaseMs);
+
+    // Update input level
+    setControlValue(
+      root,
+      'input-trim',
+      snapshot.controls.inputTrimDb,
+      AMP_CONTROL_DEFINITIONS.inputTrimDb
+    );
+
+    // Update noise gate values
+    setControlValue(
+      root,
+      'noise-gate-threshold',
+      snapshot.controls.noiseGateThresholdDb,
+      AMP_CONTROL_DEFINITIONS.noiseGateThresholdDb
+    );
+    setControlValue(
+      root,
+      'noise-gate-range',
+      snapshot.controls.noiseGateRangeDb,
+      AMP_CONTROL_DEFINITIONS.noiseGateRangeDb
+    );
+    setControlValue(
+      root,
+      'noise-gate-release',
+      snapshot.controls.noiseGateReleaseMs,
+      AMP_CONTROL_DEFINITIONS.noiseGateReleaseMs
+    );
+
+    // Update noise gate state
     setCheckbox(root, 'noise-gate-enabled', !snapshot.controls.noiseGateBypassed);
+
+    // Update reduction meter
     const reduction = root.querySelector<HTMLElement>('#noise-gate-reduction');
-    if (reduction !== null) reduction.textContent = `${snapshot.noiseGateReductionDb.toFixed(1)} dB`;
+    if (reduction !== null) {
+      reduction.textContent = `${snapshot.noiseGateReductionDb.toFixed(1)} dB`;
+    }
   },
 };

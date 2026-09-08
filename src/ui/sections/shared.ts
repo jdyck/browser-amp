@@ -20,10 +20,12 @@ export function choiceSelector(
 ): string {
   return `<label class="visually-hidden" for="${id}">${label}</label>
     <select id="${id}" class="visually-hidden" aria-describedby="${id}-help">
-      ${Object.entries(options).map(([value, option]) => `<option value="${value}" ${value === selected ? 'selected' : ''}>${option.label}</option>`).join('')}
+      ${Object.entries(options).map(([value, option]) => 
+    `<option value="${value}" ${value === selected ? 'selected' : ''}>${option.label}</option>`).join('')}
     </select>
     <div class="choice-grid" role="list" aria-label="${label} choices">
-      ${Object.entries(options).map(([value, option]) => `<button type="button" class="choice-card ${value === selected ? 'is-selected' : ''}" data-select-id="${id}" data-select-value="${value}" aria-pressed="${String(value === selected)}"><span class="choice-art" aria-hidden="true">[img]</span><span>${option.label}</span></button>`).join('')}
+      ${Object.entries(options).map(([value, option]) => 
+    `<button type="button" class="choice-card ${value === selected ? 'is-selected' : ''}" data-select-id="${id}" data-select-value="${value}" aria-pressed="${String(value === selected)}"><span class="choice-art" aria-hidden="true">[img]</span><span>${option.label}</span></button>`).join('')}
     </div>`;
 }
 
