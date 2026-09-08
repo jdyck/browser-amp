@@ -159,7 +159,7 @@ export async function installAudioBrowser(page: Page, options: {
   }, options);
 }
 
-export type AmpSection = 'Input' | 'Amp + Cabinet' | 'Compression' | 'EQ' | 'Reverb' | 'Master';
+export type AmpSection = 'Input' | 'Amp + Cabinet' | 'Amplifier' | 'Compression' | 'EQ' | 'Reverb' | 'Master';
 
 export async function openSection(page: Page, section: AmpSection): Promise<void> {
   await page.getByRole('button', { name: section, exact: true }).click();
@@ -170,4 +170,3 @@ export async function resetControlsFrom(page: Page, section: AmpSection): Promis
   await page.getByRole('button', { name: 'Reset Controls' }).click();
   await openSection(page, section);
 }
-

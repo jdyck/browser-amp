@@ -2,8 +2,9 @@ import {
   AMP_MODEL_CONTROLS,
   type AmpChoiceDefinition,
   type AmpKnobDefinition,
+  type AmpSwitchDefinition,
   type JazzAmpState,
-} from '../../signalChain/ampModels';
+} from '../../amps';
 
 import {
   AMP_MODELS,
@@ -18,17 +19,83 @@ import {
   choiceSelector,
   knobControl,
   setControlValue,
-  syncChoiceCards
+  syncChoiceCards,
 } from './shared';
 
 import type { SectionRuntime, WorkspaceSectionModule } from './types';
 
+function ampSwitchControl(key: string, label: string, selected: boolean): string {
+  return `
+    <div class="amp-control amp-switch-control">
+      <label class="field-label">${label}</label>
+      <button
+        type="button"
+        class="amp-binary-switch ${selected ? 'is-on' : ''}"
+        data-amp-switch-toggle="${key}"
+        role="switch"
+        aria-checked="${String(selected)}"
+        aria-label="${label}"
+      >
+        <span class="toggle-track" aria-hidden="true"><span></span></span>
+      </button>
+    </div>
+  `.trim();
+}
+
+function ampChoiceControl(
+  key: string,
+  label: string,
+  selected: string,
+  definition: AmpChoiceDefinition,
+): string {
+  const id = `amp-control-${key}`;
+  const options = definition.options
+    .map(
+      ([option, optionLabel]) =>
+        `<option value="${option}" ${option === selected ? 'selected' : ''}>${optionLabel}</option>`,
+    )
+    .join('');
+
+  const tabs = definition.options
+    .map(
+      ([option, optionLabel]) => `
+        <button
+          type="button"
+          class="amp-choice-tab ${option === selected ? 'is-selected' : ''}"
+          data-amp-choice-key="${key}"
+          data-amp-choice-value="${option}"
+          role="radio"
+          aria-checked="${String(option === selected)}"
+        >${optionLabel}</button>
+      `,
+    )
+    .join('');
+
+  return `
+    <div class="amp-control amp-choice-control">
+      <label class="field-label">${label}</label>
+      <div class="amp-choice-tabs" role="radiogroup" aria-label="${label}">
+        ${tabs}
+      </div>
+      <select
+        id="${id}"
+        class="visually-hidden"
+        data-amp-control="${key}"
+        tabindex="-1"
+        aria-hidden="true"
+      >
+        ${options}
+      </select>
+    </div>
+  `.trim();
+}
+
 function ampModelControls(controls: AmpControlSettings): string {
   const definitions = AMP_MODEL_CONTROLS[controls.ampModel] as Readonly<
-    Record<string, AmpKnobDefinition | AmpChoiceDefinition>
+    Record<string, AmpKnobDefinition | AmpSwitchDefinition | AmpChoiceDefinition>
   >;
   const state = controls.ampSettings[controls.ampModel] as unknown as Readonly<
-    Record<string, number | string>
+    Record<string, number | string | boolean>
   >;
 
   return Object.entries(definitions)
@@ -40,21 +107,11 @@ function ampModelControls(controls: AmpControlSettings): string {
         return knobControl(id, definition.label, value as number, definition);
       }
 
-      const options = definition.options
-        .map(
-          ([option, label]) =>
-            `<option value="${option}" ${option === value ? 'selected' : ''}>${label}</option>`
-        )
-        .join('');
+      if (definition.kind === 'switch') {
+        return ampSwitchControl(key, definition.label, value as boolean);
+      }
 
-      return `
-        <div class="select-control">
-          <label for="${id}" class="field-label">${definition.label}</label>
-          <select id="${id}" data-amp-control="${key}">
-            ${options}
-          </select>
-        </div>
-      `.trim();
+      return ampChoiceControl(key, definition.label, value as string, definition);
     })
     .join('\n  ');
 }
@@ -62,11 +119,11 @@ function ampModelControls(controls: AmpControlSettings): string {
 function bindAmpModelControls(runtime: SectionRuntime): void {
   const current = () => runtime.engine.snapshot;
   const definitions = AMP_MODEL_CONTROLS[current().controls.ampModel] as Readonly<
-    Record<string, AmpKnobDefinition | AmpChoiceDefinition>
+    Record<string, AmpKnobDefinition | AmpSwitchDefinition | AmpChoiceDefinition>
   >;
 
   for (const [key, definition] of Object.entries(definitions)) {
-    const apply = (value: number | string) => {
+    const apply = (value: number | string | boolean) => {
       const controls = current().controls;
       const selected = controls.ampModel;
 
@@ -76,7 +133,7 @@ function bindAmpModelControls(runtime: SectionRuntime): void {
           ...controls.ampSettings,
           [selected]: {
             ...controls.ampSettings[selected],
-            [key]: value
+            [key]: value,
           } as JazzAmpState,
         },
       });
@@ -87,27 +144,69 @@ function bindAmpModelControls(runtime: SectionRuntime): void {
         runtime.root,
         `amp-control-${key}`,
         apply,
-        () => ampSection.sync(runtime, current())
+        () => ampSection.sync(runtime, current()),
       );
+    } else if (definition.kind === 'switch') {
+      const toggle = runtime.root.querySelector<HTMLButtonElement>(
+        `[data-amp-switch-toggle="${key}"]`,
+      );
+      toggle?.addEventListener('click', () => {
+        apply(toggle.getAttribute('aria-checked') !== 'true');
+      });
     } else {
       const selectElement = runtime.root.querySelector<HTMLSelectElement>(
-        `#amp-control-${key}`
+        `#amp-control-${key}`,
       );
-      selectElement?.addEventListener('change', (event) => {
-        const value = (event.currentTarget as HTMLSelectElement).value;
+      const applyChoice = (value: string) => {
         if (definition.options.some(([option]) => option === value)) {
+          if (selectElement !== null) selectElement.value = value;
           apply(value);
         }
+      };
+
+      selectElement?.addEventListener('change', () => {
+        applyChoice(selectElement.value);
       });
+
+      runtime.root
+        .querySelectorAll<HTMLButtonElement>(`[data-amp-choice-key="${key}"]`)
+        .forEach((button) => {
+          button.addEventListener('click', () => {
+            const value = button.dataset.ampChoiceValue;
+            if (value !== undefined) applyChoice(value);
+          });
+        });
     }
   }
+}
+
+function syncAmpSwitchControl(root: HTMLElement, key: string, value: boolean): void {
+  const toggle = root.querySelector<HTMLButtonElement>(
+    `[data-amp-switch-toggle="${key}"]`,
+  );
+  if (toggle === null) return;
+  toggle.classList.toggle('is-on', value);
+  toggle.setAttribute('aria-checked', String(value));
+}
+
+function syncAmpChoiceControl(root: HTMLElement, key: string, value: string): void {
+  const select = root.querySelector<HTMLSelectElement>(`#amp-control-${key}`);
+  if (select !== null && select.value !== value) select.value = value;
+
+  root
+    .querySelectorAll<HTMLButtonElement>(`[data-amp-choice-key="${key}"]`)
+    .forEach((button) => {
+      const selected = button.dataset.ampChoiceValue === value;
+      button.classList.toggle('is-selected', selected);
+      button.setAttribute('aria-checked', String(selected));
+    });
 }
 
 export const ampSection: WorkspaceSectionModule = {
   definition: {
     id: 'amp',
     label: 'Amplifier',
-    title: 'Amplifier'
+    title: 'Amplifier',
   },
 
   action() {
@@ -118,14 +217,16 @@ export const ampSection: WorkspaceSectionModule = {
     const controls = snapshot.controls;
     return `<div class="section-stack">
       <section class="panel" aria-label="Amp Model">
-<!--        <div class="panel-heading compact"><div><p class="panel-eyebrow">Amp model</p><h2>Pick an amplifier</h2></div></div>-->
         ${choiceSelector('amp-model', 'Amp Model', controls.ampModel, AMP_MODELS)}
         <span id="amp-model-help" class="choice-help">${AMP_MODELS[controls.ampModel].description}</span>
-        <div id="amp-model-controls" class="model-controls" data-model="${controls.ampModel}">${ampModelControls(controls)}</div>
+        <div
+          id="amp-model-controls"
+          class="model-controls"
+          data-model="${controls.ampModel}"
+        >${ampModelControls(controls)}</div>
       </section>
 
       <section class="panel" aria-label="Cabinet">
-<!--        <div class="panel-heading compact"><div><p class="panel-eyebrow">Cabinet</p><h2>Choose the speaker response</h2></div></div>-->
         ${choiceSelector('cabinet-model', 'Cabinet', controls.cabinetModel, CABINET_MODELS)}
         <span id="cabinet-model-help" class="choice-help">${CABINET_MODELS[controls.cabinetModel].description}</span>
       </section>
@@ -181,20 +282,19 @@ export const ampSection: WorkspaceSectionModule = {
 
     // Sync individual control values
     const definitions = AMP_MODEL_CONTROLS[controls.ampModel] as Readonly<
-      Record<string, AmpKnobDefinition | AmpChoiceDefinition>
+      Record<string, AmpKnobDefinition | AmpSwitchDefinition | AmpChoiceDefinition>
     >;
     const ampState = controls.ampSettings[controls.ampModel] as unknown as Readonly<
-      Record<string, number | string>
+      Record<string, number | string | boolean>
     >;
 
     for (const [key, definition] of Object.entries(definitions)) {
       if (definition.kind === 'knob') {
         setControlValue(root, `amp-control-${key}`, ampState[key] as number, definition);
+      } else if (definition.kind === 'switch') {
+        syncAmpSwitchControl(root, key, ampState[key] as boolean);
       } else {
-        const select = root.querySelector<HTMLSelectElement>(`#amp-control-${key}`);
-        if (select !== null && select.value !== ampState[key]) {
-          select.value = ampState[key] as string;
-        }
+        syncAmpChoiceControl(root, key, ampState[key] as string);
       }
     }
 
