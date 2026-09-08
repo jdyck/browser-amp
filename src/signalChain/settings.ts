@@ -24,7 +24,7 @@ export const REVERB_PROFILES = {
   },
   'studio-plate': {
     label: 'Studio Plate',
-    description: 'Smooth, diffuse stereo sustain. The original Browser Amp reverb.',
+    description: 'Smooth, diffuse stereo sustain.',
   },
   'bright-spring': {
     label: 'Bright Spring',

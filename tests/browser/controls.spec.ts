@@ -5,6 +5,8 @@ import { installAudioBrowser, openSection } from '../support/audioBrowser';
 test('synchronizes, clamps, and restores controls without restoring Processed Monitoring', async ({ page }) => {
   await page.goto('./');
 
+  await expect(page.getByText('Tune this amplifier parameter.')).toHaveCount(0);
+
   const inputTrim = page.getByLabel('Input Trim value');
   const inputTrimSlider = page.getByLabel('Input Trim slider');
   await expect(inputTrim).toHaveValue('0.0');
