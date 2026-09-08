@@ -1,9 +1,9 @@
 import {
-  choice,
   knob,
-  normalizeChoice,
+  normalizeBoolean,
   normalizeKnob,
   record,
+  switchControl,
   type AmpControlDefinition,
 } from './types';
 
@@ -12,7 +12,7 @@ export interface BritishChimeSettings {
   readonly bass: number;
   readonly treble: number;
   readonly cut: number;
-  readonly channel: 'normal' | 'top-boost';
+  readonly topBoost: boolean;
 }
 
 export const BRITISH_CHIME_CONTROLS = {
@@ -20,8 +20,10 @@ export const BRITISH_CHIME_CONTROLS = {
   bass: knob('Bass'),
   treble: knob('Treble'),
   cut: knob('Cut'),
-  channel: choice('Channel', [['normal', 'Normal'], ['top-boost', 'Top Boost']]),
-} as const satisfies Readonly<Record<keyof BritishChimeSettings, AmpControlDefinition>>;
+  topBoost: switchControl('Top Boost'),
+} as const satisfies Readonly<
+  Record<keyof BritishChimeSettings, AmpControlDefinition>
+>;
 
 export const britishChime = {
   id: 'amp.british-chime-v1',
@@ -32,7 +34,7 @@ export const britishChime = {
     bass: 4,
     treble: 5,
     cut: 5,
-    channel: 'normal',
+    topBoost: false,
   } satisfies BritishChimeSettings,
   controls: BRITISH_CHIME_CONTROLS,
   normalizeSettings,
@@ -48,6 +50,11 @@ export function normalizeSettings(
     bass: normalizeKnob(settings.bass, fallback.bass),
     treble: normalizeKnob(settings.treble, fallback.treble),
     cut: normalizeKnob(settings.cut, fallback.cut),
-    channel: normalizeChoice(settings.channel, ['normal', 'top-boost'], fallback.channel),
+    topBoost: normalizeBoolean(
+      settings.topBoost ?? settings.channel,
+      fallback.topBoost,
+      ['top-boost'],
+      ['normal'],
+    ),
   };
 }

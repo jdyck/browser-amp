@@ -17,6 +17,7 @@ export type {
   AmpChoiceDefinition,
   AmpControlDefinition,
   AmpKnobDefinition,
+  AmpSwitchDefinition,
   AmpModel,
   BlackfaceComboSettings,
   BritishChimeSettings,

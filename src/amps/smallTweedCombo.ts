@@ -1,23 +1,25 @@
 import {
-  choice,
   knob,
-  normalizeChoice,
+  normalizeBoolean,
   normalizeKnob,
   record,
+  switchControl,
   type AmpControlDefinition,
 } from './types';
 
 export interface SmallTweedComboSettings {
   readonly volume: number;
   readonly tone: number;
-  readonly input: 'normal' | 'low';
+  readonly lowInput: boolean;
 }
 
 export const SMALL_TWEED_COMBO_CONTROLS = {
   volume: knob('Volume'),
   tone: knob('Tone'),
-  input: choice('Input', [['normal', 'Normal'], ['low', 'Low']]),
-} as const satisfies Readonly<Record<keyof SmallTweedComboSettings, AmpControlDefinition>>;
+  lowInput: switchControl('Low Input'),
+} as const satisfies Readonly<
+  Record<keyof SmallTweedComboSettings, AmpControlDefinition>
+>;
 
 export const smallTweedCombo = {
   id: 'amp.small-tweed-combo-v1',
@@ -26,7 +28,7 @@ export const smallTweedCombo = {
   defaultSettings: {
     volume: 3.5,
     tone: 5,
-    input: 'normal',
+    lowInput: false,
   } satisfies SmallTweedComboSettings,
   controls: SMALL_TWEED_COMBO_CONTROLS,
   normalizeSettings,
@@ -40,6 +42,11 @@ export function normalizeSettings(
   return {
     volume: normalizeKnob(settings.volume, fallback.volume),
     tone: normalizeKnob(settings.tone, fallback.tone),
-    input: normalizeChoice(settings.input, ['normal', 'low'], fallback.input),
+    lowInput: normalizeBoolean(
+      settings.lowInput ?? settings.input,
+      fallback.lowInput,
+      ['low'],
+      ['normal'],
+    ),
   };
 }

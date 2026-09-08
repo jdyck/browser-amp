@@ -1,9 +1,11 @@
 import {
   choice,
   knob,
+  normalizeBoolean,
   normalizeChoice,
   normalizeKnob,
   record,
+  switchControl,
   type AmpControlDefinition,
 } from './types';
 
@@ -13,7 +15,7 @@ export interface WarmJazzComboSettings {
   readonly middle: number;
   readonly treble: number;
   readonly color: 'dark' | 'normal' | 'bright';
-  readonly input: 'normal' | 'low';
+  readonly lowInput: boolean;
 }
 
 export const WARM_JAZZ_COMBO_CONTROLS = {
@@ -22,8 +24,10 @@ export const WARM_JAZZ_COMBO_CONTROLS = {
   middle: knob('Middle'),
   treble: knob('Treble'),
   color: choice('Color', [['dark', 'Dark'], ['normal', 'Normal'], ['bright', 'Bright']]),
-  input: choice('Input', [['normal', 'Normal'], ['low', 'Low']]),
-} as const satisfies Readonly<Record<keyof WarmJazzComboSettings, AmpControlDefinition>>;
+  lowInput: switchControl('Low Input'),
+} as const satisfies Readonly<
+  Record<keyof WarmJazzComboSettings, AmpControlDefinition>
+>;
 
 export const warmJazzCombo = {
   id: 'amp.warm-jazz-combo-v1',
@@ -35,7 +39,7 @@ export const warmJazzCombo = {
     middle: 5,
     treble: 5,
     color: 'normal',
-    input: 'normal',
+    lowInput: false,
   } satisfies WarmJazzComboSettings,
   controls: WARM_JAZZ_COMBO_CONTROLS,
   normalizeSettings,
@@ -52,6 +56,11 @@ export function normalizeSettings(
     middle: normalizeKnob(settings.middle, fallback.middle),
     treble: normalizeKnob(settings.treble, fallback.treble),
     color: normalizeChoice(settings.color, ['dark', 'normal', 'bright'], fallback.color),
-    input: normalizeChoice(settings.input, ['normal', 'low'], fallback.input),
+    lowInput: normalizeBoolean(
+      settings.lowInput ?? settings.input,
+      fallback.lowInput,
+      ['low'],
+      ['normal'],
+    ),
   };
 }

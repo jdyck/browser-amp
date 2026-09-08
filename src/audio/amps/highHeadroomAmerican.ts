@@ -3,13 +3,13 @@ import { dbToLinearGain } from '../gain';
 import { AmpPathBase, toneDb } from './shared';
 
 export function topologyKey(settings: HighHeadroomAmericanSettings): string {
-  return `${settings.bright}/${settings.headroom}`;
+  return `${settings.bright}/${settings.ultraHeadroom}`;
 }
 
 export class HighHeadroomAmericanPath extends AmpPathBase {
   constructor(context: BaseAudioContext, state: HighHeadroomAmericanSettings) {
     super(context);
-    const thresholdScale = state.headroom === 'ultra' ? 0.18 : 0.27;
+    const thresholdScale = state.ultraHeadroom ? 0.18 : 0.27;
     this.connectPath([
       this.input,
       this.filter('highpass', 48),
@@ -18,7 +18,7 @@ export class HighHeadroomAmericanPath extends AmpPathBase {
         'bright',
         'highshelf',
         3_000,
-        state.bright === 'on' ? 5 * (1 - state.volume / 12) : 0
+        state.bright ? 5 * (1 - state.volume / 12) : 0
       ),
       this.controlledFilter('bass', 'lowshelf', 95, (state.bass - 4) * 1.6),
       this.controlledFilter('middle', 'peaking', 720, toneDb(state.middle, 8), 0.7),
@@ -39,6 +39,6 @@ export class HighHeadroomAmericanPath extends AmpPathBase {
     this.setControl('bass', (state.bass - 4) * 1.6);
     this.setControl('middle', toneDb(state.middle, 8));
     this.setControl('treble', (state.treble - 5.5) * 1.6);
-    this.setControl('bright', state.bright === 'on' ? Math.max(0, 5 * (1 - state.volume / 12)) : 0);
+    this.setControl('bright', state.bright ? Math.max(0, 5 * (1 - state.volume / 12)) : 0);
   }
 }

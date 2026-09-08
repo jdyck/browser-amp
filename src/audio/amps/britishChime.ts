@@ -3,13 +3,13 @@ import { dbToLinearGain } from '../gain';
 import { AmpPathBase, toneDb } from './shared';
 
 export function topologyKey(settings: BritishChimeSettings): string {
-  return settings.channel;
+  return String(settings.topBoost);
 }
 
 export class BritishChimePath extends AmpPathBase {
   constructor(context: BaseAudioContext, state: BritishChimeSettings) {
     super(context);
-    const topBoost = state.channel === 'top-boost';
+    const topBoost = state.topBoost;
     this.connectPath([
       this.input,
       this.filter('highpass', topBoost ? 95 : 75),
@@ -39,9 +39,10 @@ export class BritishChimePath extends AmpPathBase {
 
   setControls(settings: unknown): void {
     const state = settings as BritishChimeSettings;
+    const topBoost = state.topBoost;
     this.setControlDb('drive', (state.volume - 4) * 3.5);
-    this.setControl('bass', (state.bass - 4) * 1.7);
-    this.setControl('treble', toneDb(state.treble, 10));
+    this.setControl('bass', (state.bass - 4) * 1.7 - (topBoost ? 1 : 0));
+    this.setControl('treble', toneDb(state.treble, 10) + (topBoost ? 1.5 : 0));
     this.setControl('cut', -state.cut * 1.2);
   }
 }

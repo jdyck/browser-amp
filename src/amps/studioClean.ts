@@ -1,9 +1,9 @@
 import {
-  choice,
   knob,
-  normalizeChoice,
+  normalizeBoolean,
   normalizeKnob,
   record,
+  switchControl,
   type AmpControlDefinition,
 } from './types';
 
@@ -12,7 +12,7 @@ export interface StudioCleanSettings {
   readonly bass: number;
   readonly middle: number;
   readonly treble: number;
-  readonly headroom: 'high' | 'maximum';
+  readonly maximumHeadroom: boolean;
 }
 
 export const STUDIO_CLEAN_CONTROLS = {
@@ -20,8 +20,10 @@ export const STUDIO_CLEAN_CONTROLS = {
   bass: knob('Bass'),
   middle: knob('Middle'),
   treble: knob('Treble'),
-  headroom: choice('Headroom', [['high', 'High'], ['maximum', 'Maximum']]),
-} as const satisfies Readonly<Record<keyof StudioCleanSettings, AmpControlDefinition>>;
+  maximumHeadroom: switchControl('Maximum Headroom'),
+} as const satisfies Readonly<
+  Record<keyof StudioCleanSettings, AmpControlDefinition>
+>;
 
 export const studioClean = {
   id: 'amp.studio-clean-v1',
@@ -32,7 +34,7 @@ export const studioClean = {
     bass: 5,
     middle: 5,
     treble: 5,
-    headroom: 'maximum',
+    maximumHeadroom: true,
   } satisfies StudioCleanSettings,
   controls: STUDIO_CLEAN_CONTROLS,
   normalizeSettings,
@@ -48,7 +50,12 @@ export function normalizeSettings(
     bass: normalizeKnob(settings.bass, fallback.bass),
     middle: normalizeKnob(settings.middle, fallback.middle),
     treble: normalizeKnob(settings.treble, fallback.treble),
-    headroom: normalizeChoice(settings.headroom, ['high', 'maximum'], fallback.headroom),
+    maximumHeadroom: normalizeBoolean(
+      settings.maximumHeadroom ?? settings.headroom,
+      fallback.maximumHeadroom,
+      ['maximum'],
+      ['high'],
+    ),
   };
 }
 

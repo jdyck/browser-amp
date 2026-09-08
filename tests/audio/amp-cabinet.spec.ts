@@ -61,14 +61,14 @@ for (const sampleRate of [44_100, 48_000]) {
       const { connectOfflineEngine, rms, peak } = await import(harnessPath) as typeof import('../support/offlineAudioHarness');
       const { AMP_MODELS, DEFAULT_JAZZ_AMP_SETTINGS } = await import(settingsPath) as typeof import('../../src/signalChain/ampModels');
       type Id = keyof typeof AMP_MODELS;
-      async function render(ampModel: Id, amplitude: number, drive?: number, changes: Record<string, number | string> = {}) {
+      async function render(ampModel: Id, amplitude: number, drive?: number, changes: Record<string, number | string | boolean> = {}) {
         const context = new OfflineAudioContext(1, sampleRate, sampleRate);
         const source = context.createOscillator();
         const input = context.createGain();
         source.frequency.value = 200;
         input.gain.value = amplitude;
         source.connect(input);
-        const defaults = DEFAULT_JAZZ_AMP_SETTINGS[ampModel] as unknown as Record<string, number | string>;
+        const defaults = DEFAULT_JAZZ_AMP_SETTINGS[ampModel] as unknown as Record<string, number | string | boolean>;
         const driveKey = ampModel === 'amp.studio-clean-v1' ? 'gain' : 'volume';
         const ampSettings = {
           ...DEFAULT_JAZZ_AMP_SETTINGS,
@@ -103,12 +103,12 @@ for (const sampleRate of [44_100, 48_000]) {
       return {
         models: Object.fromEntries(entries) as Record<Id, { normal: Awaited<ReturnType<typeof render>>; driven: Awaited<ReturnType<typeof render>>; silent: Awaited<ReturnType<typeof render>> }>,
         highHeadroom: {
-          normal: await render('amp.high-headroom-american-v1', 0.7, 8, { headroom: 'normal' }),
-          ultra: await render('amp.high-headroom-american-v1', 0.7, 8, { headroom: 'ultra' }),
+          normal: await render('amp.high-headroom-american-v1', 0.7, 8, { ultraHeadroom: false }),
+          ultra: await render('amp.high-headroom-american-v1', 0.7, 8, { ultraHeadroom: true }),
         },
         studioHeadroom: {
-          high: await render('amp.studio-clean-v1', 0.7, 7, { headroom: 'high' }),
-          maximum: await render('amp.studio-clean-v1', 0.7, 7, { headroom: 'maximum' }),
+          high: await render('amp.studio-clean-v1', 0.7, 7, { maximumHeadroom: false }),
+          maximum: await render('amp.studio-clean-v1', 0.7, 7, { maximumHeadroom: true }),
         },
       };
     }, sampleRate);
@@ -140,22 +140,69 @@ for (const sampleRate of [44_100, 48_000]) {
 test('model-specific switches and tone controls move sound in their documented directions', async ({ page }) => {
   await page.goto('./');
   const warmNormal = modelControls('amp.warm-jazz-combo-v1');
-  const warmLow = modelControls('amp.warm-jazz-combo-v1', { input: 'low' });
+  const warmLow = modelControls('amp.warm-jazz-combo-v1', { lowInput: true });
   expect(await renderAmp(page, { frequency: 200, controls: warmLow })).toBeLessThan(await renderAmp(page, { frequency: 200, controls: warmNormal }) * 0.65);
   expect(await renderAmp(page, { frequency: 6_000, controls: modelControls('amp.warm-jazz-combo-v1', { color: 'dark' }) }))
     .toBeLessThan(await renderAmp(page, { frequency: 6_000, controls: modelControls('amp.warm-jazz-combo-v1', { color: 'bright' }) }) * 0.65);
 
-  const blackfaceBright = modelControls('amp.blackface-combo-v1', { volume: 2, bright: 'on' });
-  const blackfaceOff = modelControls('amp.blackface-combo-v1', { volume: 2, bright: 'off' });
+  const blackfaceBright = modelControls('amp.blackface-combo-v1', { volume: 2, bright: true });
+  const blackfaceOff = modelControls('amp.blackface-combo-v1', { volume: 2, bright: false });
   expect(await renderAmp(page, { frequency: 6_000, controls: blackfaceBright })).toBeGreaterThan(await renderAmp(page, { frequency: 6_000, controls: blackfaceOff }) * 1.5);
 
-  const tweedLow = modelControls('amp.small-tweed-combo-v1', { input: 'low' });
-  const tweedNormal = modelControls('amp.small-tweed-combo-v1', { input: 'normal' });
+  const tweedLow = modelControls('amp.small-tweed-combo-v1', { lowInput: true });
+  const tweedNormal = modelControls('amp.small-tweed-combo-v1', { lowInput: false });
   expect(await renderAmp(page, { frequency: 200, controls: tweedLow })).toBeLessThan(await renderAmp(page, { frequency: 200, controls: tweedNormal }) * 0.65);
 
   const chimeDark = modelControls('amp.british-chime-v1', { cut: 10 });
   const chimeOpen = modelControls('amp.british-chime-v1', { cut: 0 });
   expect(await renderAmp(page, { frequency: 6_000, controls: chimeDark })).toBeLessThan(await renderAmp(page, { frequency: 6_000, controls: chimeOpen }) * 0.5);
+});
+
+test('retains British Chime Top Boost voicing while editing live controls', async ({ page }) => {
+  await page.goto('./');
+  const result = await page.evaluate(async () => {
+    const harnessPath = './tests/support/offlineAudioHarness.ts';
+    const settingsPath = './src/signalChain/ampModels.ts';
+    const { connectOfflineEngine, rms } = await import(harnessPath) as typeof import('../support/offlineAudioHarness');
+    const { DEFAULT_JAZZ_AMP_SETTINGS } = await import(settingsPath) as typeof import('../../src/signalChain/ampModels');
+    const sampleRate = 48_000;
+    const britishChime = 'amp.british-chime-v1' as const;
+    const context = new OfflineAudioContext(1, sampleRate * 0.8, sampleRate);
+    const resumeRendering = context.resume.bind(context);
+    const source = context.createOscillator();
+    const input = context.createGain();
+    source.frequency.value = 6_000;
+    input.gain.value = 0.1;
+    source.connect(input);
+    const engine = await connectOfflineEngine(context, input, {
+      ampModel: britishChime,
+      ampSettings: {
+        ...DEFAULT_JAZZ_AMP_SETTINGS,
+        [britishChime]: { ...DEFAULT_JAZZ_AMP_SETTINGS[britishChime], topBoost: true },
+      },
+      masterVolumeDb: 0,
+    });
+    const edit = context.suspend(0.3);
+    source.start();
+    const rendering = context.startRendering();
+    await edit;
+    const controls = engine.snapshot.controls;
+    engine.applyControls({
+      ...controls,
+      ampSettings: {
+        ...controls.ampSettings,
+        [britishChime]: { ...controls.ampSettings[britishChime], cut: 4 },
+      },
+    });
+    await resumeRendering();
+    const samples = (await rendering).getChannelData(0);
+    return {
+      beforeEdit: rms(samples, sampleRate, 0.15, 0.25),
+      afterEdit: rms(samples, sampleRate, 0.5, 0.7),
+    };
+  });
+
+  expect(result.afterEdit).toBeGreaterThan(result.beforeEdit * 1.08);
 });
 
 test('rapid amp model switches crossfade and return to the original clean signal', async ({ page }) => {

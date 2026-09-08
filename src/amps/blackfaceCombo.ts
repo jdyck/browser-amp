@@ -1,9 +1,9 @@
 import {
-  choice,
   knob,
-  normalizeChoice,
+  normalizeBoolean,
   normalizeKnob,
   record,
+  switchControl,
   type AmpControlDefinition,
 } from './types';
 
@@ -11,15 +11,17 @@ export interface BlackfaceComboSettings {
   readonly volume: number;
   readonly bass: number;
   readonly treble: number;
-  readonly bright: 'off' | 'on';
+  readonly bright: boolean;
 }
 
 export const BLACKFACE_COMBO_CONTROLS = {
   volume: knob('Volume'),
   bass: knob('Bass'),
   treble: knob('Treble'),
-  bright: choice('Bright', [['off', 'Off'], ['on', 'On']]),
-} as const satisfies Readonly<Record<keyof BlackfaceComboSettings, AmpControlDefinition>>;
+  bright: switchControl('Bright'),
+} as const satisfies Readonly<
+  Record<keyof BlackfaceComboSettings, AmpControlDefinition>
+>;
 
 export const blackfaceCombo = {
   id: 'amp.blackface-combo-v1',
@@ -29,7 +31,7 @@ export const blackfaceCombo = {
     volume: 4,
     bass: 4,
     treble: 5.5,
-    bright: 'off',
+    bright: false,
   } satisfies BlackfaceComboSettings,
   controls: BLACKFACE_COMBO_CONTROLS,
   normalizeSettings,
@@ -44,6 +46,11 @@ export function normalizeSettings(
     volume: normalizeKnob(settings.volume, fallback.volume),
     bass: normalizeKnob(settings.bass, fallback.bass),
     treble: normalizeKnob(settings.treble, fallback.treble),
-    bright: normalizeChoice(settings.bright, ['off', 'on'], fallback.bright),
+    bright: normalizeBoolean(
+      settings.bright,
+      fallback.bright,
+      ['on'],
+      ['off'],
+    ),
   };
 }

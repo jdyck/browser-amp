@@ -1,28 +1,19 @@
 import type { AmpPath } from '../audio/amps/shared';
 import { BlackfaceComboPath, topologyKey as blackfaceTopologyKey } from '../audio/amps/blackfaceCombo';
 import { BritishChimePath, topologyKey as britishChimeTopologyKey } from '../audio/amps/britishChime';
-import { HighHeadroomAmericanPath, topologyKey as highHeadroomAmericanTopologyKey } from '../audio/amps/highHeadroomAmerican';
+import {
+  HighHeadroomAmericanPath,
+  topologyKey as highHeadroomAmericanTopologyKey,
+} from '../audio/amps/highHeadroomAmerican';
 import { SmallTweedComboPath, topologyKey as smallTweedComboTopologyKey } from '../audio/amps/smallTweedCombo';
 import { StudioCleanPath, topologyKey as studioCleanTopologyKey } from '../audio/amps/studioClean';
 import { WarmJazzComboPath, topologyKey as warmJazzComboTopologyKey } from '../audio/amps/warmJazzCombo';
-import {
-  blackfaceCombo,
-} from './blackfaceCombo';
-import {
-  britishChime,
-} from './britishChime';
-import {
-  highHeadroomAmerican,
-} from './highHeadroomAmerican';
-import {
-  smallTweedCombo,
-} from './smallTweedCombo';
-import {
-  studioClean,
-} from './studioClean';
-import {
-  warmJazzCombo,
-} from './warmJazzCombo';
+import { blackfaceCombo } from './blackfaceCombo';
+import { britishChime } from './britishChime';
+import { highHeadroomAmerican } from './highHeadroomAmerican';
+import { smallTweedCombo } from './smallTweedCombo';
+import { studioClean } from './studioClean';
+import { warmJazzCombo } from './warmJazzCombo';
 import type { AmpControlDefinition } from './types';
 
 interface AmpRegistration<Settings> {
@@ -119,10 +110,13 @@ type AmpCatalog = {
 };
 
 export const AMP_MODELS = Object.fromEntries(
-  ampIds.map((id) => [id, {
-    label: AMP_REGISTRY[id].label,
-    description: AMP_REGISTRY[id].description,
-  }]),
+  ampIds.map((id) => [
+    id,
+    {
+      label: AMP_REGISTRY[id].label,
+      description: AMP_REGISTRY[id].description,
+    },
+  ]),
 ) as AmpCatalog;
 
 export function isAmpModel(value: unknown): value is JazzAmpId {
@@ -134,7 +128,9 @@ export const DEFAULT_JAZZ_AMP_SETTINGS = Object.fromEntries(
 ) as JazzAmpSettings;
 
 type AmpControlCatalog = {
-  readonly [Id in JazzAmpId]: Readonly<Record<keyof JazzAmpSettings[Id], AmpControlDefinition>>;
+  readonly [Id in JazzAmpId]: Readonly<
+    Record<keyof JazzAmpSettings[Id], AmpControlDefinition>
+  >;
 };
 
 export const AMP_MODEL_CONTROLS = Object.fromEntries(
@@ -150,32 +146,23 @@ export function normalizeJazzAmpSettings(
   fallback: JazzAmpSettings = DEFAULT_JAZZ_AMP_SETTINGS,
 ): JazzAmpSettings {
   const all = isRecord(value) ? value : {};
-  return Object.fromEntries(ampIds.map((id) => {
-    const raw = isRecord(all[id]) ? all[id] : {};
-    return [id, AMP_REGISTRY[id].normalizeSettings(raw, fallback[id])];
-  })) as JazzAmpSettings;
+  return Object.fromEntries(
+    ampIds.map((id) => {
+      const raw = isRecord(all[id]) ? all[id] : {};
+      return [id, AMP_REGISTRY[id].normalizeSettings(raw, fallback[id])];
+    }),
+  ) as JazzAmpSettings;
 }
 
 export type {
   AmpChoiceDefinition,
   AmpControlDefinition,
   AmpKnobDefinition,
+  AmpSwitchDefinition,
 } from './types';
-export type {
-  BlackfaceComboSettings,
-} from './blackfaceCombo';
-export type {
-  BritishChimeSettings,
-} from './britishChime';
-export type {
-  HighHeadroomAmericanSettings,
-} from './highHeadroomAmerican';
-export type {
-  SmallTweedComboSettings,
-} from './smallTweedCombo';
-export type {
-  StudioCleanSettings,
-} from './studioClean';
-export type {
-  WarmJazzComboSettings,
-} from './warmJazzCombo';
+export type { BlackfaceComboSettings } from './blackfaceCombo';
+export type { BritishChimeSettings } from './britishChime';
+export type { HighHeadroomAmericanSettings } from './highHeadroomAmerican';
+export type { SmallTweedComboSettings } from './smallTweedCombo';
+export type { StudioCleanSettings } from './studioClean';
+export type { WarmJazzComboSettings } from './warmJazzCombo';

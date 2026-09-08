@@ -3,7 +3,7 @@ import { dbToLinearGain } from '../gain';
 import { AmpPathBase, toneDb } from './shared';
 
 export function topologyKey(settings: SmallTweedComboSettings): string {
-  return settings.input;
+  return String(settings.lowInput);
 }
 
 export class SmallTweedComboPath extends AmpPathBase {
@@ -12,7 +12,7 @@ export class SmallTweedComboPath extends AmpPathBase {
     this.connectPath([
       this.input,
       this.filter('highpass', 45),
-      this.gain(state.input === 'low' ? 0.52 : 1),
+      this.gain(state.lowInput ? 0.52 : 1),
       this.controlledGain('drive', dbToLinearGain((state.volume - 3.5) * 4)),
       this.gain(0.72),
       this.shaper(1.55, 0.12),

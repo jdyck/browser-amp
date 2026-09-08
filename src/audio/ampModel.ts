@@ -1,4 +1,4 @@
-import { AMP_REGISTRY, type AmpModel, type JazzAmpSettings } from '../amps/index';
+import { AMP_REGISTRY, type AmpModel, type JazzAmpSettings } from '../amps';
 import { StageSwitcher } from './stageSwitcher';
 import type { AmpPath } from './amps/shared';
 

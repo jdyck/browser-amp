@@ -3,7 +3,7 @@ import { dbToLinearGain } from '../gain';
 import { AmpPathBase, toneDb } from './shared';
 
 export function topologyKey(settings: WarmJazzComboSettings): string {
-  return `${settings.color}/${settings.input}`;
+  return `${settings.color}/${settings.lowInput}`;
 }
 
 export class WarmJazzComboPath extends AmpPathBase {
@@ -13,8 +13,8 @@ export class WarmJazzComboPath extends AmpPathBase {
     this.connectPath([
       this.input,
       this.filter('highpass', 38),
-      this.gain(state.input === 'low' ? 0.5 : 1),
-      this.filter('lowpass', state.input === 'low' ? 7_000 : 10_000),
+      this.gain(state.lowInput ? 0.5 : 1),
+      this.filter('lowpass', state.lowInput ? 7_000 : 10_000),
       this.controlledGain('drive', dbToLinearGain((state.volume - 4) * 3)),
       this.filter('highshelf', 2_200, colorDb),
       this.controlledFilter('bass', 'lowshelf', 110, toneDb(state.bass, 10)),

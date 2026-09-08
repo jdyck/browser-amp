@@ -1,9 +1,9 @@
 import {
-  choice,
   knob,
-  normalizeChoice,
+  normalizeBoolean,
   normalizeKnob,
   record,
+  switchControl,
   type AmpControlDefinition,
 } from './types';
 
@@ -12,8 +12,8 @@ export interface HighHeadroomAmericanSettings {
   readonly bass: number;
   readonly middle: number;
   readonly treble: number;
-  readonly bright: 'off' | 'on';
-  readonly headroom: 'normal' | 'ultra';
+  readonly bright: boolean;
+  readonly ultraHeadroom: boolean;
 }
 
 export const HIGH_HEADROOM_AMERICAN_CONTROLS = {
@@ -21,9 +21,11 @@ export const HIGH_HEADROOM_AMERICAN_CONTROLS = {
   bass: knob('Bass'),
   middle: knob('Middle'),
   treble: knob('Treble'),
-  bright: choice('Bright', [['off', 'Off'], ['on', 'On']]),
-  headroom: choice('Headroom', [['normal', 'Normal'], ['ultra', 'Ultra']]),
-} as const satisfies Readonly<Record<keyof HighHeadroomAmericanSettings, AmpControlDefinition>>;
+  bright: switchControl('Bright'),
+  ultraHeadroom: switchControl('Ultra Headroom'),
+} as const satisfies Readonly<
+  Record<keyof HighHeadroomAmericanSettings, AmpControlDefinition>
+>;
 
 export const highHeadroomAmerican = {
   id: 'amp.high-headroom-american-v1',
@@ -34,8 +36,8 @@ export const highHeadroomAmerican = {
     bass: 4,
     middle: 5,
     treble: 5.5,
-    bright: 'off',
-    headroom: 'ultra',
+    bright: false,
+    ultraHeadroom: true,
   } satisfies HighHeadroomAmericanSettings,
   controls: HIGH_HEADROOM_AMERICAN_CONTROLS,
   normalizeSettings,
@@ -51,7 +53,17 @@ export function normalizeSettings(
     bass: normalizeKnob(settings.bass, fallback.bass),
     middle: normalizeKnob(settings.middle, fallback.middle),
     treble: normalizeKnob(settings.treble, fallback.treble),
-    bright: normalizeChoice(settings.bright, ['off', 'on'], fallback.bright),
-    headroom: normalizeChoice(settings.headroom, ['normal', 'ultra'], fallback.headroom),
+    bright: normalizeBoolean(
+      settings.bright,
+      fallback.bright,
+      ['on'],
+      ['off'],
+    ),
+    ultraHeadroom: normalizeBoolean(
+      settings.ultraHeadroom ?? settings.headroom,
+      fallback.ultraHeadroom,
+      ['ultra'],
+      ['normal'],
+    ),
   };
 }

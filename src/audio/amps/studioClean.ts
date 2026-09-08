@@ -6,7 +6,7 @@ import { dbToLinearGain } from '../gain';
 import { AmpPathBase, toneDb } from './shared';
 
 export function topologyKey(settings: StudioCleanSettings): string {
-  return settings.headroom;
+  return String(settings.maximumHeadroom);
 }
 
 export class StudioCleanPath extends AmpPathBase {
@@ -20,7 +20,7 @@ export class StudioCleanPath extends AmpPathBase {
       this.controlledFilter('treble', 'highshelf', 3_200, toneDb(state.treble, 12)),
     ];
 
-    if (state.headroom === 'high') {
+    if (!state.maximumHeadroom) {
       path.push(this.gain(0.28), this.shaper(0.55), this.gain(3.6));
     }
     path.push(this.output);

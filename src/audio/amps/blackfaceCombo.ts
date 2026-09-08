@@ -3,7 +3,7 @@ import { dbToLinearGain } from '../gain';
 import { AmpPathBase } from './shared';
 
 export function topologyKey(settings: BlackfaceComboSettings): string {
-  return settings.bright;
+  return String(settings.bright);
 }
 
 export class BlackfaceComboPath extends AmpPathBase {
@@ -17,7 +17,7 @@ export class BlackfaceComboPath extends AmpPathBase {
         'bright',
         'highshelf',
         2_700,
-        state.bright === 'on' ? 7 * (1 - state.volume / 10) : 0
+        state.bright ? 7 * (1 - state.volume / 10) : 0
       ),
       this.gain(0.38),
       this.shaper(1.15, 0.07),
@@ -40,6 +40,6 @@ export class BlackfaceComboPath extends AmpPathBase {
     this.setControlDb('drive', (state.volume - 4) * 3.3);
     this.setControl('bass', (state.bass - 4) * 1.7);
     this.setControl('treble', (state.treble - 5.5) * 1.7);
-    this.setControl('bright', state.bright === 'on' ? Math.max(0, 7 * (1 - state.volume / 10)) : 0);
+    this.setControl('bright', state.bright ? Math.max(0, 7 * (1 - state.volume / 10)) : 0);
   }
 }
