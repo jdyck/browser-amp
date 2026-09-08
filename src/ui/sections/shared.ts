@@ -8,11 +8,16 @@ export function stageToggle(
   id: string,
   label: string,
   checked: boolean,
+  accessibleLabel = '',
 ): string {
+  const ariaLabel = label === '' && accessibleLabel !== ''
+    ? `aria-label="${accessibleLabel}"`
+    : '';
+
   return `
     <label class="stage-toggle" for="${id}">
       <span>${label}</span>
-      <input id="${id}" type="checkbox" ${checked ? 'checked' : ''}>
+      <input id="${id}" type="checkbox" ${ariaLabel} ${checked ? 'checked' : ''}>
       <span class="toggle-track" aria-hidden="true">
         <span></span>
       </span>

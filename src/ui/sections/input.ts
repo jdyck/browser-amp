@@ -277,6 +277,7 @@ export const inputSection: WorkspaceSectionModule = {
       'noise-gate-enabled',
       '',
       !snapshot.controls.noiseGateBypassed,
+      'Enable Noise Suppression',
     )}
           </div>
 

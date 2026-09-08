@@ -42,7 +42,7 @@ test('switches all reverb modules, remembers bypassed selections, and resets wit
   await expect(page.locator('#monitoring-state')).toHaveText('Off');
   await resetControlsFrom(page, 'Reverb');
   await expect(module).toHaveValue('studio-plate');
-  await expect(page.locator('#reverb-profile-help')).toContainText('original Browser Amp reverb');
+  await expect(page.locator('#reverb-profile-help')).toContainText('Smooth, diffuse stereo sustain.');
   await expect(enabled).not.toBeChecked();
   await expect(page.getByLabel('Reverb value')).toHaveValue('20');
 });
