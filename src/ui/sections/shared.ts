@@ -62,7 +62,7 @@ export function choiceSelector(
           data-select-value="${value}"
           aria-pressed="${String(value === selected)}"
         >
-          <span class="choice-art" aria-hidden="true">[img]</span>
+<!--          <span class="choice-art" aria-hidden="true">[img]</span>-->
           <span>${option.label}</span>
         </button>
       `,

@@ -13,12 +13,20 @@ export class SmallTweedComboPath extends AmpPathBase {
       this.input,
       this.filter('highpass', 45),
       this.gain(state.lowInput ? 0.52 : 1),
-      this.controlledGain('drive', dbToLinearGain((state.volume - 3.5) * 4)),
+      this.controlledGain(
+        'drive',
+        dbToLinearGain((state.volume - 3.5) * 4)
+      ),
       this.gain(0.72),
       this.shaper(1.55, 0.12),
       this.filter('highpass', 22),
       this.filter('highpass', 105),
-      this.controlledFilter('tone', 'highshelf', 1_700, toneDb(state.tone, 10)),
+      this.controlledFilter(
+        'tone',
+        'highshelf',
+        1_700,
+        toneDb(state.tone, 10)
+      ),
       this.gain(0.9),
       this.shaper(1.25, -0.08),
       this.filter('highpass', 22),

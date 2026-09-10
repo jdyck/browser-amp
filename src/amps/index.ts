@@ -1,13 +1,30 @@
 import type { AmpPath } from '../audio/amps/shared';
-import { BlackfaceComboPath, topologyKey as blackfaceTopologyKey } from '../audio/amps/blackfaceCombo';
-import { BritishChimePath, topologyKey as britishChimeTopologyKey } from '../audio/amps/britishChime';
+
+import {
+  BlackfaceComboPath,
+  topologyKey as blackfaceTopologyKey,
+} from '../audio/amps/blackfaceCombo';
+import {
+  BritishChimePath,
+  topologyKey as britishChimeTopologyKey,
+} from '../audio/amps/britishChime';
 import {
   HighHeadroomAmericanPath,
   topologyKey as highHeadroomAmericanTopologyKey,
 } from '../audio/amps/highHeadroomAmerican';
-import { SmallTweedComboPath, topologyKey as smallTweedComboTopologyKey } from '../audio/amps/smallTweedCombo';
-import { StudioCleanPath, topologyKey as studioCleanTopologyKey } from '../audio/amps/studioClean';
-import { WarmJazzComboPath, topologyKey as warmJazzComboTopologyKey } from '../audio/amps/warmJazzCombo';
+import {
+  SmallTweedComboPath,
+  topologyKey as smallTweedComboTopologyKey,
+} from '../audio/amps/smallTweedCombo';
+import {
+  StudioCleanPath,
+  topologyKey as studioCleanTopologyKey,
+} from '../audio/amps/studioClean';
+import {
+  WarmJazzComboPath,
+  topologyKey as warmJazzComboTopologyKey,
+} from '../audio/amps/warmJazzCombo';
+
 import { blackfaceCombo } from './blackfaceCombo';
 import { britishChime } from './britishChime';
 import { highHeadroomAmerican } from './highHeadroomAmerican';
@@ -38,7 +55,8 @@ function registerAmp<Settings>(
     ...definition,
     normalizeSettings: (value: unknown, fallback?: unknown): Settings =>
       definition.normalizeSettings(value, fallback as Settings | undefined),
-    topologyKey: (settings: unknown): string => audio.topologyKey(settings as Settings),
+    topologyKey: (settings: unknown): string =>
+      audio.topologyKey(settings as Settings),
     createPath: (context: BaseAudioContext, settings: unknown): AmpPath =>
       audio.createPath(context, settings as Settings),
   };
@@ -50,42 +68,48 @@ export const AMP_REGISTRY = {
     studioClean,
     {
       topologyKey: studioCleanTopologyKey,
-      createPath: (context, settings) => new StudioCleanPath(context, settings),
+      createPath: (context, settings) =>
+        new StudioCleanPath(context, settings),
     },
   ),
   [warmJazzCombo.id]: registerAmp(
     warmJazzCombo,
     {
       topologyKey: warmJazzComboTopologyKey,
-      createPath: (context, settings) => new WarmJazzComboPath(context, settings),
+      createPath: (context, settings) =>
+        new WarmJazzComboPath(context, settings),
     },
   ),
   [blackfaceCombo.id]: registerAmp(
     blackfaceCombo,
     {
       topologyKey: blackfaceTopologyKey,
-      createPath: (context, settings) => new BlackfaceComboPath(context, settings),
+      createPath: (context, settings) =>
+        new BlackfaceComboPath(context, settings),
     },
   ),
   [highHeadroomAmerican.id]: registerAmp(
     highHeadroomAmerican,
     {
       topologyKey: highHeadroomAmericanTopologyKey,
-      createPath: (context, settings) => new HighHeadroomAmericanPath(context, settings),
+      createPath: (context, settings) =>
+        new HighHeadroomAmericanPath(context, settings),
     },
   ),
   [smallTweedCombo.id]: registerAmp(
     smallTweedCombo,
     {
       topologyKey: smallTweedComboTopologyKey,
-      createPath: (context, settings) => new SmallTweedComboPath(context, settings),
+      createPath: (context, settings) =>
+        new SmallTweedComboPath(context, settings),
     },
   ),
   [britishChime.id]: registerAmp(
     britishChime,
     {
       topologyKey: britishChimeTopologyKey,
-      createPath: (context, settings) => new BritishChimePath(context, settings),
+      createPath: (context, settings) =>
+        new BritishChimePath(context, settings),
     },
   ),
 } as const;
@@ -95,7 +119,9 @@ export type JazzAmpId = keyof typeof AMP_REGISTRY;
 export type AmpModel = JazzAmpId;
 
 export type JazzAmpSettings = {
-  readonly [Id in JazzAmpId]: ReturnType<(typeof AMP_REGISTRY)[Id]['normalizeSettings']>;
+  readonly [Id in JazzAmpId]: ReturnType<
+    (typeof AMP_REGISTRY)[Id]['normalizeSettings']
+  >;
 };
 
 export type JazzAmpState = JazzAmpSettings[JazzAmpId];
@@ -146,9 +172,11 @@ export function normalizeJazzAmpSettings(
   fallback: JazzAmpSettings = DEFAULT_JAZZ_AMP_SETTINGS,
 ): JazzAmpSettings {
   const all = isRecord(value) ? value : {};
+
   return Object.fromEntries(
     ampIds.map((id) => {
       const raw = isRecord(all[id]) ? all[id] : {};
+
       return [id, AMP_REGISTRY[id].normalizeSettings(raw, fallback[id])];
     }),
   ) as JazzAmpSettings;

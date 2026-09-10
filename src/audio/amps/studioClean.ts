@@ -14,14 +14,28 @@ export class StudioCleanPath extends AmpPathBase {
     super(context, 0);
     const path: AudioNode[] = [
       this.input,
-      this.controlledGain('drive', dbToLinearGain(studioGainDb(state.gain))),
-      this.controlledFilter('bass', 'lowshelf', 120, toneDb(state.bass, 12)),
-      this.controlledFilter('middle', 'peaking', 800, toneDb(state.middle, 12), 0.8),
-      this.controlledFilter('treble', 'highshelf', 3_200, toneDb(state.treble, 12)),
+      this.controlledGain(
+        'drive', dbToLinearGain(studioGainDb(state.gain))
+      ),
+      this.controlledFilter(
+        'bass', 'lowshelf', 120,
+        toneDb(state.bass, 12)
+      ),
+      this.controlledFilter(
+        'middle', 'peaking', 800,
+        toneDb(state.middle, 12), 0.8
+      ),
+      this.controlledFilter(
+        'treble', 'highshelf', 3_200,
+        toneDb(state.treble, 12)
+      ),
     ];
 
     if (!state.maximumHeadroom) {
-      path.push(this.gain(0.28), this.shaper(0.55), this.gain(3.6));
+      path.push(this.gain(0.28),
+        this.shaper(0.55),
+        this.gain(3.6)
+      );
     }
     path.push(this.output);
     this.connectPath(path);

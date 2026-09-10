@@ -17,9 +17,18 @@ export class WarmJazzComboPath extends AmpPathBase {
       this.filter('lowpass', state.lowInput ? 7_000 : 10_000),
       this.controlledGain('drive', dbToLinearGain((state.volume - 4) * 3)),
       this.filter('highshelf', 2_200, colorDb),
-      this.controlledFilter('bass', 'lowshelf', 110, toneDb(state.bass, 10)),
-      this.controlledFilter('middle', 'peaking', 650, toneDb(state.middle, 9), 0.75),
-      this.controlledFilter('treble', 'highshelf', 3_000, toneDb(state.treble, 10)),
+      this.controlledFilter(
+        'bass', 'lowshelf', 110,
+        toneDb(state.bass, 10)
+      ),
+      this.controlledFilter(
+        'middle', 'peaking', 650,
+        toneDb(state.middle, 9), 0.75
+      ),
+      this.controlledFilter(
+        'treble', 'highshelf', 3_000,
+        toneDb(state.treble, 10)
+      ),
       this.gain(0.42),
       this.shaper(1.1),
       this.gain(2.25),

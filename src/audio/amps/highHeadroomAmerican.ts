@@ -15,14 +15,21 @@ export class HighHeadroomAmericanPath extends AmpPathBase {
       this.filter('highpass', 48),
       this.controlledGain('drive', dbToLinearGain((state.volume - 4) * 3)),
       this.controlledFilter(
-        'bright',
-        'highshelf',
-        3_000,
+        'bright', 'highshelf', 3_000,
         state.bright ? 5 * (1 - state.volume / 12) : 0
       ),
-      this.controlledFilter('bass', 'lowshelf', 95, (state.bass - 4) * 1.6),
-      this.controlledFilter('middle', 'peaking', 720, toneDb(state.middle, 8), 0.7),
-      this.controlledFilter('treble', 'highshelf', 3_100, (state.treble - 5.5) * 1.6),
+      this.controlledFilter(
+        'bass', 'lowshelf', 95,
+        (state.bass - 4) * 1.6
+      ),
+      this.controlledFilter(
+        'middle', 'peaking', 720,
+        toneDb(state.middle, 8), 0.7
+      ),
+      this.controlledFilter(
+        'treble', 'highshelf', 3_100,
+        (state.treble - 5.5) * 1.6
+      ),
       this.gain(thresholdScale),
       this.shaper(0.5, 0.01),
       this.filter('highpass', 20),
@@ -39,6 +46,9 @@ export class HighHeadroomAmericanPath extends AmpPathBase {
     this.setControl('bass', (state.bass - 4) * 1.6);
     this.setControl('middle', toneDb(state.middle, 8));
     this.setControl('treble', (state.treble - 5.5) * 1.6);
-    this.setControl('bright', state.bright ? Math.max(0, 5 * (1 - state.volume / 12)) : 0);
+    this.setControl(
+      'bright',
+      state.bright ? Math.max(0, 5 * (1 - state.volume / 12)) : 0
+    );
   }
 }

@@ -115,7 +115,6 @@ function topBar(current: AudioSnapshot): string {
   const recovery = recoveryPresentation(current);
   return `<header class="topbar">
     <div class="brand" aria-label="Browser Amp">
-      <span class="brand-art" aria-hidden="true">[img]</span>
       <span>Browser Amp</span>
     </div>
     <div class="monitor-control">

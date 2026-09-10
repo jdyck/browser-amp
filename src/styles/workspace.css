@@ -47,13 +47,13 @@
 }
 
 .stage-link:hover {
-  color: var(--ice);
-  background: rgba(126, 223, 227, 0.05);
+  /*color: var(--ice);*/
+  /*background: rgba(126, 223, 227, 0.05);*/
 }
 
 .stage-link.is-active {
-  color: var(--text);
-  background: rgba(57, 199, 212, 0.08);
+  /*color: var(--text);*/
+  /*background: rgba(57, 199, 212, 0.08);*/
 }
 
 .stage-marker {
